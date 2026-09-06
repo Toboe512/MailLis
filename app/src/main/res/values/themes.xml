@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Включаем стандартный Light ActionBar вместо NoActionBar -->
+    <style name="Theme.MailLis" parent="Theme.MaterialComponents.Light.DarkActionBar">
+        <!-- Синий цвет для верхней панели -->
+        <item name="colorPrimary">#2196F3</item>
+        <item name="colorPrimaryVariant">#1976D2</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="android:windowBackground">#FFFFFF</item>
+    </style>
+</resources>

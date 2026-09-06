@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://android.com"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:background="@android:drawable/list_selector_background"
+    android:clickable="true"
+    android:focusable="true">
+
+    <!-- Круглая аватарка -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="50dp"
+        android:layout_height="50dp"
+        app:cardCornerRadius="25dp"
+        app:cardElevation="0dp"
+        app:cardBackgroundColor="#D3D3D3">
+
+        <ImageView
+            android:id="@+id/imageViewChatAvatar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="Аватар чата"
+            android:src="@android:drawable/ic_menu_gallery" />
+    </androidx.cardview.widget.CardView>
+
+    <!-- Название и последнее сообщение -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:layout_marginStart="12dp"
+        android:layout_gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/textViewChatName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Имя контакта или Группы"
+            android:textStyle="bold"
+            android:textColor="#000000"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/textViewLastMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Последнее сообщение в этом чате..."
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:layout_marginTop="2dp" />
+    </LinearLayout>
+
+    <!-- Тип чата (метка) -->
+    <TextView
+        android:id="@+id/textViewChatType"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Группа"
+        android:textSize="12sp"
+        android:textColor="#2196F3"
+        android:layout_gravity="top" />
+
+</LinearLayout>

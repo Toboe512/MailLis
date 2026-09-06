@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://android.com"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="4dp">
+
+    <!-- Контейнер для текста с закругленными углами -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardMessage"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="1dp"
+        android:layout_alignParentStart="true"> <!-- По умолчанию слева (чужое) -->
+
+        <LinearLayout
+            android:id="@+id/layoutMessageBackground"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="8dp"
+            android:background="#EAEAEA"> <!-- Серый фон по умолчанию -->
+
+            <!-- Имя отправителя -->
+            <TextView
+                android:id="@+id/textViewSender"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="sender@mail.ru"
+                android:textColor="#2196F3"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+
+            <!-- Текст сообщения -->
+            <TextView
+                android:id="@+id/textViewMessageText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:text="Привет!"
+                android:textColor="#000000"
+                android:textSize="16sp" />
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+</RelativeLayout>
