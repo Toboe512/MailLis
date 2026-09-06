@@ -1,7 +1,6 @@
 package ru.toboe512.maillis.activity;
 
 
-import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -13,7 +12,6 @@ import android.os.Looper;
 import android.view.MenuItem;
 import android.widget.EditText;
 import android.widget.ImageButton;
-import android.widget.Toast;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
@@ -22,16 +20,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 
-import jakarta.mail.Authenticator;
-import jakarta.mail.Folder;
-import jakarta.mail.PasswordAuthentication;
-import jakarta.mail.Session;
-import jakarta.mail.Store;
-import jakarta.mail.Transport;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ChatsAdapter;
 import ru.toboe512.maillis.adapters.MessagesAdapter;
@@ -90,6 +79,18 @@ public class ChatActivity extends AppCompatActivity {
             actionBar.setDisplayHomeAsUpEnabled(true);
             actionBar.setTitle("Чат");
         }
+
+//        // Находим Toolbar в макете
+//        androidx.appcompat.widget.Toolbar toolbar = findViewById(R.id.toolbar);
+//// Говорим Android использовать его в качестве главного ActionBar
+//        setSupportActionBar(toolbar);
+//
+//// Теперь этот код снова заработает и отобразит стрелку!
+//        if (getSupportActionBar() != null) {
+//            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+//            getSupportActionBar().setTitle("Чат");
+//        }
+
 
         editTextMessage = findViewById(R.id.editTextMessage);
         buttonSend = findViewById(R.id.buttonSendMessage);
@@ -159,6 +160,7 @@ public class ChatActivity extends AppCompatActivity {
                     //TODO проверить
                     // Перерисовываем список
                     messagesAdapter.notifyDataSetChanged();
+                    scrollToBottomIfNeeded();
                 }
 
                 // 2. Планируем следующий запуск
@@ -193,7 +195,9 @@ public class ChatActivity extends AppCompatActivity {
                 );
                 messageList.add(message);
 
+                // Уведомляем адаптер, что добавился ОДИН элемент в конец (это экономит ресурсы)
                 messagesAdapter.notifyItemInserted(messageList.size() - 1);
+
                 recyclerView.scrollToPosition(messageList.size() - 1);
 
                 // 3. Отправляем сообщение по сети через SMTP
@@ -201,6 +205,9 @@ public class ChatActivity extends AppCompatActivity {
 //TODO проверить
                 // Перерисовываем список
                 messagesAdapter.notifyDataSetChanged();
+
+                // ПЛАВНО СКРОЛЛИМ ВНИЗ
+                scrollToBottom();
 
                 // Корректная и чистая очистка поля ввода без лишних присвоений текста обратно
                 editTextMessage.getText().clear();
@@ -235,4 +242,24 @@ public class ChatActivity extends AppCompatActivity {
         // КРИТИЧЕСКИ ВАЖНО: Выключаем таймер при уходе с экрана, чтобы не сажать батарею
         updateHandler.removeCallbacks(updateRunnable);
     }
+
+    private void scrollToBottom() {
+        if (messageList != null && !messageList.isEmpty()) {
+            // smoothScrollToPosition делает красивую плавную анимацию прокрутки
+            recyclerView.smoothScrollToPosition(messageList.size() - 1);
+        }
+    }
+
+    private void scrollToBottomIfNeeded() {
+        LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+        if (layoutManager != null && !messageList.isEmpty()) {
+            int lastVisibleItemPosition = layoutManager.findLastVisibleItemPosition();
+
+            // Если до конца чата осталось не больше 2 сообщений ИЛИ это наше собственное сообщение, то скроллим
+            if (lastVisibleItemPosition >= messageList.size() - 3) {
+                recyclerView.smoothScrollToPosition(messageList.size() - 1);
+            }
+        }
+    }
+
 }

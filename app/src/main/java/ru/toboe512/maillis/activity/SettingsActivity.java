@@ -1,10 +1,4 @@
 package ru.toboe512.maillis.activity;
-import jakarta.mail.Authenticator;
-import jakarta.mail.PasswordAuthentication;
-import jakarta.mail.Session;
-import jakarta.mail.Store;
-import jakarta.mail.Transport;
-import ru.toboe512.maillis.R;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -14,16 +8,21 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
-import android.widget.Toolbar;
 
-import androidx.activity.ComponentActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
+import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 
 import java.util.Properties;
 
-public class SettingsActivity extends ComponentActivity {
+import jakarta.mail.Authenticator;
+import jakarta.mail.PasswordAuthentication;
+import jakarta.mail.Session;
+import jakarta.mail.Store;
+import jakarta.mail.Transport;
+import ru.toboe512.maillis.R;
+
+public class SettingsActivity extends AppCompatActivity {
 
     // Имя файла настроек на диске телефона
     private static final String PREFS_NAME = "MailLis_Prefs";
@@ -45,23 +44,29 @@ public class SettingsActivity extends ComponentActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
 
+        // Стрелочка назад
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayHomeAsUpEnabled(true);
+            actionBar.setTitle("НАстройки");
+        }
         // Настраиваем Toolbar и кнопку Назад
-        Toolbar toolbar = findViewById(R.id.toolbarSettings);
+       // Toolbar toolbar = findViewById(R.id.toolbarSettings);
 
-        // Автоматический сдвиг под строку состояния (часы и батарею)
-        ViewCompat.setOnApplyWindowInsetsListener(toolbar, (v, windowInsets) -> {
-            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars());
-            v.setPadding(v.getPaddingLeft(), insets.top, v.getPaddingRight(), v.getPaddingBottom());
-            v.getLayoutParams().height = (int) (insets.top + (56 * getResources().getDisplayMetrics().density));
-            return windowInsets;
-        });
-
-        toolbar.setNavigationOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                finish(); // Закрывает экран настроек и возвращает на главный
-            }
-        });
+//        // Автоматический сдвиг под строку состояния (часы и батарею)
+//        ViewCompat.setOnApplyWindowInsetsListener(toolbar, (v, windowInsets) -> {
+//            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars());
+//            v.setPadding(v.getPaddingLeft(), insets.top, v.getPaddingRight(), v.getPaddingBottom());
+//            v.getLayoutParams().height = (int) (insets.top + (56 * getResources().getDisplayMetrics().density));
+//            return windowInsets;
+//        });
+//
+//        toolbar.setNavigationOnClickListener(new View.OnClickListener() {
+//            @Override
+//            public void onClick(View v) {
+//                finish(); // Закрывает экран настроек и возвращает на главный
+//            }
+//        });
 // Связываем переменные с элементами интерфейса XML
         editTextImapServer = findViewById(R.id.editTextImapServer);
         editTextImapPort = findViewById(R.id.editTextImapPort);
@@ -124,6 +129,12 @@ public class SettingsActivity extends ComponentActivity {
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    @Override
+    public boolean onSupportNavigateUp() {
+        onBackPressed(); // Закрывает экран настроек и возвращает пользователя назад
+        return true;
     }
 
 

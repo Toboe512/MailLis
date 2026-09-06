@@ -28,7 +28,8 @@
             </intent-filter>
         </activity>
         <activity android:name=".activity.SettingsActivity" android:exported="false" android:label="Настройки" />
-        <activity android:name=".activity.CreateChatActivity" android:exported="false" android:label="Новый чат" />
+        <activity android:name=".activity.CreateChatActivity" android:exported="false" android:label="Новый чат"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
         <activity android:name=".activity.AddContactActivity" android:exported="false" />
         <activity android:name=".activity.ChatActivity" android:exported="false" />
 

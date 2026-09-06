@@ -7,5 +7,7 @@
         <item name="colorPrimaryVariant">#1976D2</item>
         <item name="colorOnPrimary">#FFFFFF</item>
         <item name="android:windowBackground">#FFFFFF</item>
+        <!-- ВОТ ЭТА СТРОКА: включает темные иконки статус-бара для светлого фона -->
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

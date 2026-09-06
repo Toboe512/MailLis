@@ -76,5 +76,8 @@ dependencies {
 
     // Добавляем официальную стабильную библиотеку Jakarta Mail
     implementation("com.sun.mail:jakarta.mail:2.0.1")
+
+    implementation("com.google.crypto.tink:tink-android:1.15.0")
+// используйте актуальную версию
 }
 

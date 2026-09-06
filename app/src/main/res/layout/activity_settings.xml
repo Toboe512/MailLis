@@ -1,42 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://android.com"
     xmlns:tools="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
-    tools:ignore="HardcodedText,Autofill,TextFieldCharSequence,MissingAccessibilityLabel">
+    android:orientation="vertical"
+    android:background="#F5F5F5"
+    android:fitsSystemWindows="true"
+    tools:ignore="HardcodedText,Autofill">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
-
-        <!-- Верхняя панель со стрелкой назад -->
-        <Toolbar
-            android:id="@+id/toolbarSettings"
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:background="#2196F3"
-            android:titleTextColor="#FFFFFF"
-            android:title="Настройки почты"
-            android:navigationIcon="@android:drawable/ic_menu_revert" />
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+            app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Настройки Почтового Сервера"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp"/>
+<!--        &lt;!&ndash; Верхняя панель со стрелкой назад &ndash;&gt;-->
+<!--        <Toolbar-->
+<!--            android:id="@+id/toolbarSettings"-->
+<!--            android:layout_width="match_parent"-->
+<!--            android:layout_height="56dp"-->
+<!--            android:background="#2196F3"-->
+<!--            android:titleTextColor="#FFFFFF"-->
+<!--            android:title="Настройки почты"-->
+<!--            android:navigationIcon="@android:drawable/ic_menu_revert" />-->
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Сервер входящей почты (IMAP)"
-            android:textStyle="bold" />
+<!--        <TextView-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Настройки Почтового Сервера"-->
+<!--            android:textSize="20sp"-->
+<!--            android:textStyle="bold"-->
+<!--            android:layout_marginBottom="24dp"/>-->
 
-        <EditText
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Сервер входящей почты (IMAP)"
+                android:textStyle="bold" />
+
+            <EditText
             android:id="@+id/editTextImapServer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -125,4 +131,4 @@
             android:text="Сохранить" />
 
     </LinearLayout>
-</ScrollView>
+
