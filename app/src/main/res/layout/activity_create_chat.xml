@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Блок добавления нового контакта -->
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <!-- Верхняя панель со стрелкой назад -->
+        <Toolbar
+            android:id="@+id/toolbarCreateChat"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:background="#2196F3"
+            android:titleTextColor="#FFFFFF"
+            android:title="Создать чат"
+            android:navigationIcon="@android:drawable/ic_menu_revert" />
+
+        <EditText
+            android:id="@+id/editTextContactId"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="ID пользователя или телефон"
+            android:inputType="text"
+            android:importantForAutofill="no" />
+
+        <Button
+            android:id="@+id/buttonAddContact"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Добавить" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginVertical="16dp"
+        android:background="#D3D3D3" />
+
+    <Button
+        android:id="@+id/buttonViewContactTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Добавить новый контакт"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <!-- Блок создания группового чата -->
+    <View
+        android:id="@+id/view"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginVertical="16dp"
+        android:background="#D3D3D3" />
+
+    <TextView
+        android:id="@+id/textViewGroupTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Создать групповой чат"
+        android:textStyle="bold"
+        android:textSize="16sp" />
+
+    <EditText
+        android:id="@+id/editTextGroupName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Название группы"
+        android:inputType="text"
+        android:layout_marginTop="8dp"
+        android:importantForAutofill="no" />
+
+
+    <TextView
+        android:id="@+id/textViewSelectContactsTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Выберите контакты для приглашения:"
+        android:layout_marginTop="12dp"
+        android:textSize="14sp" />
+
+    <!-- Список контактов -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerViewSelectContacts"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginTop="8dp" />
+
+    <Button
+        android:id="@+id/buttonCreateGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Создать группу"
+        android:layout_marginTop="8dp" />
+
+</LinearLayout>
