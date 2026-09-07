@@ -25,6 +25,8 @@ import java.util.List;
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ContactsAdapter;
 import ru.toboe512.maillis.db.ChatDbHelper;
+import ru.toboe512.maillis.db.DBService;
+import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;
 
 public class CreateChatActivity extends AppCompatActivity {
@@ -33,6 +35,8 @@ public class CreateChatActivity extends AppCompatActivity {
     private ContactsAdapter adapter;
     private List<Contact> contactList;
     private ChatDbHelper dbHelper;
+
+    private DBService dbService;
     private EditText editTextGroupName;
 
     @Override
@@ -51,8 +55,7 @@ public class CreateChatActivity extends AppCompatActivity {
             return windowInsets;
         });
 
-
-        dbHelper = new ChatDbHelper(this);
+        dbService = new DBServiceSQLite(CreateChatActivity.this) ;
         contactList = new ArrayList<>();
 
         // Настраиваем список RecyclerView
@@ -61,7 +64,17 @@ public class CreateChatActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         // Загружаем данные из SQLite
-        loadContactsFromDatabase();
+        contactList = dbService.loadContactsFromDatabase();
+
+        // КРИТИЧЕСКИ ВАЖНО: Принудительно заставляем список на экране перерисовать полученные строки
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
+
+        // Диагностика: если база пуста, вежливо сообщаем об этом
+        if (contactList.isEmpty()) {
+            Toast.makeText(this, "Список контактов пока пуст. Добавьте кого-нибудь через '+'.", Toast.LENGTH_LONG).show();
+        }
 
         adapter = new ContactsAdapter(this, contactList);
         recyclerView.setAdapter(adapter);
@@ -100,9 +113,17 @@ public class CreateChatActivity extends AppCompatActivity {
                     Toast.makeText(CreateChatActivity.this, "Выберите хотя бы одного участника!", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
+//TODO добавить возможность групповых чатов
                 // Сохраняем созданный чат в базу данных SQLite
-                saveChatToDatabase(groupName, selectedEmails);
+                long newChatId = dbService.saveChatToDatabase(groupName, selectedEmails.get(0));
+
+//                if (newChatId != -1) {
+//                    Toast.makeText(this, "Чат успешно создан!", Toast.LENGTH_SHORT).show();
+//                    finish();
+//                } else {
+//                    Toast.makeText(this, "Ошибка создания чата", Toast.LENGTH_SHORT).show();
+//                }
+
                 finish();
             }
         });
@@ -117,66 +138,4 @@ public class CreateChatActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    // Метод нативного чтения строк из таблицы SQLite
-    private void loadContactsFromDatabase() {
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-
-        // Запрос всех колонок из таблицы contacts
-        Cursor cursor = db.query("contacts", null, null, null, null, null, "name ASC");
-
-        if (cursor != null) {
-            while (cursor.moveToNext()) {
-                // Получаем индексы колонок по их именам
-                int idIndex = cursor.getColumnIndex("id");
-                int nameIndex = cursor.getColumnIndex("name");
-                int emailIndex = cursor.getColumnIndex("email");
-
-                // Считываем значения типов данных
-                if (idIndex >= 0 && nameIndex >= 0 && emailIndex >= 0) {
-                    int id = cursor.getInt(idIndex);
-                    String name = cursor.getString(nameIndex);
-                    String email = cursor.getString(emailIndex);
-
-                    // Добавляем объект в наш массив списка
-                    contactList.add(new Contact(id, name, email));
-                }
-            }
-            cursor.close(); // Обязательно закрываем курсор
-        }
-
-        // КРИТИЧЕСКИ ВАЖНО: Принудительно заставляем список на экране перерисовать полученные строки
-        if (adapter != null) {
-            adapter.notifyDataSetChanged();
-        }
-
-        // Диагностика: если база пуста, вежливо сообщаем об этом
-        if (contactList.isEmpty()) {
-            Toast.makeText(this, "Список контактов пока пуст. Добавьте кого-нибудь через '+'.", Toast.LENGTH_LONG).show();
-        }
-        db.close();
-    }
-    // Логика записи нового чата в SQLite
-    private void saveChatToDatabase(String title, List<String> participants) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        ContentValues values = new ContentValues();
-
-        // Берем email первого выбранного контакта
-        String targetEmail = participants.get(0);
-
-        values.put("title", title); // Красивое человеческое название (например, "Чат с Алексеем")
-        values.put("type", "PERSONAL");
-        values.put("recipient_email", targetEmail); // Сохраняем email в отдельную колонку!
-        values.put("last_message", "Чат создан");
-        values.put("timestamp", System.currentTimeMillis());
-
-        long newChatId = db.insert("chats", null, values);
-        db.close();
-
-        if (newChatId != -1) {
-            Toast.makeText(this, "Чат успешно создан!", Toast.LENGTH_SHORT).show();
-            finish();
-        } else {
-            Toast.makeText(this, "Ошибка создания чата", Toast.LENGTH_SHORT).show();
-        }
-    }
 }

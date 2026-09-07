@@ -19,6 +19,8 @@ import java.util.List;
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ChatsAdapter;
 import ru.toboe512.maillis.db.ChatDbHelper;
+import ru.toboe512.maillis.db.DBService;
+import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.ChatPreview;
 
 
@@ -27,14 +29,14 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     private RecyclerView recyclerViewChats;
     private ChatsAdapter chatsAdapter;
     private List<ChatPreview> chatList;
-    private ChatDbHelper dbHelper;
+    private DBService dBServiceSQLite;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        dbHelper = new ChatDbHelper(this);
+        dBServiceSQLite = new DBServiceSQLite(MainActivity.this);
         chatList = new ArrayList<>();
 
         chatsAdapter = new ChatsAdapter(this, chatList);
@@ -60,8 +62,14 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     @Override
     protected void onResume() {
         super.onResume();
-        loadChatsFromDatabase();
+        chatList.clear();
+        chatList.addAll(dBServiceSQLite.loadChatsFromDatabase());
+        // Уведомляем адаптер о необходимости перерисовки
+        if (chatsAdapter != null) {
+            chatsAdapter.notifyDataSetChanged();
+        }
     }
+
     // ОС Android сама вызовет этот метод для отрисовки меню в AppCompat-панели
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -91,39 +99,4 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         return super.onOptionsItemSelected(item);
     }
 
-
-
-    // Метод чтения активных чатов из SQLite
-    private void loadChatsFromDatabase() {
-        chatList.clear();
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-
-        // Берем все чаты из таблицы chats
-        Cursor cursor = db.query("chats", null, null, null, null, null, "timestamp DESC");
-
-        if (cursor != null) {
-            while (cursor.moveToNext()) {
-                int idIndex = cursor.getColumnIndex("id");
-                int titleIndex = cursor.getColumnIndex("title");
-                int typeIndex = cursor.getColumnIndex("type");
-                int lastMsgIndex = cursor.getColumnIndex("last_message");
-
-                if (idIndex >= 0 && titleIndex >= 0 && typeIndex >= 0 && lastMsgIndex >= 0) {
-                    int id = cursor.getInt(idIndex);
-                    String title = cursor.getString(titleIndex);
-                    String type = cursor.getString(typeIndex);
-                    String lastMessage = cursor.getString(lastMsgIndex);
-
-                    chatList.add(new ChatPreview(id, title, type, lastMessage));
-                }
-            }
-            cursor.close();
-        }
-        db.close();
-
-        // Уведомляем адаптер о необходимости перерисовки
-        if (chatsAdapter != null) {
-            chatsAdapter.notifyDataSetChanged();
-        }
-    }
 }
