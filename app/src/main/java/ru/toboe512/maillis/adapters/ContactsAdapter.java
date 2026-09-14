@@ -64,6 +64,10 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
         return contactList.size();
     }
 
+    public ChatDbHelper getDbHelper() {
+        return dbHelper;
+    }
+
     static class ContactViewHolder extends RecyclerView.ViewHolder {
         TextView textViewName, textViewEmail;
         CheckBox checkBox;

@@ -7,16 +7,24 @@ import ru.toboe512.maillis.dto.Contact;
 import ru.toboe512.maillis.dto.Message;
 
 public interface DBService {
-    List<Message> loadMessagesFromDatabase(int chatId, String myEmail);
+    List<Message> getMessages(long chatId, String myEmail);
 
-    int saveMessageToDatabase(int chatId, String myEmail, String text, long timestamp) ;
+    int saveMessage(int chatId, String myEmail, String subject, String text, long timestamp) ;
 
-    List<ChatPreview> loadChatsFromDatabase();
+    List<ChatPreview> loadChats();
 
-    long saveChatToDatabase(String title, String targetEmail);
+    long saveChat(String title, String targetEmail);
 
-    List<Contact> loadContactsFromDatabase();
+    boolean savePeerPublicKey(String email, byte[] publicKeyBytes);
+
+    List<Contact> getContacts();
 
     int deleteContactFromDb(int contactId);
     ChatDbHelper getDbHelper();
+
+    long getChatIdBySender(String sender);
+
+    int deleteMassage(int msdId);
+
+
 }

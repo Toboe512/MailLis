@@ -11,7 +11,7 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:layout_marginTop="8dp">
 
         <!-- Верхняя панель со стрелкой назад -->
@@ -34,59 +34,60 @@
             android:importantForAutofill="no" />
 
         <Button
-            android:id="@+id/buttonAddContact"
+            android:id="@+id/buttonViewContactTitle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Добавить" />
+            android:text="Добавить новый контакт"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <View
+            android:id="@+id/view"
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginVertical="16dp"
+            android:background="#D3D3D3" />
+
+        <TextView
+            android:id="@+id/textViewGroupTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Создать групповой чат"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <!--        <Button-->
+<!--            android:id="@+id/buttonAddContact"-->
+<!--            android:layout_width="wrap_content"-->
+<!--            android:layout_height="wrap_content"-->
+<!--            android:text="Добавить" />-->
     </LinearLayout>
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginVertical="16dp"
-        android:background="#D3D3D3" />
-
-    <Button
-        android:id="@+id/buttonViewContactTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Добавить новый контакт"
-        android:textSize="16sp"
-        android:textStyle="bold" />
-
-    <!-- Блок создания группового чата -->
-    <View
-        android:id="@+id/view"
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginVertical="16dp"
-        android:background="#D3D3D3" />
-
-    <TextView
-        android:id="@+id/textViewGroupTitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Создать групповой чат"
-        android:textStyle="bold"
-        android:textSize="16sp" />
 
     <EditText
         android:id="@+id/editTextGroupName"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Название группы"
-        android:inputType="text"
         android:layout_marginTop="8dp"
-        android:importantForAutofill="no" />
-
+        android:hint="Название группы"
+        android:importantForAutofill="no"
+        android:inputType="text" />
 
     <TextView
         android:id="@+id/textViewSelectContactsTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Выберите контакты для приглашения:"
         android:layout_marginTop="12dp"
+        android:text="Выберите контакты для приглашения:"
         android:textSize="14sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginVertical="16dp"
+        android:background="#D3D3D3" />
+
+    <!-- Блок создания группового чата -->
+
 
     <!-- Список контактов -->
     <androidx.recyclerview.widget.RecyclerView
@@ -99,8 +100,16 @@
     <Button
         android:id="@+id/buttonCreateGroup"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Создать группу"
-        android:layout_marginTop="8dp" />
+        android:layout_height="48dp"
+        android:layout_margin="16dp"
+        android:text="Создать группу" />
+
+    <View
+        android:id="@+id/view2"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginVertical="16dp"
+        android:background="#D3D3D3" />
+
 
 </LinearLayout>

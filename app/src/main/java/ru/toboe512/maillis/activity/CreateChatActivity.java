@@ -1,10 +1,10 @@
 package ru.toboe512.maillis.activity;
 
-import android.content.ContentValues;
+import android.content.Context;
 import android.content.Intent;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.util.Base64;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
@@ -12,6 +12,7 @@ import android.widget.EditText;
 import android.widget.Toast;
 import android.widget.Toolbar;
 
+import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -24,6 +25,8 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ContactsAdapter;
+import ru.toboe512.maillis.client.EmailClient;
+import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
@@ -39,8 +42,11 @@ public class CreateChatActivity extends AppCompatActivity {
     private DBService dbService;
     private EditText editTextGroupName;
 
+    private EmailClient emailClient;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_create_chat);
 
@@ -55,8 +61,23 @@ public class CreateChatActivity extends AppCompatActivity {
             return windowInsets;
         });
 
+        // >>> ВОТ ЭТОТ КОД НУЖНО ДОБАВИТЬ: Прямой клик по стрелке на самом тулбаре <<<
+        toolbar.setNavigationOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                finish(); // Мгновенно закрывает экран и возвращает на MainActivity
+            }
+        });
+
         dbService = new DBServiceSQLite(CreateChatActivity.this) ;
         contactList = new ArrayList<>();
+
+        // Стрелочка назад
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayHomeAsUpEnabled(true);
+            actionBar.setTitle("Чат");
+        }
 
         // Настраиваем список RecyclerView
         editTextGroupName = findViewById(R.id.editTextGroupName);
@@ -64,7 +85,7 @@ public class CreateChatActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         // Загружаем данные из SQLite
-        contactList = dbService.loadContactsFromDatabase();
+        contactList = dbService.getContacts();
 
         // КРИТИЧЕСКИ ВАЖНО: Принудительно заставляем список на экране перерисовать полученные строки
         if (adapter != null) {
@@ -78,6 +99,11 @@ public class CreateChatActivity extends AppCompatActivity {
 
         adapter = new ContactsAdapter(this, contactList);
         recyclerView.setAdapter(adapter);
+
+        dbHelper = adapter.getDbHelper();
+
+        emailClient = new EmailClientImpl(dbHelper, dbService, CreateChatActivity.this);
+
 
         Button buttonCreateContact = findViewById(R.id.buttonViewContactTitle);
         buttonCreateContact.setOnClickListener(new View.OnClickListener() {
@@ -113,9 +139,28 @@ public class CreateChatActivity extends AppCompatActivity {
                     Toast.makeText(CreateChatActivity.this, "Выберите хотя бы одного участника!", Toast.LENGTH_SHORT).show();
                     return;
                 }
+                // Загружаем наш собственный логин из SharedPreferences
+                SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
 //TODO добавить возможность групповых чатов
-                // Сохраняем созданный чат в базу данных SQLite
-                long newChatId = dbService.saveChatToDatabase(groupName, selectedEmails.get(0));
+
+
+
+                //если чат ещё не в БД
+              //  if (dbService.getChatIdBySender(selectedEmails.get(0)) <= 0) {
+                    long newChatId = dbService.saveChat(groupName, selectedEmails.get(0));// Сохраняем созданный чат в базу данных SQLite
+
+                    // добавить проверки на наличие чата с рукопжатием
+                 //   byte[] publicKeyBytes = emailClient.sendHandshakeRequest( selectedEmails.get(0), CreateChatActivity.this, newChatId, 0, prefs);
+
+                    long currentTimestamp = System.currentTimeMillis();
+                    String myEmail = prefs.getString("email_login", "my@mail.ru");
+                    // 1. Сохраняем сообщение локально в SQLite базу данных
+                  //  String myPublicKeyBase64 = Base64.encodeToString(publicKeyBytes, Base64.NO_WRAP);
+                  //   int generatedId = dbService.saveMessage((int) newChatId, myEmail, "[MailLis-Key-Request]", myPublicKeyBase64, currentTimestamp);
+
+                 //   dbService.savePeerPublicKey(selectedEmails.get(0), publicKeyBytes);
+            //    }
+
 
 //                if (newChatId != -1) {
 //                    Toast.makeText(this, "Чат успешно создан!", Toast.LENGTH_SHORT).show();

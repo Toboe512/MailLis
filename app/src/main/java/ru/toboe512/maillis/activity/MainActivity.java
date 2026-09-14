@@ -1,9 +1,11 @@
 package ru.toboe512.maillis.activity;
 
+import android.content.Context;
 import android.content.Intent;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -18,6 +20,8 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ChatsAdapter;
+import ru.toboe512.maillis.client.EmailClient;
+import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
@@ -31,6 +35,16 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     private List<ChatPreview> chatList;
     private DBService dBServiceSQLite;
 
+    //клиент
+    private EmailClient emailClient;
+
+    private ChatDbHelper dbHelper;
+    private Runnable updateRunnable;
+
+    private final Handler updateHandler = new Handler(Looper.getMainLooper());
+
+    private static final int UPDATE_INTERVAL_MS = 20000; // Интервал опроса сервера — 20 секунд
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -40,22 +54,68 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         chatList = new ArrayList<>();
 
         chatsAdapter = new ChatsAdapter(this, chatList);
+        this.dbHelper = new ChatDbHelper(this);
+
+        emailClient = new EmailClientImpl(dbHelper, dBServiceSQLite, MainActivity.this);
 
         // Настраиваем RecyclerView для списка чатов
         recyclerViewChats = findViewById(R.id.recyclerViewChats);
         recyclerViewChats.setLayoutManager(new LinearLayoutManager(this));
         recyclerViewChats.setAdapter(chatsAdapter); // Привязываем готовый адаптер
 
-
-        // Нижняя круглая кнопка "+" теперь открывает создание группового чата, как и должна
-        View fabNewChat = findViewById(R.id.fabNewChat);
-        fabNewChat.setOnClickListener(new View.OnClickListener() {
+        // Инициализируем задачу для таймера
+        updateRunnable = new Runnable() {
             @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(MainActivity.this, CreateChatActivity.class);
-                startActivity(intent);
+            public void run() {
+                // Загружаем наш собственный логин из SharedPreferences
+                SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
+
+                // Запускаем сетевую операцию в отдельном фоновом потоке!
+                new Thread(() -> {
+                    try {
+                        // Опрашиваем сервер в фоне — интерфейс теперь полностью свободен
+                    //    var messages = emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs);
+
+                        // Если во время рукопожатия база обновилась, обновляем UI список чатов на главном потоке
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            refreshChatsList();
+                        });
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }).start();
+
+                // Планируем следующий запуск через 20 секунд
+                updateHandler.postDelayed(this, UPDATE_INTERVAL_MS);
             }
+        };
+
+// Нижняя круглая кнопка "+" теперь открывает создание группового чата, как и должна
+        View fabNewChat = findViewById(R.id.fabNewChat);
+        fabNewChat.setOnClickListener(v -> {
+            Intent intent = new Intent(MainActivity.this, CreateChatActivity.class);
+            startActivity(intent);
         });
+
+    }
+
+    // Вынесли обновление списка в отдельный удобный метод
+    private void refreshChatsList() {
+        if (dBServiceSQLite != null) {
+            chatList.clear();
+            chatList.addAll(dBServiceSQLite.loadChats());
+            if (chatsAdapter != null) {
+                chatsAdapter.notifyDataSetChanged();
+            }
+        }
+    }
+
+    // КРИТИЧЕСКИ ВАЖНО: Останавливаем таймер, когда пользователь сворачивает экран или уходит в настройки!
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Выключаем опрос сервера, чтобы он не плодился в памяти и не тратил батарею в фоне
+        updateHandler.removeCallbacks(updateRunnable);
     }
 
     // Каждый раз, когда пользователь возвращается на этот экран, обновляем список чатов
@@ -63,11 +123,13 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     protected void onResume() {
         super.onResume();
         chatList.clear();
-        chatList.addAll(dBServiceSQLite.loadChatsFromDatabase());
+        chatList.addAll(dBServiceSQLite.loadChats());
         // Уведомляем адаптер о необходимости перерисовки
         if (chatsAdapter != null) {
             chatsAdapter.notifyDataSetChanged();
         }
+        // 2. Включаем автоопрос почтового сервера Mail.ru
+        updateHandler.post(updateRunnable);
     }
 
     // ОС Android сама вызовет этот метод для отрисовки меню в AppCompat-панели

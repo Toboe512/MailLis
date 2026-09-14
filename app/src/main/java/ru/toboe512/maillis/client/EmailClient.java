@@ -9,6 +9,12 @@ import ru.toboe512.maillis.dto.Message;
 
 public interface EmailClient {
 
-    List<Message>  fetchIncomingEmailsOverNetwork(int chatId, String myEmail, SharedPreferences prefs);
-    List<Message> sendEmailOverNetwork(int chatId, String myEmail, String recipientEmail, final String messageText, final int localMessageId, SharedPreferences prefs);
+    List<Message> fetchIncomingEmailsOverNetwork(long chatId, String myEmail,Context context, SharedPreferences prefs);
+
+    List<Message> fetchIncomingHandshakeOverNetwork(Context context, SharedPreferences prefs);
+    void sendEmailOverNetwork(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);
+
+    byte[] sendHandshakeRequest(String targetEmail, Context context, long chatId, final int localMessageId, SharedPreferences prefs);
+
+    void deleteMessageFromMailRuServer(final String serverUid, Context context);
 }

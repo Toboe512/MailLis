@@ -12,6 +12,7 @@ import android.os.Looper;
 import android.view.MenuItem;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.Toast;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
@@ -46,13 +47,13 @@ public class ChatActivity extends AppCompatActivity {
     private List<ChatPreview> chatList = new ArrayList<>();
 
     // Переменные для работы с базой данных
-    private DBService dBServiceSQLite;
+    private DBService dbService;
     // Переменные для работы с базой данных
     private ChatDbHelper dbHelper;
     private int chatId = 1; // ID текущего чата по умолчанию (для тестов)
 
     //клиент
-    EmailClient emailClient;
+    private EmailClient emailClient;
 
     private String recipientEmail = "";
     private String myEmail = ""; // Наш реальный Email из настроек
@@ -106,9 +107,9 @@ public class ChatActivity extends AppCompatActivity {
             }
         }
 
-        dBServiceSQLite = new DBServiceSQLite(this);
-        dbHelper = dBServiceSQLite.getDbHelper();
-        emailClient = new EmailClientImpl(dbHelper, dBServiceSQLite);
+        dbService = new DBServiceSQLite(this);
+        dbHelper = dbService.getDbHelper();
+        emailClient = new EmailClientImpl(dbHelper, dbService, ChatActivity.this);
 
         // БЕЗОПАСНЫЙ И ТОЧНЫЙ ПОИСК ПОЛУЧАТЕЛЯ ИЗ ТАБЛИЦЫ ЧАТОВ
         // Используем try-with-resources — Java-аналог метода .use из Kotlin
@@ -140,7 +141,7 @@ public class ChatActivity extends AppCompatActivity {
         }
 
         messageList = new ArrayList<>();
-        messagesAdapter = new MessagesAdapter(this, messageList);
+        messagesAdapter = new MessagesAdapter(this, messageList, emailClient, dbService);
 
         var layoutManager = new LinearLayoutManager(this);
         layoutManager.setStackFromEnd(true); // Чат строится снизу вверх, как в Telegram
@@ -152,114 +153,135 @@ public class ChatActivity extends AppCompatActivity {
             @Override
             public void run() {
                 // 1. Запускаем фоновую проверку новых писем
-                var messages = emailClient.fetchIncomingEmailsOverNetwork(chatId, myEmail, prefs);
+                var messages = emailClient.fetchIncomingEmailsOverNetwork(chatId, myEmail, ChatActivity.this, prefs);
 
                 if (!messages.isEmpty()) {
-                    runOnUiThread(() -> messageList.addAll(dBServiceSQLite.loadMessagesFromDatabase(chatId, myEmail)));
-                    messageList.addAll(dBServiceSQLite.loadMessagesFromDatabase(chatId, myEmail));// Перечитываем базу для синхронизации ID
-                    //TODO проверить
-                    // Перерисовываем список
-                    messagesAdapter.notifyDataSetChanged();
-                    scrollToBottomIfNeeded();
-                }
+                    var msgs = dbService.getMessages(chatId, myEmail);
+                    for (Message msg : msgs) {
+                        if (msg.getSubject().equals("MailLis_Chat_Message")) {
+                            runOnUiThread(() -> messageList.add(msg));//TODO проверить
+                        }
+                    }
 
-                // 2. Планируем следующий запуск
-                updateHandler.postDelayed(this, UPDATE_INTERVAL_MS);
-            }
-        };
 
-        // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
-        messageList.clear();
-        messageList.addAll(dBServiceSQLite.loadMessagesFromDatabase(chatId, myEmail));// Перечитываем базу для синхронизации ID
-        // Перерисовываем список
-        messagesAdapter.notifyDataSetChanged();
-
-        // Кнопка локальной отправки сообщения
-        buttonSend.setOnClickListener(v -> {
-            String text = editTextMessage.getText().toString().trim();
-            if (!text.isEmpty()) {
-                long currentTimestamp = System.currentTimeMillis();
-
-                // 1. Сохраняем сообщение локально в SQLite базу данных
-                int generatedId = dBServiceSQLite.saveMessageToDatabase(chatId, myEmail, text, currentTimestamp);
-                String senderEmail = myEmail;
-
-                // 2. Отображаем сообщение на экране
-                ru.toboe512.maillis.dto.Message message = new ru.toboe512.maillis.dto.Message(
-                        generatedId,
-                        senderEmail,
-                        text,
-                        currentTimestamp,
-                        true,
-                        ""
-                );
-                messageList.add(message);
-
-                // Уведомляем адаптер, что добавился ОДИН элемент в конец (это экономит ресурсы)
-                messagesAdapter.notifyItemInserted(messageList.size() - 1);
-
-                recyclerView.scrollToPosition(messageList.size() - 1);
-
-                // 3. Отправляем сообщение по сети через SMTP
-                messageList.addAll(emailClient.sendEmailOverNetwork(chatId, myEmail, recipientEmail, text, generatedId, prefs));
-//TODO проверить
+                messageList.addAll(dbService.getMessages(chatId, myEmail));// Перечитываем базу для синхронизации ID
+                //TODO проверить
                 // Перерисовываем список
                 messagesAdapter.notifyDataSetChanged();
-
-                // ПЛАВНО СКРОЛЛИМ ВНИЗ
-                scrollToBottom();
-
-                // Корректная и чистая очистка поля ввода без лишних присвоений текста обратно
-                editTextMessage.getText().clear();
+                scrollToBottomIfNeeded();
             }
-        });
-    }
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == android.R.id.home) {
-            finish();
-            return true;
+            // 2. Планируем следующий запуск
+                updateHandler.postDelayed(this,UPDATE_INTERVAL_MS);
         }
-        return super.onOptionsItemSelected(item);
-    }
+    };
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        // 1. Сразу загружаем историю из локальной SQLite
+    // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
         messageList.clear();
-        messageList.addAll(dBServiceSQLite.loadMessagesFromDatabase(chatId, myEmail));// Перечитываем базу для синхронизации ID
-        // Перерисовываем список
+        messageList.addAll(dbService.getMessages(chatId,myEmail));// Перечитываем базу для синхронизации ID
+    // Перерисовываем список
         messagesAdapter.notifyDataSetChanged();
-        // 2. Включаем автоопрос почтового сервера Mail.ru
-        updateHandler.post(updateRunnable);
-    }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        // КРИТИЧЕСКИ ВАЖНО: Выключаем таймер при уходе с экрана, чтобы не сажать батарею
-        updateHandler.removeCallbacks(updateRunnable);
-    }
+    // Кнопка локальной отправки сообщения
+        buttonSend.setOnClickListener(v ->
 
-    private void scrollToBottom() {
-        if (messageList != null && !messageList.isEmpty()) {
-            // smoothScrollToPosition делает красивую плавную анимацию прокрутки
+    {
+        String text = editTextMessage.getText().toString().trim();
+        if (!text.isEmpty()) {
+            long currentTimestamp = System.currentTimeMillis();
+
+            // 1. Сохраняем сообщение локально в SQLite базу данных
+            int generatedId = dbService.saveMessage(chatId, myEmail, "MailLis_Chat_Message", text, currentTimestamp);
+            String senderEmail = myEmail;
+
+            // 2. Отображаем сообщение на экране
+            ru.toboe512.maillis.dto.Message message = new ru.toboe512.maillis.dto.Message(
+                    generatedId,
+                    senderEmail,
+                    "",
+                    text,
+                    currentTimestamp,
+                    true,
+                    ""
+            );
+            messageList.add(message);
+
+            // Уведомляем адаптер, что добавился ОДИН элемент в конец (это экономит ресурсы)
+            messagesAdapter.notifyItemInserted(messageList.size() - 1);
+
+            recyclerView.scrollToPosition(messageList.size() - 1);
+
+            // 3. Отправляем сообщение по сети через SMTP
+            emailClient.sendEmailOverNetwork(chatId, recipientEmail, "MailLis_Chat_Message", text,
+                    generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
+
+                @Override
+                public void onSynchronized(List<Message> updatedMessages) {
+                    // Код выполнится в Главном Потоке автоматически!
+                    // Перечитываем обновленную историю из базы данных (где уже прописан server_uid)
+                    messageList.clear();
+                    messageList.addAll(updatedMessages);
+                    messagesAdapter.notifyDataSetChanged();
+                    scrollToBottomIfNeeded(); // плавно скроллим вниз
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    // Если сеть пропала или пароль неверный
+                    Toast.makeText(ChatActivity.this, "Ошибка отправки: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
+            // Корректная и чистая очистка поля ввода без лишних присвоений текста обратно
+            editTextMessage.getText().clear();
+        }
+    });
+}
+
+@Override
+public boolean onOptionsItemSelected(MenuItem item) {
+    if (item.getItemId() == android.R.id.home) {
+        finish();
+        return true;
+    }
+    return super.onOptionsItemSelected(item);
+}
+
+@Override
+protected void onResume() {
+    super.onResume();
+    // 1. Сразу загружаем историю из локальной SQLite
+    messageList.clear();
+    messageList.addAll(dbService.getMessages(chatId, myEmail));// Перечитываем базу для синхронизации ID
+    // Перерисовываем список
+    messagesAdapter.notifyDataSetChanged();
+    // 2. Включаем автоопрос почтового сервера Mail.ru
+    updateHandler.post(updateRunnable);
+}
+
+@Override
+protected void onPause() {
+    super.onPause();
+    // КРИТИЧЕСКИ ВАЖНО: Выключаем таймер при уходе с экрана, чтобы не сажать батарею
+    updateHandler.removeCallbacks(updateRunnable);
+}
+
+private void scrollToBottom() {
+    if (messageList != null && !messageList.isEmpty()) {
+        // smoothScrollToPosition делает красивую плавную анимацию прокрутки
+        recyclerView.smoothScrollToPosition(messageList.size() - 1);
+    }
+}
+
+private void scrollToBottomIfNeeded() {
+    LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
+    if (layoutManager != null && !messageList.isEmpty()) {
+        int lastVisibleItemPosition = layoutManager.findLastVisibleItemPosition();
+
+        // Если до конца чата осталось не больше 2 сообщений ИЛИ это наше собственное сообщение, то скроллим
+        if (lastVisibleItemPosition >= messageList.size() - 3) {
             recyclerView.smoothScrollToPosition(messageList.size() - 1);
         }
     }
-
-    private void scrollToBottomIfNeeded() {
-        LinearLayoutManager layoutManager = (LinearLayoutManager) recyclerView.getLayoutManager();
-        if (layoutManager != null && !messageList.isEmpty()) {
-            int lastVisibleItemPosition = layoutManager.findLastVisibleItemPosition();
-
-            // Если до конца чата осталось не больше 2 сообщений ИЛИ это наше собственное сообщение, то скроллим
-            if (lastVisibleItemPosition >= messageList.size() - 3) {
-                recyclerView.smoothScrollToPosition(messageList.size() - 1);
-            }
-        }
-    }
+}
 
 }

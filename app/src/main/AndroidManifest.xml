@@ -37,4 +37,6 @@
     </application>
     <!-- КРИТИЧЕСКИ ВАЖНО: Разрешаем приложению выходить в интернет для связи с серверами Mail.ru -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Также рекомендуется добавить разрешение на проверку состояния сети: -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>
