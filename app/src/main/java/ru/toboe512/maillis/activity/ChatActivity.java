@@ -62,7 +62,7 @@ public class ChatActivity extends AppCompatActivity {
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private Runnable updateRunnable;
 
-    private static final int UPDATE_INTERVAL_MS = 20000; // Интервал опроса сервера — 20 секунд
+    private static final int UPDATE_INTERVAL_MS = 3000; // Интервал опроса сервера — 20 секунд
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -152,28 +152,42 @@ public class ChatActivity extends AppCompatActivity {
         updateRunnable = new Runnable() {
             @Override
             public void run() {
-                // 1. Запускаем фоновую проверку новых писем
-                var messages = emailClient.fetchIncomingEmailsOverNetwork(chatId, myEmail, ChatActivity.this, prefs);
+                SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
 
-                if (!messages.isEmpty()) {
-                    var msgs = dbService.getMessages(chatId, myEmail);
-                    for (Message msg : msgs) {
-                        if (msg.getSubject().equals("MailLis_Chat_Message")) {
-                            runOnUiThread(() -> messageList.add(msg));//TODO проверить
-                        }
+                // 1. Запускаем опрос сети в фоновом потоке
+                new Thread(() -> {
+                    try {
+                        // Метод лезет в сеть и тихо сохраняет новые письма в SQLite
+                        emailClient.fetchIncomingEmailsOverNetwork(chatId, myEmail, ChatActivity.this, prefs);
+
+                        // 2. КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Мы убрали проверку (!messages.isEmpty()).
+                        // Мы ВСЕГДА проверяем локальную базу данных после завершения сети!
+                        List<Message> freshlyLoadedMessages = dbService.getMessages(chatId, myEmail);
+
+                        // 3. Переключаемся на главный поток для отрисовки
+                        runOnUiThread(() -> {
+                            if (freshlyLoadedMessages != null) {
+                                // Проверяем, изменилось ли количество сообщений, чтобы не перерисовывать экран впустую
+                                if (freshlyLoadedMessages.size() != messageList.size()) {
+                                    messageList.clear();
+                                    messageList.addAll(freshlyLoadedMessages);
+
+                                    messagesAdapter.notifyDataSetChanged();
+                                    scrollToBottomIfNeeded(); // Плавно скроллим вниз к новому письму
+
+                                    android.util.Log.d("MailLis_Live", "Обнаружены новые сообщения! Экран перерисован.");
+                                }
+                            }
+                        });
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
+                }).start();
 
-
-                messageList.addAll(dbService.getMessages(chatId, myEmail));// Перечитываем базу для синхронизации ID
-                //TODO проверить
-                // Перерисовываем список
-                messagesAdapter.notifyDataSetChanged();
-                scrollToBottomIfNeeded();
+                // Планируем следующий запуск через 20 секунд
+                updateHandler.postDelayed(this, UPDATE_INTERVAL_MS);
             }
-
-            // 2. Планируем следующий запуск
-                updateHandler.postDelayed(this,UPDATE_INTERVAL_MS);
-        }
     };
 
     // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
