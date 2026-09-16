@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.activity;
 
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
+
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -17,11 +19,14 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ChatsAdapter;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
+import ru.toboe512.maillis.crypto.CryptoService;
+import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
@@ -33,7 +38,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     private RecyclerView recyclerViewChats;
     private ChatsAdapter chatsAdapter;
     private List<ChatPreview> chatList;
-    private DBService dBServiceSQLite;
+    private DBService dbService;
 
     //клиент
     private EmailClient emailClient;
@@ -41,22 +46,24 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     private ChatDbHelper dbHelper;
     private Runnable updateRunnable;
 
+    private CryptoService cryptoService;
+
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
 
-    private static final int UPDATE_INTERVAL_MS = 20000; // Интервал опроса сервера — 20 секунд
+    private static final int UPDATE_INTERVAL_MS = 3000; // Интервал опроса сервера — 20 секунд
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        dBServiceSQLite = new DBServiceSQLite(MainActivity.this);
+        dbHelper = new ChatDbHelper(this);
+        dbService = new DBServiceSQLite(dbHelper);
         chatList = new ArrayList<>();
 
         chatsAdapter = new ChatsAdapter(this, chatList);
-        this.dbHelper = new ChatDbHelper(this);
 
-        emailClient = new EmailClientImpl(dbHelper, dBServiceSQLite, MainActivity.this);
+        cryptoService = new CryptoServiceImpl(MainActivity.this);
+        emailClient = new EmailClientImpl(dbHelper, dbService, cryptoService);
 
         // Настраиваем RecyclerView для списка чатов
         recyclerViewChats = findViewById(R.id.recyclerViewChats);
@@ -74,12 +81,14 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
                 new Thread(() -> {
                     try {
                         // Опрашиваем сервер в фоне — интерфейс теперь полностью свободен
-                    //    var messages = emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs);
+                        var messages = emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs);
+                        if (!messages.isEmpty()) {
+                            // Если во время рукопожатия база обновилась, обновляем UI список чатов на главном потоке
+                            new Handler(Looper.getMainLooper()).post(() -> {
+                                refreshChatsList();
+                            });
+                        }
 
-                        // Если во время рукопожатия база обновилась, обновляем UI список чатов на главном потоке
-                        new Handler(Looper.getMainLooper()).post(() -> {
-                            refreshChatsList();
-                        });
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -101,9 +110,17 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
 
     // Вынесли обновление списка в отдельный удобный метод
     private void refreshChatsList() {
-        if (dBServiceSQLite != null) {
+        if (dbService != null) {
             chatList.clear();
-            chatList.addAll(dBServiceSQLite.loadChats());
+
+            chatList.addAll(dbService.loadChats()
+                    .stream()
+                    .peek((m) -> {
+                        if (m.isHandShake()) {
+                            m.setLastMessage("Чат создан");
+                        }
+                    })
+                    .collect(Collectors.toList()));
             if (chatsAdapter != null) {
                 chatsAdapter.notifyDataSetChanged();
             }
@@ -123,7 +140,13 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     protected void onResume() {
         super.onResume();
         chatList.clear();
-        chatList.addAll(dBServiceSQLite.loadChats());
+        chatList.addAll(dbService.loadChats().stream()
+                .peek((m) -> {
+                    if (m.isHandShake()) {
+                        m.setLastMessage("Чат создан");
+                    }
+                })
+                .collect(Collectors.toList()));
         // Уведомляем адаптер о необходимости перерисовки
         if (chatsAdapter != null) {
             chatsAdapter.notifyDataSetChanged();

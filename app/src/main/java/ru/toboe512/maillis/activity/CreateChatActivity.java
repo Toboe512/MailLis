@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.activity;
 
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
+
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -20,6 +22,8 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,6 +31,8 @@ import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ContactsAdapter;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
+import ru.toboe512.maillis.crypto.CryptoService;
+import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
@@ -43,6 +49,7 @@ public class CreateChatActivity extends AppCompatActivity {
     private EditText editTextGroupName;
 
     private EmailClient emailClient;
+    private CryptoService cryptoService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,8 +75,8 @@ public class CreateChatActivity extends AppCompatActivity {
                 finish(); // Мгновенно закрывает экран и возвращает на MainActivity
             }
         });
-
-        dbService = new DBServiceSQLite(CreateChatActivity.this) ;
+        dbHelper = new ChatDbHelper(this);
+        dbService = new DBServiceSQLite(dbHelper);
         contactList = new ArrayList<>();
 
         // Стрелочка назад
@@ -102,7 +109,9 @@ public class CreateChatActivity extends AppCompatActivity {
 
         dbHelper = adapter.getDbHelper();
 
-        emailClient = new EmailClientImpl(dbHelper, dbService, CreateChatActivity.this);
+        cryptoService = new CryptoServiceImpl(CreateChatActivity.this);
+
+        emailClient = new EmailClientImpl(dbHelper, dbService, cryptoService);
 
 
         Button buttonCreateContact = findViewById(R.id.buttonViewContactTitle);
@@ -141,25 +150,24 @@ public class CreateChatActivity extends AppCompatActivity {
                 }
                 // Загружаем наш собственный логин из SharedPreferences
                 SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
-//TODO добавить возможность групповых чатов
+                //TODO добавить возможность групповых чатов
 
-
+                String recipientEmail = selectedEmails.get(0);
 
                 //если чат ещё не в БД
-              //  if (dbService.getChatIdBySender(selectedEmails.get(0)) <= 0) {
-                    long newChatId = dbService.saveChat(groupName, selectedEmails.get(0));// Сохраняем созданный чат в базу данных SQLite
+                //  if (dbService.getChatIdBySender(selectedEmails.get(0)) <= 0) {
+                long newChatId = dbService.saveChat(groupName, recipientEmail);// Сохраняем созданный чат в базу данных SQLite
+                try {
+                    String myPublicKeyBas64 = cryptoService.getMyPublicKeyBas64();
+                    byte[] publicKeyBytes = emailClient.sendHandshakeRequest(recipientEmail, CreateChatActivity.this, newChatId, prefs, myPublicKeyBas64);
+                    //dbService.saveSharedSecretKey(recipientEmail, publicKeyBytes);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                } catch (GeneralSecurityException e) {
+                    throw new RuntimeException(e);
+                }
 
-                    // добавить проверки на наличие чата с рукопжатием
-                 //   byte[] publicKeyBytes = emailClient.sendHandshakeRequest( selectedEmails.get(0), CreateChatActivity.this, newChatId, 0, prefs);
-
-                    long currentTimestamp = System.currentTimeMillis();
-                    String myEmail = prefs.getString("email_login", "my@mail.ru");
-                    // 1. Сохраняем сообщение локально в SQLite базу данных
-                  //  String myPublicKeyBase64 = Base64.encodeToString(publicKeyBytes, Base64.NO_WRAP);
-                  //   int generatedId = dbService.saveMessage((int) newChatId, myEmail, "[MailLis-Key-Request]", myPublicKeyBase64, currentTimestamp);
-
-                 //   dbService.savePeerPublicKey(selectedEmails.get(0), publicKeyBytes);
-            //    }
+                //}
 
 
 //                if (newChatId != -1) {

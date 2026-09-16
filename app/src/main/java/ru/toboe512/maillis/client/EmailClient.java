@@ -14,7 +14,7 @@ public interface EmailClient {
     List<Message> fetchIncomingHandshakeOverNetwork(Context context, SharedPreferences prefs);
     void sendEmailOverNetwork(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);
 
-    byte[] sendHandshakeRequest(String targetEmail, Context context, long chatId, final int localMessageId, SharedPreferences prefs);
+    byte[] sendHandshakeRequest(String targetEmail, Context context, long chatId, SharedPreferences prefs, String myPublicKey);
 
     void deleteMessageFromMailRuServer(final String serverUid, Context context);
 }

@@ -5,6 +5,8 @@ plugins {
 
 android {
     namespace = "ru.toboe512.maillis"
+
+    // Поддержка сборки под Android 15/16
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -18,6 +20,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
+        // ИСПРАВЛЕНИЕ: Оставляем один правильный раннер в едином блоке конфигурации
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -26,20 +29,22 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
-            // КРИТИЧЕСКИ ВАЖНО: Отключаем удаление "неиспользуемого" кода для отладки на реальном телефоне
+            // Отключаем оптимизацию и удаление кода для отладки
             isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+
     buildFeatures {
         compose = true
         viewBinding = true
     }
 
-    // ИСПРАВЛЕНИЕ: Блок фильтрации дубликатов при упаковке APK
     packaging {
         resources {
             excludes.add("META-INF/NOTICE.md")
@@ -51,6 +56,7 @@ android {
 }
 
 dependencies {
+    // Базовые библиотеки архитектуры Jetpack Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)
@@ -59,7 +65,18 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+
+    // Локальные Unit-тесты
     testImplementation(libs.junit)
+
+    // ИСПРАВЛЕНИЕ: РАСКОММЕНТИРОВАЛИ И ОБНОВИЛИ ОБЯЗАТЕЛЬНЫЙ СТЕК ДЛЯ ИНСТРУМЕНТАЛЬНЫХ ТЕСТОВ
+    androidTestImplementation("androidx.test:runner:1.6.1")
+    androidTestImplementation("androidx.test:core:1.6.1")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.multidex:multidex-instrumentation:2.0.0")
+
+    // Тестирование Jetpack Compose и Espresso
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -67,17 +84,18 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-
-    // Добавляем недостающие библиотеки для View-элементов
+    // Библиотеки для классических XML View-элементов
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.recyclerview:recyclerview:1.3.2")
 
-    // Добавляем официальную стабильную библиотеку Jakarta Mail
+    // Почта Jakarta Mail
     implementation("com.sun.mail:jakarta.mail:2.0.1")
 
+    // Криптография Google Tink
     implementation("com.google.crypto.tink:tink-android:1.15.0")
-// используйте актуальную версию
+
+
 }
 

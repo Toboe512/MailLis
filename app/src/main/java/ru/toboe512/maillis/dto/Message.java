@@ -10,7 +10,12 @@ public class Message {
     }
 
     private final String subject;
-    private final String text;
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    private String text;
     private final long timestamp;
     private final boolean isMine; // Флаг: отправлено мной или нет
 

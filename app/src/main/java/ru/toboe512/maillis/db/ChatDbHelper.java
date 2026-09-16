@@ -9,11 +9,13 @@ public class ChatDbHelper extends SQLiteOpenHelper {
 
     // Имя файла базы данных на устройстве и версия
     private static final String DATABASE_NAME = "MailLisChat.db";
-    private static final int DATABASE_VERSION = 5;
+    private static final int DATABASE_VERSION = 8;
 
     // Конструктор
     public ChatDbHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
+        // ВОТ ЭТА СТРОКА разрешает параллельные операции чтения и записи из разных потоков!
+        setWriteAheadLoggingEnabled(true);
     }
 
     // Вызывается один раз при самом первом создании базы данных на телефоне
@@ -22,7 +24,7 @@ public class ChatDbHelper extends SQLiteOpenHelper {
         // 1. Таблица контактов
         db.execSQL("CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT UNIQUE);");
         // 2. Таблица чатов (личные и групповые)
-        db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, type TEXT, recipient_email TEXT, last_message TEXT, timestamp INTEGER, public_key BLOB);");
+        db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, type TEXT, recipient_email TEXT, last_message TEXT, timestamp INTEGER, shared_secret BLOB);");
 
         // 3. Таблица сообщений (связана с таблицей чатов)
         // ОБНОВЛЕНО: Добавлена колонка server_uid с флагом UNIQUE
