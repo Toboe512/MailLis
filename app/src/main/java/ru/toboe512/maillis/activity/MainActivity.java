@@ -66,11 +66,13 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
                 new Thread(() -> {
                     try {
                         // Опрашиваем сервер в фоне — интерфейс теперь полностью свободен
-                        var messages = emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs);
+                        if (emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs)) {
+                            new Handler(Looper.getMainLooper()).post(() -> refreshChatsList());
+                        }
                         emailClient.retryUnsentMessages(prefs);
                         // if (!messages.isEmpty()) {
                             // Если во время рукопожатия база обновилась, обновляем UI список чатов на главном потоке
-                            new Handler(Looper.getMainLooper()).post(() -> refreshChatsList());
+
                        // }
 
                     } catch (Exception e) {

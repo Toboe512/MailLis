@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.client;
 
+import static java.lang.Boolean.FALSE;
+import static java.lang.Integer.parseInt;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
@@ -71,13 +73,12 @@ public class EmailClientImpl implements EmailClient {
     }
 
     @Override
-    public List<Message> fetchIncomingHandshakeOverNetwork(Context context, SharedPreferences prefs) {
+    public boolean fetchIncomingHandshakeOverNetwork(Context context, SharedPreferences prefs) {
         // 1. Создаем пул потоков (в данном случае из одного потока)
         ExecutorService executor = newSingleThreadExecutor();
 
         // 2. Определяем задачу Callable, которая возвращает строку после паузы
-        Callable<List<Message>> task = () -> {
-            List<Message> messageList = new ArrayList<>();
+        Callable<Boolean> task = () -> {
             try {
                 Store store = connectToImapServer(prefs);
 
@@ -86,8 +87,8 @@ public class EmailClientImpl implements EmailClient {
 
                 int messageCount = inbox.getMessageCount();
                 if (messageCount <= 0) {
-                    return new ArrayList<>();
-                };
+                    return false;
+                }
 
                 // Сканируем последние 25 писем, чтобы точно не пропустить ответы
                 int startMessage = Math.max(1, messageCount - 25);
@@ -113,6 +114,7 @@ public class EmailClientImpl implements EmailClient {
 
                     String subject = msg.getSubject();
                     String myEmail = prefs.getString("email_login", "my@mail.ru");
+
 
                     // СЛУЧАЙ В: Прилетело обычное текстовое сообщение чата
                     if (subject.contains(MAILLIS_CHAT_MESSAGE)) {
@@ -231,13 +233,13 @@ public class EmailClientImpl implements EmailClient {
                 e.printStackTrace();
                 android.util.Log.e("fetchIncomingHandshakeOverNetwork", "Ошибка обновления" + e.getMessage());
             }
-            return messageList;
+            return true;
         };
 
 
         // 3. Отправляем задачу в пул и получаем объект Future
-        Future<List<Message>> future = executor.submit(task);
-        List<Message> result = new ArrayList<>();
+        Future<Boolean> future = executor.submit(task);
+        Boolean result = FALSE;
         try {
             // 4. Метод get() блокирует текущий поток и ждет завершения задачи
             result = future.get();
@@ -337,7 +339,7 @@ public class EmailClientImpl implements EmailClient {
                     (int) chatId,
                     myEmail,
                     MAILLIS_KEY_REQUEST, // Тема письма, например "[MailLis-Key-Request]"
-                    myPublicKeyBase64,   // В тело письма прячем публичный ключ устройства
+                    "Чат создан",   // В тело письма прячем публичный ключ устройства не прячем, он будет вв базе чата, а это первое сообщение как привью
                     true,
                     currentTimestamp
             );
@@ -354,9 +356,9 @@ public class EmailClientImpl implements EmailClient {
                         @Override
                         public void onSynchronized(Message updatedMessage) {
                             // Сеть отработала успешно, сообщение улетело на Mail.ru
-                            android.util.Log.d("MailLis_Handshake", "Запрос рукопожатия успешно отправлен в сеть на адрес: " + targetEmail);
-                            // Помечаем сообщение как успешно отправленное в нашей базе данных
-                         //   dbService.markMessageAsSent(localMessageId, updatedMessage.getServerUid());
+                           if (updatedMessage != null)  {
+                               android.util.Log.d("MailLis_Handshake", "Запрос рукопожатия успешно отправлен в сеть на адрес: " + targetEmail);
+                           }
                         }
 
                         @Override

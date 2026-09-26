@@ -250,7 +250,9 @@ public class DBServiceSQLite implements DBService {
                         // Проверяем на null: если сообщений нет, то это не handshake, а просто пустой чат
                         if (lastMsg != null && lastMsg.getSubject() != null) {
                             isHandShake = !lastMsg.getSubject().contains(MAILLIS_CHAT_MESSAGE);
+                            lastMessage = "Чат создан";
                         }
+
 
                         // Добавляем чат в список
                         chatList.add(new ChatPreview(id, title, type, lastMessage, isHandShake));
@@ -259,13 +261,7 @@ public class DBServiceSQLite implements DBService {
                 }
             }
         }
-        return chatList.stream()
-                .peek((m) -> {
-                    if (m.isHandShake()) {
-                        m.setLastMessage("Чат создан");
-                    }
-                })
-                .collect(Collectors.toList());
+        return chatList;
     }
 
     // Логика записи нового чата в SQLite

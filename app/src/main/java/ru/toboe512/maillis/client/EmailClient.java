@@ -14,7 +14,7 @@ public interface EmailClient {
 
     //List<Message> fetchIncomingEmailsOverNetwork(long chatId, String myEmail, Context context, SharedPreferences prefs);
 
-    List<Message> fetchIncomingHandshakeOverNetwork(Context context, SharedPreferences prefs);
+    boolean fetchIncomingHandshakeOverNetwork(Context context, SharedPreferences prefs);
 
     boolean sendEmailOverNetwork(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);
 

@@ -107,9 +107,11 @@ public class ChatActivity extends AppCompatActivity {
                 // 1. Запускаем опрос сети в фоновом потоке
                 new Thread(() -> {
                     // Метод лезет в сеть и тихо сохраняет новые письма в SQLite
-                    List<Message> messages = emailClient.fetchIncomingHandshakeOverNetwork(ChatActivity.this, prefs);
-                    // 3. Переключаемся на главный поток для отрисовки
-                    runOnUiThread(() -> updateUiFromDatabase());
+                    if (emailClient.fetchIncomingHandshakeOverNetwork(ChatActivity.this, prefs)) {
+                        // 3. Переключаемся на главный поток для отрисовки
+                        runOnUiThread(() -> updateUiFromDatabase());
+                    }
+                    emailClient.retryUnsentMessages(prefs);
                 }).start();
 
                 // Планируем следующий запуск через 20 секунд
