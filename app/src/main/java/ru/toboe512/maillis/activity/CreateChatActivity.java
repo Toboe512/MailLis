@@ -1,12 +1,9 @@
 package ru.toboe512.maillis.activity;
 
-import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
-
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
-import android.util.Base64;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;

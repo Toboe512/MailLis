@@ -3,15 +3,12 @@ package ru.toboe512.maillis.db;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 
 import android.content.ContentValues;
-import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
-import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
 
-import jakarta.mail.internet.InternetAddress;
 import ru.toboe512.maillis.dto.ChatPreview;
 import ru.toboe512.maillis.dto.Contact;
 import ru.toboe512.maillis.dto.Message;
@@ -316,6 +313,7 @@ public class DBServiceSQLite implements DBService {
 
         return rowsDeleted;
     }
+
     public int deleteContact(String email) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 

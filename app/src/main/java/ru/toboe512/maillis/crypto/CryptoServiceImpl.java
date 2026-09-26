@@ -3,7 +3,6 @@ package ru.toboe512.maillis.crypto;
 import android.content.Context;
 import android.util.Base64;
 
-import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.BinaryKeysetReader;
 import com.google.crypto.tink.BinaryKeysetWriter;
 import com.google.crypto.tink.CleartextKeysetHandle;
@@ -11,15 +10,12 @@ import com.google.crypto.tink.HybridDecrypt;
 import com.google.crypto.tink.HybridEncrypt;
 import com.google.crypto.tink.KeyTemplates;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.aead.AeadConfig;
 import com.google.crypto.tink.hybrid.HybridConfig;
 import com.google.crypto.tink.integration.android.AndroidKeysetManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.security.GeneralSecurityException;
-import java.util.Arrays;
 
 public class CryptoServiceImpl implements CryptoService {
 

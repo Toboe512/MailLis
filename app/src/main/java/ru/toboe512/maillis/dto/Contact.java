@@ -14,10 +14,23 @@ public class Contact {
         this.isSelected = false;
     }
 
-    public int getId() { return id; }
-    public String getName() { return name; }
-    public String getEmail() { return email; }
+    public int getId() {
+        return id;
+    }
 
-    public boolean isSelected() { return isSelected; }
-    public void setSelected(boolean selected) { isSelected = selected; }
+    public String getName() {
+        return name;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public boolean isSelected() {
+        return isSelected;
+    }
+
+    public void setSelected(boolean selected) {
+        isSelected = selected;
+    }
 }

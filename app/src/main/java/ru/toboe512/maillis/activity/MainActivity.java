@@ -1,7 +1,5 @@
 package ru.toboe512.maillis.activity;
 
-import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
-
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;

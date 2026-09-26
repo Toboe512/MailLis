@@ -133,7 +133,6 @@ public class ChatActivity extends AppCompatActivity {
                         // Метод лезет в сеть и тихо сохраняет новые письма в SQLite
                         List<Message> messages = emailClient.fetchIncomingHandshakeOverNetwork(ChatActivity.this, prefs);
 
-
                         // Мы ВСЕГДА проверяем локальную базу данных после завершения сети!
                         freshlyLoadedMessages = dbService.getMessages(chatId, myEmail)
                                 .stream()
@@ -147,7 +146,6 @@ public class ChatActivity extends AppCompatActivity {
                                 if (freshlyLoadedMessages.size() != messageList.size()) {
                                     messageList.clear();
                                     messageList.addAll(freshlyLoadedMessages);
-
                                     messagesAdapter.notifyDataSetChanged();
                                     scrollToBottomIfNeeded(); // Плавно скроллим вниз к новому письму
 
@@ -169,14 +167,13 @@ public class ChatActivity extends AppCompatActivity {
         // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
         messageList.clear();
         messageList.addAll(dbService.getMessages(chatId, myEmail).stream()
-                  .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
+                .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
                 .collect(Collectors.toList()));// Перечитываем базу для синхронизации ID
         // Перерисовываем список
         messagesAdapter.notifyDataSetChanged();
 
         // Кнопка локальной отправки сообщения
         buttonSend.setOnClickListener(v ->
-
         {
             String text = editTextMessage.getText().toString().trim();
             if (!text.isEmpty()) {
@@ -205,7 +202,7 @@ public class ChatActivity extends AppCompatActivity {
                 String sendTxt = "";
                 try {
                     byte[] sharedSecret = dbService.getSharedSecret(chatId);
-                    sendTxt = sharedSecret  != null ? cryptoService.encode(text, sharedSecret) : text;
+                    sendTxt = sharedSecret != null ? cryptoService.encode(text, sharedSecret) : text;
                 } catch (GeneralSecurityException e) {
                     throw new RuntimeException(e);
                 } catch (IOException e) {

@@ -1,6 +1,8 @@
 package ru.toboe512.maillis.client;
 
-import static ru.toboe512.maillis.consts.Consts.*;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_RESPONSE;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -28,7 +30,6 @@ import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
 import ru.toboe512.maillis.crypto.CryptoService;
-import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.Message;
@@ -288,7 +289,8 @@ public class EmailClientImpl implements EmailClient {
                             // 2. ДОБАВИТЬ СТРОКУ: Принудительно заставляем IMAP-сервер физически стереть помеченные сообщения прямо сейчас
                             inbox.expunge();
                             android.util.Log.d("MailLis_Delete", "Письмо с Message-ID успешно найдено и удалено.");
-                        };
+                        }
+                        ;
                         // 3. ОТВЕЧАЕМ СВОИМ КЛЮЧОМ
                         String serverUid = sendHandshakeResponse(senderEmail, chatId, 0, prefs, cryptoService);
                         deleteMessageFromMailRuServer(serverUid, context);
