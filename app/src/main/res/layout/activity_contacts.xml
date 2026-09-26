@@ -4,16 +4,18 @@
     xmlns:app="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     android:orientation="vertical">
 
     <!-- Верхняя панель навигации -->
+
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbarContacts"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:background="#2196F3"
-        app:titleTextColor="#FFFFFF"
-        app:title="Контакты" />
+        app:title="Контакты"
+        app:titleTextColor="#FFFFFF" />
 
     <LinearLayout
         android:layout_width="match_parent"

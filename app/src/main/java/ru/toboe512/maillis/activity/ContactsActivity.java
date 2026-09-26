@@ -31,6 +31,11 @@ public class ContactsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_contacts);
 
+        // ИСПРАВЛЕНИЕ: Делаем системные часы и иконки статус-бара ТЁМНЫМИ и читаемыми
+        // Получаем управление системными окнами (WindowInsetsController)
+        androidx.core.view.WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+                .setAppearanceLightStatusBars(true); // true = тёмные значки (для светлого фона), false = белые значки
+
         // 1. Настраиваем Toolbar и кнопку "Назад"
         Toolbar toolbar = findViewById(R.id.toolbarContacts);
         setSupportActionBar(toolbar);

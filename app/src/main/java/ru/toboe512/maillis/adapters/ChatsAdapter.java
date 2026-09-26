@@ -12,6 +12,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.List;
@@ -20,6 +21,7 @@ import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.activity.ChatActivity;
 import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.dto.ChatPreview;
+import ru.toboe512.maillis.utils.ChatDiffCallback;
 
 public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHolder> {
 
@@ -86,9 +88,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
         builder.setTitle("Удалить чат");
         builder.setMessage("Вы уверены, что хотите удалить чат '" + chat.getTitle() + "' и всю историю переписки?");
 
-        builder.setPositiveButton("Удалить", (dialog, which) -> {
-            deleteChatFromDatabase(chat.getId(), position);
-        });
+        builder.setPositiveButton("Удалить", (dialog, which) -> deleteChatFromDatabase(chat.getId(), position));
 
         builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
 
@@ -119,6 +119,20 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             chatList.remove(position);
             notifyItemRemoved(position);
         }
+    }
+
+    // Внутри вашего класса ChatsAdapter:
+    public void updateChatsList(List<ChatPreview> newChats) {
+        // 1. Вычисляем разницу между текущим списком в памяти адаптера (this.chatList) и новым из БД
+        var diffCallback = new ChatDiffCallback(this.chatList, newChats);
+        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
+
+        // 2. Обновляем данные в памяти адаптера без вызова .clear()
+        this.chatList.clear();
+        this.chatList.addAll(newChats);
+
+        // 3. Магия: DiffUtil сам точечно вызовет notifyItemChanged, notifyItemInserted или notifyItemRemoved!
+        diffResult.dispatchUpdatesTo(this);
     }
 
 }

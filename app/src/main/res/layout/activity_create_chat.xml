@@ -1,28 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://android.com"
+    xmlns:tools="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#F5F5F5"
+    android:fitsSystemWindows="true"
     android:orientation="vertical"
-    android:padding="16dp">
+    tools:ignore="HardcodedText,Autofill">
 
     <!-- Блок добавления нового контакта -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbarCreateChat"
+        app:title="Настройки"
+        app:titleTextColor="#FFFFFF"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="#2196F3" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:layout_marginTop="8dp">
+        android:layout_marginTop="8dp"
+        android:orientation="vertical">
 
         <!-- Верхняя панель со стрелкой назад -->
-        <Toolbar
-            android:id="@+id/toolbarCreateChat"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:background="#2196F3"
-            android:titleTextColor="#FFFFFF"
-            android:title="Создать чат"
-            android:navigationIcon="@android:drawable/ic_menu_revert" />
+        <!--        <Toolbar-->
+        <!--            android:id="@+id/toolbarCreateChat"-->
+        <!--            android:layout_width="match_parent"-->
+        <!--            android:layout_height="56dp"-->
+        <!--            android:background="#2196F3"-->
+        <!--            android:titleTextColor="#FFFFFF"-->
+        <!--            android:title="Создать чат"-->
+        <!--            android:navigationIcon="@android:drawable/ic_menu_revert" />-->
+
+
 
         <EditText
             android:id="@+id/editTextContactId"
@@ -30,8 +42,8 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:hint="ID пользователя или телефон"
-            android:inputType="text"
-            android:importantForAutofill="no" />
+            android:importantForAutofill="no"
+            android:inputType="text" />
 
         <Button
             android:id="@+id/buttonViewContactTitle"
@@ -57,10 +69,10 @@
             android:textStyle="bold" />
 
         <!--        <Button-->
-<!--            android:id="@+id/buttonAddContact"-->
-<!--            android:layout_width="wrap_content"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:text="Добавить" />-->
+        <!--            android:id="@+id/buttonAddContact"-->
+        <!--            android:layout_width="wrap_content"-->
+        <!--            android:layout_height="wrap_content"-->
+        <!--            android:text="Добавить" />-->
     </LinearLayout>
 
     <EditText
@@ -94,8 +106,8 @@
         android:id="@+id/recyclerViewSelectContacts"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp" />
+        android:layout_marginTop="8dp"
+        android:layout_weight="1" />
 
     <Button
         android:id="@+id/buttonCreateGroup"

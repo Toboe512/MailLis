@@ -9,10 +9,10 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
-import android.widget.Toolbar;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -47,24 +47,16 @@ public class CreateChatActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_create_chat);
 
-        // Настраиваем Toolbar и кнопку Назад
+        // 1. Настраиваем Toolbar и кнопку "Назад"
         Toolbar toolbar = findViewById(R.id.toolbarCreateChat);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        }
 
-        // Автоматический сдвиг под строку состояния (часы и батарею)
-        ViewCompat.setOnApplyWindowInsetsListener(toolbar, (v, windowInsets) -> {
-            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars());
-            v.setPadding(v.getPaddingLeft(), insets.top, v.getPaddingRight(), v.getPaddingBottom());
-            v.getLayoutParams().height = (int) (insets.top + (56 * getResources().getDisplayMetrics().density));
-            return windowInsets;
-        });
+        //   Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
+        toolbar.setNavigationOnClickListener(v -> finish());
 
-        //  Прямой клик по стрелке на самом тулбаре <<<
-        toolbar.setNavigationOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                finish(); // Мгновенно закрывает экран и возвращает на MainActivity
-            }
-        });
         dbService = new DBServiceSQLite(this);
         contactList = new ArrayList<>();
 

@@ -259,7 +259,13 @@ public class DBServiceSQLite implements DBService {
                 }
             }
         }
-        return chatList;
+        return chatList.stream()
+                .peek((m) -> {
+                    if (m.isHandShake()) {
+                        m.setLastMessage("Чат создан");
+                    }
+                })
+                .collect(Collectors.toList());
     }
 
     // Логика записи нового чата в SQLite

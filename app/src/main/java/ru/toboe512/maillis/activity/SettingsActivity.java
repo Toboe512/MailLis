@@ -1,5 +1,6 @@
 package ru.toboe512.maillis.activity;
 
+import static ru.toboe512.maillis.R.*;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 
 import android.content.Context;
@@ -13,6 +14,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 
 import java.util.Properties;
 
@@ -46,29 +48,22 @@ public class SettingsActivity extends AppCompatActivity {
         setContentView(R.layout.activity_settings);
 
         // Стрелочка назад
-        ActionBar actionBar = getSupportActionBar();
-        if (actionBar != null) {
-            actionBar.setDisplayHomeAsUpEnabled(true);
-            actionBar.setTitle("НАстройки");
-        }
-        // Настраиваем Toolbar и кнопку Назад
-        // Toolbar toolbar = findViewById(R.id.toolbarSettings);
+        // ИСПРАВЛЕНИЕ: Делаем системные часы и иконки статус-бара ТЁМНЫМИ и читаемыми
+        // Получаем управление системными окнами (WindowInsetsController)
+        androidx.core.view.WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+                .setAppearanceLightStatusBars(true); // true = тёмные значки (для светлого фона), false = белые значки
 
-//        // Автоматический сдвиг под строку состояния (часы и батарею)
-//        ViewCompat.setOnApplyWindowInsetsListener(toolbar, (v, windowInsets) -> {
-//            Insets insets = windowInsets.getInsets(WindowInsetsCompat.Type.statusBars());
-//            v.setPadding(v.getPaddingLeft(), insets.top, v.getPaddingRight(), v.getPaddingBottom());
-//            v.getLayoutParams().height = (int) (insets.top + (56 * getResources().getDisplayMetrics().density));
-//            return windowInsets;
-//        });
-//
-//        toolbar.setNavigationOnClickListener(new View.OnClickListener() {
-//            @Override
-//            public void onClick(View v) {
-//                finish(); // Закрывает экран настроек и возвращает на главный
-//            }
-//        });
-// Связываем переменные с элементами интерфейса XML
+        // 1. Настраиваем Toolbar и кнопку "Назад"
+        Toolbar toolbar = findViewById(R.id.toolbarSettings);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        }
+
+      //   Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
+        toolbar.setNavigationOnClickListener(v -> finish());
+
+        // Связываем переменные с элементами интерфейса XML
         editTextImapServer = findViewById(R.id.editTextImapServer);
         editTextImapPort = findViewById(R.id.editTextImapPort);
         editTextSmtpServer = findViewById(R.id.editTextSmtpServer);

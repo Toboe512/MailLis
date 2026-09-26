@@ -14,6 +14,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
+import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.List;
@@ -22,6 +23,7 @@ import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.Message;
+import ru.toboe512.maillis.utils.MessageDiffCallback;
 
 public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.MessageViewHolder> {
 
@@ -131,5 +133,19 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             messageList.remove(position);
             notifyItemRemoved(position);
         }
+    }
+
+    // Внутри класса MessagesAdapter:
+    public void setMessages(List<Message> newMessages) {
+        // Вычисляем разницу между старым списком (this.messageList) и новым
+        MessageDiffCallback diffCallback = new MessageDiffCallback(this.messageList, newMessages);
+        DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
+
+        // Обновляем данные в памяти адаптера
+        this.messageList.clear();
+        this.messageList.addAll(newMessages);
+
+        // Применяем точечные анимации (notifyItemInserted, notifyItemChanged автоматически!)
+        diffResult.dispatchUpdatesTo(this);
     }
 }

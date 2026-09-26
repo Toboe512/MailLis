@@ -1,6 +1,12 @@
 package ru.toboe512.maillis.crypto;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import android.content.Context;
+
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
@@ -11,11 +17,6 @@ import org.junit.runner.RunWith;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 @RunWith(AndroidJUnit4.class)
 public class CryptoServiceImplTest {
 
@@ -24,15 +25,17 @@ public class CryptoServiceImplTest {
     private CryptoServiceImpl bobCryptoService;
 
     @Before
-    public void setUp() {
+    public void setUp() throws GeneralSecurityException, IOException {
         // Получаем контекст тестируемого приложения Android
         context = ApplicationProvider.getApplicationContext();
 
         // Инициализируем два независимых инстанса (как будто это два разных телефона)
         // Внимание: на одном эмуляторе они будут делить одни SharedPreferences,
         // но для тестирования сквозного кодирования это отлично подходит.
+
         aliceCryptoService = new CryptoServiceImpl(context);
         bobCryptoService = new CryptoServiceImpl(context);
+
     }
 
     @Test

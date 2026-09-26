@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.crypto;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import android.content.Context;
 import android.util.Base64;
 
@@ -15,6 +17,7 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 
 public class CryptoServiceImpl implements CryptoService {
@@ -25,29 +28,27 @@ public class CryptoServiceImpl implements CryptoService {
     private KeysetHandle devicePrivateKeyHandle;
     private KeysetHandle devicePublicKeyHandle;
 
-    public CryptoServiceImpl(Context context) {
-        try {
-            // 1. Регистрируем гибридное шифрование (включает ECDH и AES-GCM)
-            HybridConfig.register();
+    public CryptoServiceImpl(Context context) throws GeneralSecurityException, IOException {
 
-            // AndroidKeysetManager САМ ищет ключ в SharedPreferences и восстанавливает его.
-            // Если ключа там еще нет, .withKeyTemplate() указывает, какой ключ сгенерировать автоматически.
-            AndroidKeysetManager keysetManager = new AndroidKeysetManager.Builder()
-                    .withSharedPref(context.getApplicationContext(), KEYSET_NAME, PREF_FILE_NAME)
-                    .withMasterKeyUri(MASTER_KEY_URI)
-                    .withKeyTemplate(KeyTemplates.get("ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM"))
-                    .build();
+        // 1. Регистрируем гибридное шифрование (включает ECDH и AES-GCM)
+        HybridConfig.register();
 
-            // ВОССТАНОВЛЕНИЕ: Извлекаем уже сохраненный (или только что созданный) приватный ключ
-            devicePrivateKeyHandle = keysetManager.getKeysetHandle();
+        // AndroidKeysetManager САМ ищет ключ в SharedPreferences и восстанавливает его.
+        // Если ключа там еще нет, .withKeyTemplate() указывает, какой ключ сгенерировать автоматически.
+        AndroidKeysetManager keysetManager = new AndroidKeysetManager.Builder()
+                .withSharedPref(context.getApplicationContext(), KEYSET_NAME, PREF_FILE_NAME)
+                .withMasterKeyUri(MASTER_KEY_URI)
+                .withKeyTemplate(KeyTemplates.get("ECIES_P256_HKDF_HMAC_SHA256_AES128_GCM"))
+                .build();
 
-            // Из восстановленного приватного ключа ВСЕГДА можно мгновенно получить публичный
-            devicePublicKeyHandle = devicePrivateKeyHandle.getPublicKeysetHandle();
+        // ВОССТАНОВЛЕНИЕ: Извлекаем уже сохраненный (или только что созданный) приватный ключ
+        devicePrivateKeyHandle = keysetManager.getKeysetHandle();
 
-            android.util.Log.d("MailLis_Crypto", "Приватный ключ успешно восстановлен из хранилища Android!");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // Из восстановленного приватного ключа ВСЕГДА можно мгновенно получить публичный
+        devicePublicKeyHandle = devicePrivateKeyHandle.getPublicKeysetHandle();
+
+        android.util.Log.d("MailLis_Crypto", "Приватный ключ успешно восстановлен из хранилища Android!");
+
     }
 
 
@@ -66,9 +67,9 @@ public class CryptoServiceImpl implements CryptoService {
         // Получаем примитив шифрования напрямую из ключа
         HybridEncrypt hybridEncrypt = peerPublicKeyHandle.getPrimitive(HybridEncrypt.class);
 
-        byte[] plaintextBytes = plainText.getBytes("UTF-8");
+        byte[] plaintextBytes = plainText.getBytes(UTF_8);
         // Используем фиксированный маркер приложения как контекст безопасности (одинаковый везде!)
-        byte[] contextInfo = "MailLis_P2P_Protocol_v1".getBytes("UTF-8");
+        byte[] contextInfo = "MailLis_P2P_Protocol_v1".getBytes(UTF_8);
 
         // Шифруем (внутри Tink сам проведет математику Диффи-Хеллмана)
         byte[] ciphertextBytes = hybridEncrypt.encrypt(plaintextBytes, contextInfo);
@@ -89,16 +90,16 @@ public class CryptoServiceImpl implements CryptoService {
 
         // Декодируем Base64 строку обратно в байты
         byte[] ciphertextBytes = Base64.decode(base64Ciphertext.trim(), Base64.NO_WRAP);
-        byte[] contextInfo = "MailLis_P2P_Protocol_v1".getBytes("UTF-8");
+        byte[] contextInfo = "MailLis_P2P_Protocol_v1".getBytes(UTF_8);
 
         // Расшифровываем!
         byte[] decryptedBytes = hybridDecrypt.decrypt(ciphertextBytes, contextInfo);
 
-        return new String(decryptedBytes, "UTF-8");
+        return new String(decryptedBytes, UTF_8);
     }
 
     // Метод для получения байт своего публичного ключа (для отправки при рукопожатии)
-    public byte[] getMyPublicKeyBytes() throws IOException, GeneralSecurityException {
+    public byte[] getMyPublicKeyBytes() throws IOException {
         ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
         CleartextKeysetHandle.write(
                 devicePublicKeyHandle,
@@ -108,7 +109,7 @@ public class CryptoServiceImpl implements CryptoService {
     }
 
     @Override
-    public String getMyPublicKeyBas64() throws IOException, GeneralSecurityException {
+    public String getMyPublicKeyBas64() throws IOException {
         return Base64.encodeToString(getMyPublicKeyBytes(), Base64.NO_WRAP);
     }
 }

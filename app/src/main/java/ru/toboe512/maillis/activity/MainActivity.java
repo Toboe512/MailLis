@@ -19,15 +19,11 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ChatsAdapter;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
-import ru.toboe512.maillis.crypto.CryptoService;
-import ru.toboe512.maillis.crypto.CryptoServiceImpl;
-import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.ChatPreview;
@@ -35,7 +31,6 @@ import ru.toboe512.maillis.dto.ChatPreview;
 
 public class MainActivity extends AppCompatActivity { // Важно: наследуемся от AppCompatActivity
 
-    private RecyclerView recyclerViewChats;
     private ChatsAdapter chatsAdapter;
     private List<ChatPreview> chatList;
     private DBService dbService;
@@ -52,12 +47,11 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         setContentView(R.layout.activity_main);
         dbService = new DBServiceSQLite(this);
         chatList = new ArrayList<>();
-
         chatsAdapter = new ChatsAdapter(this, chatList);
         emailClient = new EmailClientImpl(dbService, this);
 
         // Настраиваем RecyclerView для списка чатов
-        recyclerViewChats = findViewById(R.id.recyclerViewChats);
+        RecyclerView recyclerViewChats = findViewById(R.id.recyclerViewChats);
         recyclerViewChats.setLayoutManager(new LinearLayoutManager(this));
         recyclerViewChats.setAdapter(chatsAdapter); // Привязываем готовый адаптер
 
@@ -74,14 +68,13 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
                         // Опрашиваем сервер в фоне — интерфейс теперь полностью свободен
                         var messages = emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs);
                         emailClient.retryUnsentMessages(prefs);
-                        if (!messages.isEmpty()) {
+                        // if (!messages.isEmpty()) {
                             // Если во время рукопожатия база обновилась, обновляем UI список чатов на главном потоке
-                            new Handler(Looper.getMainLooper()).post(() -> {
-                                refreshChatsList();
-                            });
-                        }
+                            new Handler(Looper.getMainLooper()).post(() -> refreshChatsList());
+                       // }
 
                     } catch (Exception e) {
+
                         e.printStackTrace();
                     }
                 }).start();
@@ -100,25 +93,6 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
 
     }
 
-    // Вынесли обновление списка в отдельный удобный метод
-    private void refreshChatsList() {
-        if (dbService != null) {
-            chatList.clear();
-
-            chatList.addAll(dbService.loadChats()
-                    .stream()
-                    .peek((m) -> {
-                        if (m.isHandShake()) {
-                            m.setLastMessage("Чат создан");
-                        }
-                    })
-                    .collect(Collectors.toList()));
-            if (chatsAdapter != null) {
-                chatsAdapter.notifyDataSetChanged();
-            }
-        }
-    }
-
     // КРИТИЧЕСКИ ВАЖНО: Останавливаем таймер, когда пользователь сворачивает экран или уходит в настройки!
     @Override
     protected void onPause() {
@@ -131,18 +105,8 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     @Override
     protected void onResume() {
         super.onResume();
-        chatList.clear();
-        chatList.addAll(dbService.loadChats().stream()
-                .peek((m) -> {
-                    if (m.isHandShake()) {
-                        m.setLastMessage("Чат создан");
-                    }
-                })
-                .collect(Collectors.toList()));
-        // Уведомляем адаптер о необходимости перерисовки
-        if (chatsAdapter != null) {
-            chatsAdapter.notifyDataSetChanged();
-        }
+        // 1. В фоновом потоке считываем свежие чаты из SQLite, чтобы не фризить UI
+        refreshChatsList();
         // 2. Включаем автоопрос почтового сервера Mail.ru
         updateHandler.post(updateRunnable);
     }
@@ -155,7 +119,6 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     }
 
     // ОС Android сама вызовет этот метод для обработки кликов по кнопкам в панели
-
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
@@ -189,5 +152,21 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         }
 
         return super.onOptionsItemSelected(item);
+    }
+
+    // Вынесли обновление списка в отдельный удобный метод
+    private void refreshChatsList() {
+        new Thread(() -> {
+            List<ChatPreview> freshChatsFromDb = dbService.loadChats();
+
+            runOnUiThread(() -> {
+                if (freshChatsFromDb != null && chatsAdapter != null) {
+                    // ИСПРАВЛЕНИЕ: Вместо очистки списка и notifyDataSetChanged
+                    // передаем данные в наш новый метод с поддержкой DiffUtil!
+                    chatsAdapter.updateChatsList(freshChatsFromDb);
+                }
+            });
+        }).start();
+
     }
 }

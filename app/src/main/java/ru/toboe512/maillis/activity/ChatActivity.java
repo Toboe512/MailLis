@@ -1,6 +1,7 @@
 package ru.toboe512.maillis.activity;
 
 
+import static android.content.Context.MODE_PRIVATE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.UPDATE_INTERVAL_MS;
@@ -26,19 +27,13 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import ru.toboe512.maillis.R;
-import ru.toboe512.maillis.adapters.ChatsAdapter;
 import ru.toboe512.maillis.adapters.MessagesAdapter;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
-import ru.toboe512.maillis.crypto.CryptoService;
-import ru.toboe512.maillis.crypto.CryptoServiceImpl;
-import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
-import ru.toboe512.maillis.dto.ChatPreview;
 import ru.toboe512.maillis.dto.Message;
 
 public class ChatActivity extends AppCompatActivity {
@@ -46,23 +41,13 @@ public class ChatActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private MessagesAdapter messagesAdapter;
     private List<Message> messageList = new ArrayList<>();
-
     private List<Message> freshlyLoadedMessages = new ArrayList<>();
     private EditText editTextMessage;
-    private ImageButton buttonSend;
-
-    // Переменные объявлены, но не использовались в onCreate
-    private RecyclerView recyclerViewChats;
-    private ChatsAdapter chatsAdapter;
-    private List<ChatPreview> chatList = new ArrayList<>();
-
     // Переменные для работы с базой данных
     private DBService dbService;
     private int chatId = 1; // ID текущего чата по умолчанию (для тестов)
-
     //клиент
     private EmailClient emailClient;
-
     private String recipientEmail = EMPTI_STRING;
     private String myEmail = EMPTI_STRING; // Наш реальный Email из настроек
 
@@ -77,9 +62,9 @@ public class ChatActivity extends AppCompatActivity {
         setContentView(R.layout.activity_chat);
 
         // Загружаем наш собственный логин из SharedPreferences
-        SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
+        SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", MODE_PRIVATE);
         String savedEmail = prefs.getString("email_login", "my@mail.ru");
-        myEmail = (savedEmail != null) ? savedEmail.trim() : "my@mail.ru";
+        myEmail = savedEmail.trim();
 
         // Стрелочка назад
         ActionBar actionBar = getSupportActionBar();
@@ -87,11 +72,6 @@ public class ChatActivity extends AppCompatActivity {
             actionBar.setDisplayHomeAsUpEnabled(true);
             actionBar.setTitle("Чат");
         }
-
-
-        editTextMessage = findViewById(R.id.editTextMessage);
-        buttonSend = findViewById(R.id.buttonSendMessage);
-        recyclerView = findViewById(R.id.recyclerViewMessages);
 
         // Получаем ID чата и имя из интента (передано с главного экрана)
         Intent intent = getIntent();
@@ -104,11 +84,12 @@ public class ChatActivity extends AppCompatActivity {
         }
 
 
+        editTextMessage = findViewById(R.id.editTextMessage);
+        recyclerView = findViewById(R.id.recyclerViewMessages);
+
         dbService = new DBServiceSQLite(this);
         emailClient = new EmailClientImpl(dbService, this);
-
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
-
         messageList = new ArrayList<>();
         messagesAdapter = new MessagesAdapter(this, messageList, emailClient, dbService);
 
@@ -121,36 +102,14 @@ public class ChatActivity extends AppCompatActivity {
         updateRunnable = new Runnable() {
             @Override
             public void run() {
-                SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
+                SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", MODE_PRIVATE);
 
                 // 1. Запускаем опрос сети в фоновом потоке
                 new Thread(() -> {
-                    try {
-
-                        // Метод лезет в сеть и тихо сохраняет новые письма в SQLite
-                        List<Message> messages = emailClient.fetchIncomingHandshakeOverNetwork(ChatActivity.this, prefs);
-
-                        // Мы ВСЕГДА проверяем локальную базу данных после завершения сети!
-                        freshlyLoadedMessages = dbService.getMessages(chatId, myEmail);
-
-                        // 3. Переключаемся на главный поток для отрисовки
-                        runOnUiThread(() -> {
-                            if (freshlyLoadedMessages != null) {
-                                // Проверяем, изменилось ли количество сообщений, чтобы не перерисовывать экран впустую
-                                if (freshlyLoadedMessages.size() != messageList.size()) {
-                                    messageList.clear();
-                                    messageList.addAll(freshlyLoadedMessages);
-                                    messagesAdapter.notifyDataSetChanged();
-                                    scrollToBottomIfNeeded(); // Плавно скроллим вниз к новому письму
-
-                                    Log.d("MailLis_Live", "Обнаружены новые сообщения! Экран перерисован.");
-                                }
-                            }
-                        });
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                    // Метод лезет в сеть и тихо сохраняет новые письма в SQLite
+                    List<Message> messages = emailClient.fetchIncomingHandshakeOverNetwork(ChatActivity.this, prefs);
+                    // 3. Переключаемся на главный поток для отрисовки
+                    runOnUiThread(() -> updateUiFromDatabase());
                 }).start();
 
                 // Планируем следующий запуск через 20 секунд
@@ -159,11 +118,9 @@ public class ChatActivity extends AppCompatActivity {
         };
 
         // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
-        messageList.clear();
-        messageList.addAll(dbService.getMessages(chatId, myEmail));// Перечитываем базу для синхронизации ID
-        // Перерисовываем список
-        messagesAdapter.notifyDataSetChanged();
+        updateUiFromDatabase();
 
+        ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
         // Кнопка локальной отправки сообщения
         buttonSend.setOnClickListener(v ->
         {
@@ -207,11 +164,11 @@ public class ChatActivity extends AppCompatActivity {
                             public void onSynchronized(Message updatedMessages) {
                                 // Код выполнится в Главном Потоке автоматически!
                                 // Перечитываем обновленную историю из базы данных (где уже прописан server_uid)
-                               // messageList.clear();
-                            if (updatedMessages != null) {
-                                messageList.add(message);
-                            }
-                             //   messagesAdapter.notifyDataSetChanged();
+                                // messageList.clear();
+                                if (updatedMessages != null) {
+                                    messageList.add(message);
+                                }
+                                //   messagesAdapter.notifyDataSetChanged();
                                 scrollToBottomIfNeeded(); // плавно скроллим вниз
                             }
 
@@ -245,8 +202,6 @@ public class ChatActivity extends AppCompatActivity {
             showDeleteChatDialog(); // Показываем окно удаления
             return true;
         }
-
-
 
 
         return super.onOptionsItemSelected(item);
@@ -363,6 +318,23 @@ public class ChatActivity extends AppCompatActivity {
                 })
                 .setNegativeButton("Отмена", null)
                 .show();
+    }
+
+    // Полностью оптимизированный метод синхронизации UI без notifyDataSetChanged
+    private void updateUiFromDatabase() {
+        runOnUiThread(() -> {
+            List<Message> freshMessages = dbService.getMessages(chatId, myEmail);
+            if (freshMessages != null && messagesAdapter != null) {
+
+                // ИСПРАВЛЕНИЕ: Передаем список в адаптер с поддержкой DiffUtil
+                messagesAdapter.setMessages(freshMessages);
+
+                // Плавно скроллим к самому последнему сообщению, если список обновился
+                if (!freshMessages.isEmpty()) {
+                    recyclerView.scrollToPosition(freshMessages.size() - 1);
+                }
+            }
+        });
     }
 
 }

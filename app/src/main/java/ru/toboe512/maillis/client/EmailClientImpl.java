@@ -16,6 +16,8 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 
+import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -56,7 +58,12 @@ public class EmailClientImpl implements EmailClient {
 
     public EmailClientImpl(DBService dbService, Context context) {
         this.dbService = dbService;
-        this.cryptoService = new CryptoServiceImpl(context);
+        try {
+            this.cryptoService = new CryptoServiceImpl(context);
+        } catch (GeneralSecurityException | IOException e) {
+            android.util.Log.e("EmailClientImpl", "Ошибка инициализациии CryptoServiceImpl" + e.getMessage());
+            throw new RuntimeException(e);
+        }
     }
 
     public CryptoService getCryptoService() {
@@ -181,7 +188,7 @@ public class EmailClientImpl implements EmailClient {
                             inbox.expunge();
                             android.util.Log.d("MailLis_Delete", "Письмо с Message-ID успешно найдено и удалено.");
                         }
-                        ;
+
                         // 3. ОТВЕЧАЕМ СВОИМ КЛЮЧОМ
                         String serverUid = sendHandshakeResponse(senderEmail, chatId,  prefs);
                         deleteMessageFromMailRuServer(serverUid, context);

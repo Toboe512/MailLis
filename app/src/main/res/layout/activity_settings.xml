@@ -1,134 +1,141 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://android.com"
     xmlns:tools="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="#F5F5F5"
     android:fitsSystemWindows="true"
+    android:orientation="vertical"
     tools:ignore="HardcodedText,Autofill">
 
-        <androidx.appcompat.widget.Toolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
-            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
-            app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
+    <!-- Верхняя панель со стрелкой назад -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbarSettings"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="#2196F3"
+        app:title="Настройки"
+        app:titleTextColor="#FFFFFF"  />
 
-<!--        &lt;!&ndash; Верхняя панель со стрелкой назад &ndash;&gt;-->
-<!--        <Toolbar-->
-<!--            android:id="@+id/toolbarSettings"-->
-<!--            android:layout_width="match_parent"-->
-<!--            android:layout_height="56dp"-->
-<!--            android:background="#2196F3"-->
-<!--            android:titleTextColor="#FFFFFF"-->
-<!--            android:title="Настройки почты"-->
-<!--            android:navigationIcon="@android:drawable/ic_menu_revert" />-->
+<!--    <androidx.appcompat.widget.Toolbar-->
+<!--        android:id="@+id/toolbarContacts"-->
+<!--        android:layout_width="match_parent"-->
+<!--        android:layout_height="56dp"-->
+<!--        android:background="#2196F3"-->
+<!--        app:title="Контакты"-->
+<!--        app:titleTextColor="#FFFFFF" />-->
+<!--    -->
+<!--    <Toolbar-->
+<!--        android:id="@+id/toolbarSettings"-->
+<!--        android:layout_width="match_parent"-->
+<!--        android:layout_height="56dp"-->
+<!--        android:background="#2196F3"-->
+<!--        android:navigationIcon="@android:drawable/ic_menu_revert"-->
+<!--        android:title="Настройки почты"-->
+<!--        android:titleTextColor="#FFFFFF" />-->
 
-<!--        <TextView-->
-<!--            android:layout_width="wrap_content"-->
-<!--            android:layout_height="wrap_content"-->
-<!--            android:text="Настройки Почтового Сервера"-->
-<!--            android:textSize="20sp"-->
-<!--            android:textStyle="bold"-->
-<!--            android:layout_marginBottom="24dp"/>-->
+    <!--        <TextView-->
+    <!--            android:layout_width="wrap_content"-->
+    <!--            android:layout_height="wrap_content"-->
+    <!--            android:text="Настройки Почтового Сервера"-->
+    <!--            android:textSize="20sp"-->
+    <!--            android:textStyle="bold"-->
+    <!--            android:layout_marginBottom="24dp"/>-->
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Сервер входящей почты (IMAP)"
-                android:textStyle="bold" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Сервер входящей почты (IMAP)"
+        android:textStyle="bold" />
 
-            <EditText
-            android:id="@+id/editTextImapServer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textUri"
-            android:minHeight="48dp"
-            android:text="imap.mail.ru" />
+    <EditText
+        android:id="@+id/editTextImapServer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="textUri"
+        android:minHeight="48dp"
+        android:text="imap.mail.ru" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Порт IMAP (SSL/TLS)"
-            android:layout_marginTop="8dp"
-            android:textStyle="bold" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Порт IMAP (SSL/TLS)"
+        android:textStyle="bold" />
 
-        <EditText
-            android:id="@+id/editTextImapPort"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="993"
-            android:inputType="number" />
+    <EditText
+        android:id="@+id/editTextImapPort"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:text="993" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Сервер исходящей почты (SMTP)"
-            android:layout_marginTop="16dp"
-            android:textStyle="bold" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Сервер исходящей почты (SMTP)"
+        android:textStyle="bold" />
 
-        <EditText
-            android:id="@+id/editTextSmtpServer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="textUri"
-            android:minHeight="48dp"
-            android:text="smtp.mail.ru" />
+    <EditText
+        android:id="@+id/editTextSmtpServer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="textUri"
+        android:minHeight="48dp"
+        android:text="smtp.mail.ru" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Порт SMTP (SSL/TLS)"
-            android:layout_marginTop="8dp"
-            android:textStyle="bold" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Порт SMTP (SSL/TLS)"
+        android:textStyle="bold" />
 
-        <EditText
-            android:id="@+id/editTextSmtpPort"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:inputType="number"
-            android:minHeight="48dp"
-            android:text="465" />
+    <EditText
+        android:id="@+id/editTextSmtpPort"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:inputType="number"
+        android:minHeight="48dp"
+        android:text="465" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Учетные данные"
-            android:layout_marginTop="16dp"
-            android:textStyle="bold"
-            android:textSize="16sp" />
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Учетные данные"
+        android:textSize="16sp"
+        android:textStyle="bold" />
 
-        <EditText
-            android:id="@+id/editTextEmailLogin"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Логин (example@mail.ru)"
-            android:inputType="textEmailAddress" />
+    <EditText
+        android:id="@+id/editTextEmailLogin"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Логин (example@mail.ru)"
+        android:inputType="textEmailAddress" />
 
-        <EditText
-            android:id="@+id/editTextEmailPassword"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:hint="Пароль"
-            android:inputType="textPassword" />
+    <EditText
+        android:id="@+id/editTextEmailPassword"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Пароль"
+        android:inputType="textPassword" />
 
-        <Button
-            android:id="@+id/buttonTestConnection"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:text="Проверить соединение" />
+    <Button
+        android:id="@+id/buttonTestConnection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
+        android:text="Проверить соединение" />
 
-        <Button
-            android:id="@+id/buttonSaveSettings"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="Сохранить" />
+    <Button
+        android:id="@+id/buttonSaveSettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Сохранить" />
 
-    </LinearLayout>
+</LinearLayout>
 
