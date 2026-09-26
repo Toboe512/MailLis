@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.activity;
 
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -144,7 +146,7 @@ public class SettingsActivity extends AppCompatActivity {
         new Thread(() -> {
             boolean imapSuccess = false;
             boolean smtpSuccess = false;
-            String errorMessage = "";
+            String errorMessage = EMPTI_STRING;
 
             // --- ШАГ 1: ТЕСТИРУЕМ ВХОДЯЩУЮ ПОЧТУ (IMAP) ---
             try {
@@ -268,8 +270,8 @@ public class SettingsActivity extends AppCompatActivity {
         editTextSmtpPort.setText(sharedPreferences.getString(KEY_SMTP_PORT, "465"));
 
         // Логин и пароль оставляем пустыми по умолчанию
-        editTextEmailLogin.setText(sharedPreferences.getString(KEY_EMAIL_LOGIN, ""));
-        editTextEmailPassword.setText(sharedPreferences.getString(KEY_EMAIL_PASSWORD, ""));
+        editTextEmailLogin.setText(sharedPreferences.getString(KEY_EMAIL_LOGIN, EMPTI_STRING));
+        editTextEmailPassword.setText(sharedPreferences.getString(KEY_EMAIL_PASSWORD, EMPTI_STRING));
     }
 
 

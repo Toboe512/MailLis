@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://android.com">
+
+    <!-- НОВЫЙ ПУНКТ: Добавить в контакты (по умолчанию скрыт, покажем динамически) -->
+    <item
+        android:id="@+id/action_add_to_contacts"
+        android:title="Добавить в контакты"
+        app:showAsAction="never" />
+
+    <!-- Пункт блокировки -->
+    <item
+        android:id="@+id/action_block_user"
+        android:title="Заблокировать пользователя"
+        app:showAsAction="never" />
+
+    <!-- Пункт удаления всей переписки -->
+    <item
+        android:id="@+id/action_delete_chat"
+        android:title="Удалить чат"
+        app:showAsAction="never" />
+</menu>

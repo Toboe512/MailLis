@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://android.com"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- Панель навигации -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbarBanList"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="#37474F"
+        app:titleTextColor="#FFFFFF"
+        app:title="Чёрный список" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- НОВАЯ КНОПКА: Добавить вручную в бан-лист -->
+        <Button
+            android:id="@+id/buttonAddStubbornSpammer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:backgroundTint="#E53935"
+            android:text="+ Заблокировать по Email"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <!-- Список заблокированных -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewBanList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="16dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

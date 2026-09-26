@@ -1,13 +1,16 @@
 package ru.toboe512.maillis.db;
 
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 
 import android.content.ContentValues;
+import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import ru.toboe512.maillis.dto.ChatPreview;
 import ru.toboe512.maillis.dto.Contact;
@@ -18,13 +21,13 @@ public class DBServiceSQLite implements DBService {
     // Переменные для работы с базой данных
     private final ChatDbHelper dbHelper;
 
-    public DBServiceSQLite(ChatDbHelper dbHelper) {
-        this.dbHelper = dbHelper;
+    public DBServiceSQLite(Context cotext) {
+        this.dbHelper = new ChatDbHelper(cotext);
     }
 
     // Метод чтения истории переписки из SQLite
-    public List<Message> getMessages(long chatId, String myEmail) {
-        List<Message> messageList = new ArrayList<>();
+    public List<Message> getAllMessages(long chatId, String myEmail) {
+        var messageList = new ArrayList<Message>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
 
         // Используем try-with-resources для автоматического закрытия Курсора в любых ситуациях
@@ -39,6 +42,7 @@ public class DBServiceSQLite implements DBService {
                 int timeIndex = cursor.getColumnIndex("timestamp");
                 int uidIndex = cursor.getColumnIndex("server_uid");
                 int subjectIndex = cursor.getColumnIndex("subject");
+                int isMineIndex = cursor.getColumnIndex("is_mine");
 
                 // 2. Безопасная проверка: все ли критически важные колонки существуют в БД
                 if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
@@ -50,11 +54,11 @@ public class DBServiceSQLite implements DBService {
                         long time = cursor.getLong(timeIndex);
 
                         // Необязательные колонки (могут не проверяться в if, но читаются безопасно)
-                        String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : "";
-                        String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : "";
+                        String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
+                        String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
 
-                        // Проверяем, наше ли это сообщение
-                        boolean isMine = myEmail.equalsIgnoreCase(sender != null ? sender.trim() : "");
+                        // ОПТИМИЗАЦИЯ: Больше не сравниваем строки. Берем готовый бит из базы данных!
+                        boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                         // Добавляем готовый объект в список
                         messageList.add(new Message(realId, sender, subject, text, time, isMine, serverUid));
@@ -62,100 +66,157 @@ public class DBServiceSQLite implements DBService {
                     } while (cursor.moveToNext()); // Переходим к следующей строке переписки
                 }
             }
-        } catch (Exception e) {
-            e.printStackTrace(); // Логируем ошибку, если она возникнет
-        } finally {
-            // Гарантированно закрываем подключение к БД
-            if (db != null && db.isOpen()) {
-                db.close();
-            }
         }
 
         return messageList;
     }
 
+    public List<Message> getMessages(long chatId, String myEmail) {
+        return getAllMessages(chatId, myEmail)
+                .stream()
+                .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Моментально возвращает последнее сообщение чата.
+     * Использует SQL-оптимизацию LIMIT 1, чтобы не фризить главный экран.
+     */
     public Message getLastMessages(long chatId) {
-        List<Message> messageList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Message lastMessage = null;
 
-        // Запрос истории сообщений строго для этого конкретного chatId
-        Cursor cursor = db.query("messages", null, "chat_id = ?",
-                new String[]{String.valueOf(chatId)}, null, null, "timestamp ASC");
+        // Запрашиваем строго ОДНУ строку (LIMIT 1), отсортированную от новых к старым (DESC)
+        try (Cursor cursor = db.query(
+                "messages",
+                null,
+                "chat_id = ?",
+                new String[]{String.valueOf(chatId)},
+                null, null,
+                "timestamp DESC",
+                "1" // Ультимативная оптимизация LIMIT 1
+        )) {
 
-        while (cursor.moveToNext()) {
-            int idIndex = cursor.getColumnIndex("id");
-            // ИСПРАВЛЕНИЕ: Считываем реальный ID сообщения из базы данных!
-            int realId = cursor.getInt(idIndex);
-            int senderIndex = cursor.getColumnIndex("sender_email");
-            int textIndex = cursor.getColumnIndex("message_text");
-            int timeIndex = cursor.getColumnIndex("timestamp");
-            int uidIndex = cursor.getColumnIndex("server_uid");
-            int subjectIndex = cursor.getColumnIndex("subject");
-            int senderEmailIndex = cursor.getColumnIndex("sender_email");
+            if (cursor.moveToFirst()) {
+                // Узнаем индексы колонок строго ОДИН РАЗ до начала чтения
+                int idIndex = cursor.getColumnIndex("id");
+                int senderIndex = cursor.getColumnIndex("sender_email");
+                int textIndex = cursor.getColumnIndex("message_text");
+                int timeIndex = cursor.getColumnIndex("timestamp");
+                int uidIndex = cursor.getColumnIndex("server_uid");
+                int subjectIndex = cursor.getColumnIndex("subject");
+                int isMineIndex = cursor.getColumnIndex("is_mine"); // Индекс новой колонки
 
-            if (senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
-                String sender = cursor.getString(senderIndex);
-                String subject = cursor.getString(subjectIndex);
-                String text = cursor.getString(textIndex);
-                long time = cursor.getLong(timeIndex);
-                String serverUid = cursor.getString(uidIndex);
-                String senderEmail = cursor.getString(senderEmailIndex);
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                    int realId = cursor.getInt(idIndex);
+                    String sender = cursor.getString(senderIndex);
+                    String text = cursor.getString(textIndex);
+                    long time = cursor.getLong(timeIndex);
 
-                // Если отправитель — "my@mail.ru", значит сообщение наше (флаг isMine = true)
-                // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Сравниваем с нашим настоящим Email из настроек
-                boolean isMine = senderEmail.equalsIgnoreCase(sender != null ? sender.trim() : "");
+                    String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : "";
+                    String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : "";
 
-                messageList.add(new Message(realId, sender, subject, text, time, isMine, serverUid));
+                    // Считываем готовое значение из БД: если в базе лежит 1, то это true, иначе false
+                    boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
+
+                    // Собираем объект сообщения
+                    lastMessage = new Message(realId, sender, subject, text, time, isMine, serverUid);
+                }
             }
         }
-        cursor.close();
-        db.close();
-
-        return messageList.isEmpty() ? new Message(0, "", "", "", 0L, false, "") : messageList.get(0);
+        // Если чат пустой, возвращаем дефолтный объект во избежание NullPointerException на главном экране
+        return lastMessage != null ? lastMessage : new Message(0, EMPTI_STRING, EMPTI_STRING, "Сообщений нет", 0L, false, EMPTI_STRING);
     }
 
     // Метод сохранения сообщения в локальную таблицу SQLite
-    public int saveMessage(long chatId, String myEmail, String subject, String text, long timestamp) {
+    // 1. Изменяем метод сохранения (ставим статус 0 при создании)
+    public int saveMessage(long chatId, String myEmail, String subject, String text, boolean isMine, long timestamp) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long newId = -1;
 
-        try {
-            ContentValues values = new ContentValues();
-            values.put("chat_id", chatId);
-            values.put("sender_email", myEmail);
-            values.put("message_text", text); // В саму историю сообщений пишем чистый расшифрованный текст
-            values.put("subject", subject);
-            values.put("timestamp", timestamp);
+        ContentValues values = new ContentValues();
+        values.put("chat_id", chatId);
+        values.put("sender_email", myEmail);
+        values.put("message_text", text);
+        values.put("subject", subject);
 
-            newId = db.insert("messages", null, values);
+        values.put("is_mine", isMine ? 1 : 0);
+        values.put("timestamp", timestamp);
+        values.put("is_sent", 0); // 0 = Новое, еще не улетело в сеть
 
-            // Формируем красивый текст для превью на главном экране
-            String previewText = text;
-            if (subject != null) {
-                if (subject.contains("[MailLis-Key-Request]")) {
-                    previewText = "🔑 Запрос безопасного соединения...";
-                } else if (subject.contains("[MailLis-Key-Response]")) {
-                    previewText = "🤝 Безопасное соединение установлено";
+        newId = db.insert("messages", null, values);
+
+        ContentValues chatValues = new ContentValues();
+        chatValues.put("last_message", text);
+        chatValues.put("timestamp", timestamp);
+        db.update("chats", chatValues, "id = ?", new String[]{String.valueOf(chatId)});
+
+        return (int) newId;
+    }
+
+    /**
+     * Находит и возвращает конкретное сообщение из таблицы messages по его уникальному ID.
+     *
+     * @param localMessageId уникальный локальный идентификатор сообщения (id)
+     * @return объект Message с заполненными данными или null, если сообщение не найдено
+     */
+    public Message getMessage(long localMessageId) {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Message message = null;
+
+        // Ищем строго одну строку, где id совпадает с переданным localMessageId
+        try (Cursor cursor = db.query(
+                "messages",
+                null,
+                "id = ?",
+                new String[]{String.valueOf(localMessageId)},
+                null, null, null
+        )) {
+
+            // Проверяем, нашла ли база данных строку
+            if (cursor != null && cursor.moveToFirst()) {
+                // Узнаем индексы колонок строго ОДИН РАЗ (без циклов)
+                int idIndex = cursor.getColumnIndex("id");
+                int senderIndex = cursor.getColumnIndex("sender_email");
+                int textIndex = cursor.getColumnIndex("message_text");
+                int timeIndex = cursor.getColumnIndex("timestamp");
+                int uidIndex = cursor.getColumnIndex("server_uid");
+                int subjectIndex = cursor.getColumnIndex("subject");
+                int isMineIndex = cursor.getColumnIndex("is_mine"); // Считываем новое поле статуса
+
+                // Проверяем существование критически важных колонок
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                    int realId = cursor.getInt(idIndex);
+                    String sender = cursor.getString(senderIndex);
+                    String text = cursor.getString(textIndex);
+                    long time = cursor.getLong(timeIndex);
+
+                    // Безопасное чтение необязательных текстовых колонок
+                    String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
+                    String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
+
+                    // Упрощенное и безопасное считывание бита is_mine напрямую из базы
+                    boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
+
+                    // Создаем объект сообщения
+                    message = new Message(realId, sender, subject, text, time, isMine, serverUid);
                 }
-            }
-
-            // Попутно обновляем последнее сообщение в таблице чатов для главного экрана
-            ContentValues chatValues = new ContentValues();
-            chatValues.put("last_message", previewText); // Пишем красивый текст, а не Base64!
-            chatValues.put("timestamp", timestamp);
-
-            db.update("chats", chatValues, "id = ?", new String[]{String.valueOf(chatId)});
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            // Гарантированно закрываем базу данных, даже если произошел сбой
-            if (db != null && db.isOpen()) {
-                db.close();
             }
         }
 
-        return (int) newId;
+        return message;
+    }
+
+    // 2. ДОБАВЛЯЕМ МЕТОД: Пометка сообщения как успешно отправленного
+    public void markMessageAsSent(int localMessageId, String serverUid) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+
+        ContentValues values = new ContentValues();
+        values.put("is_sent", 1); // Успешно улетело!
+        if (serverUid != null) {
+            values.put("server_uid", serverUid);
+        }
+        db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
     }
 
     // Метод чтения активных чатов из SQLite
@@ -183,15 +244,12 @@ public class DBServiceSQLite implements DBService {
 
                         // 2. БЕЗОПАСНАЯ ПРОВЕРКА НА РУКОПОЖАТИЕ
                         boolean isHandShake = false;
-                        try {
-                            var lastMsg = getLastMessages(id); // Получаем последнее сообщение чата
 
-                            // Проверяем на null: если сообщений нет, то это не handshake, а просто пустой чат
-                            if (lastMsg != null && lastMsg.getSubject() != null) {
-                                isHandShake = !lastMsg.getSubject().contains(MAILLIS_CHAT_MESSAGE);
-                            }
-                        } catch (Exception e) {
-                            e.printStackTrace(); // Защищаем цикл от падения, если в getLastMessages ошибка
+                        var lastMsg = getLastMessages(id); // Получаем последнее сообщение чата
+
+                        // Проверяем на null: если сообщений нет, то это не handshake, а просто пустой чат
+                        if (lastMsg != null && lastMsg.getSubject() != null) {
+                            isHandShake = !lastMsg.getSubject().contains(MAILLIS_CHAT_MESSAGE);
                         }
 
                         // Добавляем чат в список
@@ -200,15 +258,7 @@ public class DBServiceSQLite implements DBService {
                     } while (cursor.moveToNext());
                 }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            // Гарантированно закрываем базу данных в любом случае
-            if (db != null && db.isOpen()) {
-                db.close();
-            }
         }
-
         return chatList;
     }
 
@@ -223,48 +273,38 @@ public class DBServiceSQLite implements DBService {
         values.put("last_message", "Чат создан");
         values.put("timestamp", System.currentTimeMillis());
 
-        long newChatId = db.insert("chats", null, values);
-        db.close();
-        return newChatId;
+        return db.insert("chats", null, values);
     }
 
     public boolean saveSharedSecretKey(String email, byte[] sharedSecretKeyBytes) {
-        if (email == null || sharedSecretKeyBytes == null) return false;
+        if (email == null || sharedSecretKeyBytes == null) {
+            return false;
+        }
 
+        int rowsUpdated;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
-        int rowsUpdated = 0;
 
-        try {
-            String cleanEmail = email.trim();
+        String cleanEmail = email.trim();
 
-            ContentValues values = new ContentValues();
-            values.put("shared_secret", sharedSecretKeyBytes); // Записываем байты напрямую в BLOB колонку
+        ContentValues values = new ContentValues();
+        values.put("shared_secret", sharedSecretKeyBytes); // Записываем байты напрямую в BLOB колонку
 
-            // 1. Сначала пробуем обновить существующий чат
-            rowsUpdated = db.update("chats", values, "recipient_email = ?", new String[]{cleanEmail});
+        // 1. Сначала пробуем обновить существующий чат
+        rowsUpdated = db.update("chats", values, "recipient_email = ?", new String[]{cleanEmail});
 
-            // 2. ИСПРАВЛЕНИЕ: Если rowsUpdated == 0, значит чата с этим человеком еще не было!
-            if (rowsUpdated == 0) {
-                // Создаем новую запись чата, чтобы ключ не потерялся
-                values.put("recipient_email", cleanEmail);
-                values.put("title", cleanEmail); // В качестве имени чата временно ставим его email
-                values.put("type", "PERSONAL");
-                values.put("last_message", "Чат инициализирован (ключ получен)");
-                values.put("timestamp", System.currentTimeMillis());
+        // 2. ИСПРАВЛЕНИЕ: Если rowsUpdated == 0, значит чата с этим человеком еще не было!
+        if (rowsUpdated == 0) {
+            // Создаем новую запись чата, чтобы ключ не потерялся
+            values.put("recipient_email", cleanEmail);
+            values.put("title", cleanEmail); // В качестве имени чата временно ставим его email
+            values.put("type", "PERSONAL");
+            values.put("last_message", "Чат инициализирован (ключ получен)");
+            values.put("timestamp", System.currentTimeMillis());
 
-                long insertedId = db.insert("chats", null, values);
+            long insertedId = db.insert("chats", null, values);
 
-                // Если вставка прошла успешно, возвращаем true
-                return insertedId != -1;
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            // Обязательно закрываем базу данных в блоке finally
-            if (db != null && db.isOpen()) {
-                db.close();
-            }
+            // Если вставка прошла успешно, возвращаем true
+            return insertedId != -1;
         }
 
         // Если обновилась хотя бы одна строка, вернет true
@@ -274,63 +314,59 @@ public class DBServiceSQLite implements DBService {
     // Метод нативного чтения строк из таблицы SQLite
     public List<Contact> getContacts() {
         List<Contact> contactList = new ArrayList<>();
-        try (SQLiteDatabase db = dbHelper.getReadableDatabase()) {
 
-            // Запрос всех колонок из таблицы contacts
-            Cursor cursor = db.query("contacts", null, null, null, null, null, "name ASC");
+        // НЕ закрываем саму базу данных (db.close()), так как это ломает пул соединений приложения,
+        // но ОБЯЗАТЕЛЬНО оборачиваем Cursor в try-with-resources для автоматического закрытия!
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
 
-            while (cursor.moveToNext()) {
-                // Получаем индексы колонок по их именам
+        // Запрос всех колонок из таблицы contacts
+        try (// Вместо полной выборки делаем выборку с фильтрацией через inner/sub-запрос:
+             Cursor cursor = db.rawQuery(
+                     "SELECT * FROM contacts WHERE email NOT IN (SELECT email FROM ban_list) ORDER BY name ASC",
+                     null
+             )) {
+
+            if (cursor.moveToFirst()) {
+                // 1. ОПТИМИЗАЦИЯ: Узнаем индексы колонок строго ОДИН РАЗ до начала цикла
                 int idIndex = cursor.getColumnIndex("id");
                 int nameIndex = cursor.getColumnIndex("name");
                 int emailIndex = cursor.getColumnIndex("email");
 
-                // Считываем значения типов данных
+                // 2. Проверяем, что все необходимые колонки физически существуют в таблице
                 if (idIndex >= 0 && nameIndex >= 0 && emailIndex >= 0) {
-                    int id = cursor.getInt(idIndex);
-                    String name = cursor.getString(nameIndex);
-                    String email = cursor.getString(emailIndex);
+                    do {
+                        // Считываем значения из текущей строки
+                        int id = cursor.getInt(idIndex);
+                        String name = cursor.getString(nameIndex);
+                        String email = cursor.getString(emailIndex);
 
-                    // Добавляем объект в наш массив списка
-                    contactList.add(new Contact(id, name, email));
+                        // Добавляем готовый объект в наш список
+                        contactList.add(new Contact(id, name, email));
+
+                    } while (cursor.moveToNext()); // Переходим к следующему контакту
                 }
             }
-            cursor.close(); // Обязательно закрываем курсор
-        } catch (Exception e) {
-            e.printStackTrace();
         }
-
         return contactList;
     }
 
+
     // Нативное удаление строки из SQLite по ее ID
     public int deleteContact(int contactId) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-
         // Запрос удаления: DELETE FROM contacts WHERE id = contactId
-        int rowsDeleted = db.delete("contacts", "id = ?", new String[]{String.valueOf(contactId)});
-        db.close();
-
-        return rowsDeleted;
+        return dbHelper.getWritableDatabase().delete("contacts", "id = ?", new String[]{String.valueOf(contactId)});
     }
 
     public int deleteContact(String email) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-
         // Запрос удаления: DELETE FROM contacts WHERE email = email
-        int rowsDeleted = db.delete("contacts", "email = ?", new String[]{String.valueOf(email)});
-        db.close();
-
-        return rowsDeleted;
-    }
-
-    public ChatDbHelper getDbHelper() {
-        return dbHelper;
+        return dbHelper.getWritableDatabase().delete("contacts", "email = ?", new String[]{String.valueOf(email)});
     }
 
     @Override
     public long getChatIdByRecipientEmail(String email) {
-        if (email == null) return -1;
+        if (email == null) {
+            return -1;
+        }
 
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         long id = -1;
@@ -347,10 +383,6 @@ public class DBServiceSQLite implements DBService {
                     id = cursor.getLong(idIndex);
                 }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            db.close(); // Обязательно закрываем базу данных
         }
 
         return id;
@@ -358,17 +390,16 @@ public class DBServiceSQLite implements DBService {
 
     @Override
     public int deleteMassage(int msdId) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        int rowsDeleted = db.delete("messages", "id = ?", new String[]{String.valueOf(msdId)});
-        db.close();
-        return rowsDeleted;
+        return dbHelper.getWritableDatabase().delete("messages", "id = ?", new String[]{String.valueOf(msdId)});
     }
 
     @Override
     public boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp, String serverUid) {
         boolean hasNewData = false;
-        try (SQLiteDatabase db = dbHelper.getWritableDatabase()) {
-            Cursor c = db.rawQuery("SELECT id FROM messages WHERE server_uid = ?", new String[]{serverUid});
+
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        try (Cursor c = db.rawQuery("SELECT id FROM messages WHERE server_uid = ?", new String[]{serverUid})) {
+
             if (c.getCount() == 0) {
                 ContentValues values = new ContentValues();
                 values.put("chat_id", chatId);
@@ -381,41 +412,33 @@ public class DBServiceSQLite implements DBService {
 
                 hasNewData = true;
             }
-            c.close();
-        } catch (Exception e) {
-            e.printStackTrace();
         }
-
         return hasNewData;
     }
 
     @Override
     public void updateServerUid(String generatedServerUid, int localMessageId) {
         if (generatedServerUid != null) {
-            try (SQLiteDatabase db = dbHelper.getWritableDatabase();) {
-                ContentValues values = new ContentValues();
-                values.put("server_uid", generatedServerUid);
-                db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            SQLiteDatabase db = dbHelper.getWritableDatabase();
+            var values = new ContentValues();
+            values.put("server_uid", generatedServerUid);
+            db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
         }
     }
 
     @Override
     public String getRecipientEmailByChatId(long chatId) {
 
-        String recipientEmail = "";
-        // БЕЗОПАСНЫЙ И ТОЧНЫЙ ПОИСК ПОЛУЧАТЕЛЯ ИЗ ТАБЛИЦЫ ЧАТОВ
+        String recipientEmail = EMPTI_STRING;
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
         // Используем try-with-resources — Java-аналог метода .use из Kotlin
-        try (SQLiteDatabase db = dbHelper.getReadableDatabase();
-             Cursor cursor = db.query(
-                     "chats",
-                     new String[]{"recipient_email"},
-                     "id = ?",
-                     new String[]{String.valueOf(chatId)},
-                     null, null, null
-             )) {
+        try (Cursor cursor = db.query(
+                "chats",
+                new String[]{"recipient_email"},
+                "id = ?",
+                new String[]{String.valueOf(chatId)},
+                null, null, null
+        )) {
 
             if (cursor.moveToFirst()) {
                 int emailIdx = cursor.getColumnIndex("recipient_email");
@@ -423,9 +446,6 @@ public class DBServiceSQLite implements DBService {
                     recipientEmail = cursor.getString(emailIdx);
                 }
             }
-        } catch (Exception e) {
-            //TODO добавить проброс ошибки и логирование
-            e.printStackTrace();
         }
         return recipientEmail;
     }
@@ -433,13 +453,13 @@ public class DBServiceSQLite implements DBService {
     @Override
     public byte[] getSharedSecret(long chatId) {
         byte[] publicKey = null;
-        try (SQLiteDatabase db = dbHelper.getReadableDatabase();
-             Cursor cursor = db.query(
-                     "chats",
-                     new String[]{"shared_secret"},
-                     "id = ?",
-                     new String[]{String.valueOf(chatId)},
-                     null, null, null)) {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        try (Cursor cursor = db.query(
+                "chats",
+                new String[]{"shared_secret"},
+                "id = ?",
+                new String[]{String.valueOf(chatId)},
+                null, null, null)) {
 
             // Так как ID уникален, проверяем строго ОДНУ первую запись
             if (cursor.moveToFirst()) {
@@ -452,9 +472,193 @@ public class DBServiceSQLite implements DBService {
                 }
             }
 
-        } catch (Exception e) {
-            e.printStackTrace(); // Логируем ошибку, если она возникнет
         }
         return publicKey;
     }
+
+    public List<Message> getUnsentMessages() {
+        List<Message> unsentList = new ArrayList<>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+
+        // Делаем выборку строк, где is_sent равен 0 (сообщения, ожидающие отправки)
+        try (Cursor cursor = db.query(
+                "messages",
+                null,
+                "is_sent = ?",
+                new String[]{"0"},
+                null, null,
+                "timestamp ASC" // Сортируем от старых к новым, чтобы соблюдать хронологию чата
+        )) {
+
+            if (cursor.moveToFirst()) {
+                // Узнаем индексы колонок строго ОДИН РАЗ до начала цикла (для максимальной скорости)
+                int idIndex = cursor.getColumnIndex("id");
+                int chatIdIndex = cursor.getColumnIndex("chat_id");
+                int senderIndex = cursor.getColumnIndex("sender_email");
+                int textIndex = cursor.getColumnIndex("message_text");
+                int timeIndex = cursor.getColumnIndex("timestamp");
+                int subjectIndex = cursor.getColumnIndex("subject");
+                int uidIndex = cursor.getColumnIndex("server_uid");
+
+                // Проверяем, что все критически важные колонки существуют в таблице messages
+                if (idIndex >= 0 && chatIdIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                    do {
+                        int realId = cursor.getInt(idIndex);
+                        int chatId = cursor.getInt(chatIdIndex); //TODO ???
+                        String sender = cursor.getString(senderIndex);
+                        String text = cursor.getString(textIndex);
+                        long time = cursor.getLong(timeIndex);
+
+                        String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
+                        String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
+
+                        // Для очереди ретрая флаг isMine всегда true, так как это наши исходящие неотправленные письма
+                        boolean isMine = true;
+
+                        // Создаем объект сообщения и добавляем в список на переотправку
+                        Message message = new Message(realId, sender, subject, text, time, isMine, serverUid);
+
+                        // ХАК ДЛЯ УДОБСТВА: сохраним локальный chatId внутрь объекта (например, в поле subject или через кастомный метод),
+                        // либо, если ваша модель Message не хранит chatId, мы передадим его ниже.
+                        // Если в вашем конструкторе Message нет chatId, временно используем существующие поля.
+                        unsentList.add(message);
+
+                    } while (cursor.moveToNext());
+                }
+            }
+        }
+        return unsentList;
+    }
+
+    public int getChatIdByMessageId(int messageId) {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        int chatId = -1;
+
+        // Запрашиваем только колонку chat_id для строки с указанным id
+        try (Cursor cursor = db.query(
+                "messages",
+                new String[]{"chat_id"},
+                "id = ?",
+                new String[]{String.valueOf(messageId)},
+                null, null, null
+        )) {
+
+            // Так как id уникален, проверяем строго одну первую запись
+            if (cursor.moveToFirst()) {
+                int chatIdIndex = cursor.getColumnIndex("chat_id");
+                if (chatIdIndex >= 0) {
+                    chatId = cursor.getInt(chatIdIndex);
+                }
+            }
+        }
+        return chatId;
+    }
+
+    // 1. Добавить пользователя в бан-лист
+    public boolean banUser(String email) {
+        if (email == null || email.isEmpty()) return false;
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        long id = -1;
+        try {
+            ContentValues values = new ContentValues();
+            values.put("email", email.trim().toLowerCase());
+            values.put("timestamp", System.currentTimeMillis());
+
+            // insertWithOnConflict защитит от дубликатов, если пользователя случайно забанят дважды
+            id = db.insertWithOnConflict("ban_list", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+
+            // Опционально: при бане можно сразу пометить чат с ним как заблокированный или удалить его
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return id != -1;
+    }
+
+    // 2. Удалить пользователя из бан-листа (разбанить)
+    public boolean unbanUser(String email) {
+        if (email == null || email.isEmpty()) return false;
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        int rows = 0;
+        try {
+            rows = db.delete("ban_list", "email = ?", new String[]{email.trim().toLowerCase()});
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return rows > 0;
+    }
+
+    // 3. КРИТИЧЕСКИЙ МЕТОД: Проверка, находится ли пользователь в бане
+    public boolean isUserBanned(String email) {
+        if (email == null || email.isEmpty()) return false;
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        boolean isBanned = false;
+
+        try (Cursor cursor = db.query(
+                "ban_list",
+                new String[]{"id"},
+                "email = ?",
+                new String[]{email.trim().toLowerCase()},
+                null, null, null)) {
+
+            // Если база нашла хотя бы одну строку — пользователь заблокирован
+            isBanned = cursor.moveToFirst();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return isBanned;
+    }
+
+    public List<String> getBannedUsers() {
+        List<String> bannedList = new ArrayList<>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+
+        // Запрашиваем только колонку email из таблицы ban_list, сортируем по времени блокировки (сначала свежие)
+        try (Cursor cursor = db.query("ban_list", new String[]{"email"}, null, null, null, null, "timestamp DESC")) {
+            if (cursor.moveToFirst()) {
+                int emailIndex = cursor.getColumnIndex("email");
+                if (emailIndex >= 0) {
+                    do {
+                        String email = cursor.getString(emailIndex);
+                        if (email != null) {
+                            bannedList.add(email);
+                        }
+                    } while (cursor.moveToNext());
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return bannedList;
+    }
+
+    /**
+     * Полностью удаляет чат и всю историю сообщений из базы данных SQLite.
+     *
+     * @param chatId идентификатор удаляемого чата
+     * @return true, если удаление прошло успешно
+     */
+    public boolean deleteChatAndMessages(long chatId) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean success = false;
+
+        // Запускаем транзакцию, чтобы оба удаления выполнились атомарно (вместе)
+        db.beginTransaction();
+        try {
+            // 1. Стираем все сообщения, привязанные к этому чату
+            db.delete("messages", "chat_id = ?", new String[]{String.valueOf(chatId)});
+
+            // 2. Стираем сам чат из таблицы chats
+            int rows = db.delete("chats", "id = ?", new String[]{String.valueOf(chatId)});
+
+            db.setTransactionSuccessful();
+            success = rows > 0;
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            db.endTransaction();
+        }
+
+        return success;
+    }
+
 }

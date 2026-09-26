@@ -1,7 +1,9 @@
 package ru.toboe512.maillis.activity;
 
 
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
+import static ru.toboe512.maillis.consts.Consts.UPDATE_INTERVAL_MS;
 
 import android.content.Context;
 import android.content.Intent;
@@ -9,6 +11,7 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.MenuItem;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -55,23 +58,18 @@ public class ChatActivity extends AppCompatActivity {
 
     // Переменные для работы с базой данных
     private DBService dbService;
-    // Переменные для работы с базой данных
-    private ChatDbHelper dbHelper;
     private int chatId = 1; // ID текущего чата по умолчанию (для тестов)
 
     //клиент
     private EmailClient emailClient;
 
-    private String recipientEmail = "";
-    private String myEmail = ""; // Наш реальный Email из настроек
+    private String recipientEmail = EMPTI_STRING;
+    private String myEmail = EMPTI_STRING; // Наш реальный Email из настроек
 
     // ТАЙМЕР ДЛЯ АВТООБНОВЛЕНИЯ ЧАТА
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
     private Runnable updateRunnable;
 
-    private CryptoService cryptoService;
-
-    private static final int UPDATE_INTERVAL_MS = 3000; // Интервал опроса сервера — 20 секунд
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -105,10 +103,9 @@ public class ChatActivity extends AppCompatActivity {
             }
         }
 
-        dbHelper = new ChatDbHelper(this);
-        dbService = new DBServiceSQLite(dbHelper);
-        cryptoService = new CryptoServiceImpl(ChatActivity.this);
-        emailClient = new EmailClientImpl(dbHelper, dbService, cryptoService);
+
+        dbService = new DBServiceSQLite(this);
+        emailClient = new EmailClientImpl(dbService, this);
 
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
 
@@ -134,10 +131,7 @@ public class ChatActivity extends AppCompatActivity {
                         List<Message> messages = emailClient.fetchIncomingHandshakeOverNetwork(ChatActivity.this, prefs);
 
                         // Мы ВСЕГДА проверяем локальную базу данных после завершения сети!
-                        freshlyLoadedMessages = dbService.getMessages(chatId, myEmail)
-                                .stream()
-                                .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
-                                .collect(Collectors.toList());
+                        freshlyLoadedMessages = dbService.getMessages(chatId, myEmail);
 
                         // 3. Переключаемся на главный поток для отрисовки
                         runOnUiThread(() -> {
@@ -149,7 +143,7 @@ public class ChatActivity extends AppCompatActivity {
                                     messagesAdapter.notifyDataSetChanged();
                                     scrollToBottomIfNeeded(); // Плавно скроллим вниз к новому письму
 
-                                    android.util.Log.d("MailLis_Live", "Обнаружены новые сообщения! Экран перерисован.");
+                                    Log.d("MailLis_Live", "Обнаружены новые сообщения! Экран перерисован.");
                                 }
                             }
                         });
@@ -166,9 +160,7 @@ public class ChatActivity extends AppCompatActivity {
 
         // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
         messageList.clear();
-        messageList.addAll(dbService.getMessages(chatId, myEmail).stream()
-                .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
-                .collect(Collectors.toList()));// Перечитываем базу для синхронизации ID
+        messageList.addAll(dbService.getMessages(chatId, myEmail));// Перечитываем базу для синхронизации ID
         // Перерисовываем список
         messagesAdapter.notifyDataSetChanged();
 
@@ -180,18 +172,18 @@ public class ChatActivity extends AppCompatActivity {
                 long currentTimestamp = System.currentTimeMillis();
 
                 // 1. Сохраняем сообщение локально в SQLite базу данных
-                int generatedId = dbService.saveMessage(chatId, myEmail, MAILLIS_CHAT_MESSAGE, text, currentTimestamp);
+                int generatedId = dbService.saveMessage(chatId, myEmail, MAILLIS_CHAT_MESSAGE, text, true, currentTimestamp);
                 String senderEmail = myEmail;
 
                 // 2. Отображаем сообщение на экране
                 ru.toboe512.maillis.dto.Message message = new ru.toboe512.maillis.dto.Message(
                         generatedId,
                         senderEmail,
-                        "",
+                        EMPTI_STRING,
                         text,
                         currentTimestamp,
                         true,
-                        ""
+                        EMPTI_STRING
                 );
                 messageList.add(message);
 
@@ -199,13 +191,11 @@ public class ChatActivity extends AppCompatActivity {
                 messagesAdapter.notifyItemInserted(messageList.size() - 1);
 
                 recyclerView.scrollToPosition(messageList.size() - 1);
-                String sendTxt = "";
+                String sendTxt;
                 try {
                     byte[] sharedSecret = dbService.getSharedSecret(chatId);
-                    sendTxt = sharedSecret != null ? cryptoService.encode(text, sharedSecret) : text;
-                } catch (GeneralSecurityException e) {
-                    throw new RuntimeException(e);
-                } catch (IOException e) {
+                    sendTxt = sharedSecret != null ? emailClient.getCryptoService().encode(text, sharedSecret) : text;
+                } catch (GeneralSecurityException | IOException e) {
                     throw new RuntimeException(e);
                 }
 
@@ -214,15 +204,14 @@ public class ChatActivity extends AppCompatActivity {
                         generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
 
                             @Override
-                            public void onSynchronized(List<Message> updatedMessages) {
+                            public void onSynchronized(Message updatedMessages) {
                                 // Код выполнится в Главном Потоке автоматически!
                                 // Перечитываем обновленную историю из базы данных (где уже прописан server_uid)
-                                messageList.clear();
-                                List<Message> messages = updatedMessages.stream()
-                                        .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
-                                        .collect(Collectors.toList());
-                                messageList.addAll(messages);
-                                messagesAdapter.notifyDataSetChanged();
+                               // messageList.clear();
+                            if (updatedMessages != null) {
+                                messageList.add(message);
+                            }
+                             //   messagesAdapter.notifyDataSetChanged();
                                 scrollToBottomIfNeeded(); // плавно скроллим вниз
                             }
 
@@ -244,6 +233,22 @@ public class ChatActivity extends AppCompatActivity {
             finish();
             return true;
         }
+
+        int id = item.getItemId();
+
+        if (id == R.id.action_block_user) {
+            showBlockUserDialog(); // Показываем окно бана
+            return true;
+        }
+
+        if (id == R.id.action_delete_chat) {
+            showDeleteChatDialog(); // Показываем окно удаления
+            return true;
+        }
+
+
+
+
         return super.onOptionsItemSelected(item);
     }
 
@@ -252,9 +257,7 @@ public class ChatActivity extends AppCompatActivity {
         super.onResume();
         // 1. Сразу загружаем историю из локальной SQLite
         messageList.clear();
-        messageList.addAll(dbService.getMessages(chatId, myEmail).stream()
-                .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
-                .collect(Collectors.toList()));// Перечитываем базу для синхронизации ID
+        messageList.addAll(dbService.getMessages(chatId, myEmail));// Перечитываем базу для синхронизации ID
         // Перерисовываем список
         messagesAdapter.notifyDataSetChanged();
         // 2. Включаем автоопрос почтового сервера Mail.ru
@@ -285,6 +288,81 @@ public class ChatActivity extends AppCompatActivity {
                 recyclerView.smoothScrollToPosition(messageList.size() - 1);
             }
         }
+    }
+
+    private void showBanUserDialog() {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Блокировка пользователя")
+                .setMessage("Вы уверены, что хотите заблокировать " + recipientEmail + "? Вы больше не будете получать сообщения от него.")
+                .setPositiveButton("Заблокировать", (dialog, which) -> {
+                    new Thread(() -> {
+                        // 1. Добавляем email в бан-лист
+                        dbService.banUser(recipientEmail);
+
+                        runOnUiThread(() -> {
+                            Toast.makeText(this, "Пользователь заблокирован", Toast.LENGTH_SHORT).show();
+                            finish(); // Закрываем экран чата и выходим назад
+                        });
+                    }).start();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(android.view.Menu menu) {
+        // Надуваем созданное XML-меню чата в Toolbar
+        getMenuInflater().inflate(R.menu.menu_chat, menu);
+        return true;
+    }
+
+    // --- ДИАЛОГ 1: БЛОКИРОВКА ПОЛЬЗОВАТЕЛЯ ---
+    private void showBlockUserDialog() {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Блокировка")
+                .setMessage("Вы уверены, что хотите заблокировать " + recipientEmail + "? Письма от него будут автоматически уничтожаться.")
+                .setCancelable(true)
+                .setPositiveButton("Заблокировать", (dialog, which) -> {
+                    new Thread(() -> {
+                        // 1. Вносим email в таблицу ban_list (метод, который мы написали ранее)
+                        dbService.banUser(recipientEmail);
+
+                        // 2. Логично также сразу удалить переписку с ним
+                        dbService.deleteChatAndMessages(chatId);
+
+                        runOnUiThread(() -> {
+                            Toast.makeText(this, "Пользователь добавлен в чёрный список", Toast.LENGTH_SHORT).show();
+                            finish(); // Закрываем экран чата и возвращаемся на главный экран
+                        });
+                    }).start();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
+    }
+
+    // --- ДИАЛОГ 2: УДАЛЕНИЕ ЧАТА ---
+    private void showDeleteChatDialog() {
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Удаление чата")
+                .setMessage("Вы действительно хотите удалить этот чат и всю историю сообщений? Отменить это действие будет нельзя.")
+                .setCancelable(true)
+                .setPositiveButton("Удалить", (dialog, which) -> {
+                    new Thread(() -> {
+                        // Удаляем данные из SQLite
+                        boolean isDeleted = dbService.deleteChatAndMessages(chatId);
+
+                        runOnUiThread(() -> {
+                            if (isDeleted) {
+                                Toast.makeText(this, "Чат успешно удален", Toast.LENGTH_SHORT).show();
+                                finish(); // Закрываем экран и возвращаемся в список чатов
+                            } else {
+                                Toast.makeText(this, "Не удалось удалить чат", Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    }).start();
+                })
+                .setNegativeButton("Отмена", null)
+                .show();
     }
 
 }

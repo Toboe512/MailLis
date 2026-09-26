@@ -15,6 +15,12 @@
         android:title="Контакты"
         app:showAsAction="never" />
 
+    <!-- ИСПРАВЛЕНИЕ: Добавляем Чёрный список в выпадающее меню -->
+    <item
+        android:id="@+id/action_ban_list"
+        android:title="Чёрный список"
+        app:showAsAction="never" />
+
     <!-- Кнопка «Настройки» -->
     <item
         android:id="@+id/action_settings"

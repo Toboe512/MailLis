@@ -36,6 +36,10 @@
             android:name=".activity.ContactsActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+        <activity
+            android:name=".activity.BanListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
     </application>
     <!-- КРИТИЧЕСКИ ВАЖНО: Разрешаем приложению выходить в интернет для связи с серверами Mail.ru -->

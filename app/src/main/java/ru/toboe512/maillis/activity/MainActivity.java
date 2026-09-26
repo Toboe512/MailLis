@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.activity;
 
+import static ru.toboe512.maillis.consts.Consts.UPDATE_INTERVAL_MS;
+
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -40,28 +42,19 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
 
     //клиент
     private EmailClient emailClient;
-
-    private ChatDbHelper dbHelper;
     private Runnable updateRunnable;
 
-    private CryptoService cryptoService;
-
     private final Handler updateHandler = new Handler(Looper.getMainLooper());
-
-    private static final int UPDATE_INTERVAL_MS = 3000; // Интервал опроса сервера — 20 секунд
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        dbHelper = new ChatDbHelper(this);
-        dbService = new DBServiceSQLite(dbHelper);
+        dbService = new DBServiceSQLite(this);
         chatList = new ArrayList<>();
 
         chatsAdapter = new ChatsAdapter(this, chatList);
-
-        cryptoService = new CryptoServiceImpl(MainActivity.this);
-        emailClient = new EmailClientImpl(dbHelper, dbService, cryptoService);
+        emailClient = new EmailClientImpl(dbService, this);
 
         // Настраиваем RecyclerView для списка чатов
         recyclerViewChats = findViewById(R.id.recyclerViewChats);
@@ -80,6 +73,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
                     try {
                         // Опрашиваем сервер в фоне — интерфейс теперь полностью свободен
                         var messages = emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs);
+                        emailClient.retryUnsentMessages(prefs);
                         if (!messages.isEmpty()) {
                             // Если во время рукопожатия база обновилась, обновляем UI список чатов на главном потоке
                             new Handler(Looper.getMainLooper()).post(() -> {
@@ -181,6 +175,13 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
             return true;
         }
 
+        // 2. ИСПРАВЛЕНИЕ: Переход на экран Чёрного списка (бан-листа)
+        if (id == R.id.action_ban_list) {
+            Intent intent = new Intent(MainActivity.this, ru.toboe512.maillis.activity.BanListActivity.class);
+            startActivity(intent);
+            return true;
+        }
+
         // Ваши старые обработки (настройки и т.д.)
         if (id == R.id.action_settings) {
             startActivity(new Intent(MainActivity.this, SettingsActivity.class));
@@ -189,5 +190,4 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
 
         return super.onOptionsItemSelected(item);
     }
-
 }

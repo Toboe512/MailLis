@@ -42,7 +42,7 @@ public class ContactsActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v -> finish());
 
         // 2. Инициализируем сервисы работы с базой
-        dbService = new DBServiceSQLite(new ChatDbHelper(this));
+        dbService = new DBServiceSQLite(this);
         contactList = new ArrayList<>();
 
         // 3. Настраиваем RecyclerView
@@ -50,40 +50,66 @@ public class ContactsActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         // Инициализируем адаптер с колбэком удаления
-        adapter = new ManageContactsAdapter(contactList, (contact, position) -> {
-            // МЕТОД УДАЛЕНИЯ: Срабатывает при клике на крестик
-            // Создаем диалоговое окно подтверждения
-            new androidx.appcompat.app.AlertDialog.Builder(ContactsActivity.this)
-                    .setTitle("Удаление контакта")
-                    .setMessage("Вы действительно хотите удалить контакт " + contact.getEmail() + "?")
-                    .setCancelable(true) // Позволяет закрыть окно, кликнув мимо него
+        adapter = new ManageContactsAdapter(
+                contactList, // АРГУМЕНТ 1: Список данных
 
-                    // Если пользователь нажал "Да" — запускаем фоновый поток удаления
-                    .setPositiveButton("Удалить", (dialog, which) -> {
-                        new Thread(() -> {
-                            // Удаляем строку из SQLite
-                            boolean isDeleted = dbService.deleteContact(contact.getEmail()) > 0;
+                // АРГУМЕНТ 2: Лямбда для кнопки удаления (красный крестик)
+                (contact, position) -> {
+                    new androidx.appcompat.app.AlertDialog.Builder(ContactsActivity.this)
+                            .setTitle("Удаление контакта")
+                            .setMessage("Вы действительно хотите удалить контакт " + contact.getEmail() + "?")
+                            .setPositiveButton("Удалить", (dialog, which) -> {
+                                new Thread(() -> {
+                                    boolean isDeleted = dbService.deleteContact(contact.getEmail()) > 0;
+                                    runOnUiThread(() -> {
+                                        if (isDeleted) {
+                                            contactList.remove(position);
+                                            adapter.notifyItemRemoved(position);
+                                            adapter.notifyItemRangeChanged(position, contactList.size());
+                                        }
+                                    });
+                                }).start();
+                            })
+                            .setNegativeButton("Отмена", null)
+                            .show();
+                },
 
-                            runOnUiThread(() -> {
-                                if (isDeleted) {
-                                    contactList.remove(position);
-                                    // Обновляем конкретную позицию с плавной анимацией
-                                    adapter.notifyItemRemoved(position);
-                                    // Уведомляем адаптер об изменении индексов оставшихся элементов
-                                    adapter.notifyItemRangeChanged(position, contactList.size());
+                // АРГУМЕНТ 3: Лямбда для кнопки БАНА (серый замок). ПРОВЕРЬТЕ НАЛИЧИЕ ЭТОГО БЛОКА!
+                (contact, position) -> {
+                    android.util.Log.d("MailLis_Click", "Ура, клик по кнопке бана сработал для: " + contact.getEmail());
 
-                                    Toast.makeText(ContactsActivity.this, "Контакт успешно удален", Toast.LENGTH_SHORT).show();
-                                } else {
-                                    Toast.makeText(ContactsActivity.this, "Не удалось удалить контакт из базы", Toast.LENGTH_SHORT).show();
-                                }
-                            });
-                        }).start();
-                    })
+                    new androidx.appcompat.app.AlertDialog.Builder(ContactsActivity.this)
+                            .setTitle("Блокировка контакта")
+                            .setMessage("Вы уверены, что хотите заблокировать " + contact.getEmail() + "? Его сообщения будут автоматически уничтожаться, а сам он переместится в Чёрный список.")
+                            .setCancelable(true)
+                            .setPositiveButton("Заблокировать", (dialog, which) -> {
+                                new Thread(() -> {
+                                    // 1. Добавляем пользователя в таблицу ban_list в SQLite
+                                    boolean isBanned = dbService.banUser(contact.getEmail());
 
-                    // Если пользователь нажал "Отмена" — просто закрываем окно, ничего не удаляя
-                    .setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss())
-                    .show(); // Принудительно отображаем диалог на экране
-        });
+                                    // 2. Сразу находим чат с ним по email и удаляем всю историю
+                                    long associatedChatId = dbService.getChatIdByRecipientEmail(contact.getEmail());
+                                    if (associatedChatId > 0) {
+                                        dbService.deleteChatAndMessages(associatedChatId);
+                                    }
+
+                                    runOnUiThread(() -> {
+                                        if (isBanned) {
+                                            contactList.remove(position);
+                                            adapter.notifyItemRemoved(position);
+                                            adapter.notifyItemRangeChanged(position, contactList.size());
+                                            Toast.makeText(ContactsActivity.this, "Контакт заблокирован", Toast.LENGTH_SHORT).show();
+                                        } else {
+                                            Toast.makeText(ContactsActivity.this, "Ошибка при блокировке", Toast.LENGTH_SHORT).show();
+                                        }
+                                    });
+                                }).start();
+                            })
+                            .setNegativeButton("Отмена", null)
+                            .show();
+                } // Конец третьего аргумента
+        );
+
         recyclerView.setAdapter(adapter);
 
         // 4. Кнопка перехода на экран создания (AddContactActivity)

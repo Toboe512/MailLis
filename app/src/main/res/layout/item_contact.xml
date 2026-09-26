@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="horizontal"
@@ -18,6 +19,17 @@
         android:textSize="16sp"
         android:textColor="#212121" />
 
+    <!-- НОВАЯ КНОПКА: Заблокировать пользователя (серый щит/запрет) -->
+    <ImageButton
+        android:id="@+id/imageButtonBanContact"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@android:drawable/ic_lock_lock"
+        android:contentDescription="Заблокировать"
+        android:layout_marginEnd="8dp"
+        app:tint="#78909C" />
+
     <!-- Кнопка удаления контакта (красный крестик) -->
     <ImageButton
         android:id="@+id/imageButtonDeleteContact"
@@ -26,6 +38,6 @@
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@android:drawable/ic_menu_close_clear_cancel"
         android:contentDescription="Удалить"
-        android:tint="#F44336" />
+        app:tint="#F44336" />
 
 </LinearLayout>

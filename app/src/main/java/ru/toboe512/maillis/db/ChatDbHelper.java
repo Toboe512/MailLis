@@ -9,7 +9,7 @@ public class ChatDbHelper extends SQLiteOpenHelper {
 
     // Имя файла базы данных на устройстве и версия
     private static final String DATABASE_NAME = "MailLisChat.db";
-    private static final int DATABASE_VERSION = 8;
+    private static final int DATABASE_VERSION = 11;
 
     // Конструктор
     public ChatDbHelper(Context context) {
@@ -24,7 +24,8 @@ public class ChatDbHelper extends SQLiteOpenHelper {
         // 1. Таблица контактов
         db.execSQL("CREATE TABLE contacts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT UNIQUE);");
         // 2. Таблица чатов (личные и групповые)
-        db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, type TEXT, recipient_email TEXT, last_message TEXT, timestamp INTEGER, shared_secret BLOB);");
+        db.execSQL("CREATE TABLE chats (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, type TEXT, " +
+                "recipient_email TEXT, last_message TEXT, timestamp INTEGER, shared_secret BLOB);");
 
         // 3. Таблица сообщений (связана с таблицей чатов)
         // ОБНОВЛЕНО: Добавлена колонка server_uid с флагом UNIQUE
@@ -32,10 +33,18 @@ public class ChatDbHelper extends SQLiteOpenHelper {
                 "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
                 "chat_id INTEGER, " +
                 "sender_email TEXT, " +
-                "subject TEXT, " +
                 "message_text TEXT, " +
+                "subject TEXT, " +
                 "timestamp INTEGER, " +
-                "server_uid TEXT UNIQUE" + // Уникальный ID письма с сервера
+                "server_uid TEXT UNIQUE," + // Уникальный ID письма с сервера
+                "is_sent INTEGER DEFAULT 1," + // 1 = Отправлено, 0 = Ожидает отправки (сеть упала)
+                "is_mine INTEGER DEFAULT 0" + // ВОТ ЭТА КОЛОНКА: 1 = моё, 0 = чужое
+                ");");
+
+        db.execSQL("CREATE TABLE ban_list (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                "email TEXT UNIQUE, " + // Email забаненного пользователя (должен быть уникальным)
+                "timestamp INTEGER" +  // Время блокировки
                 ");");
     }
 

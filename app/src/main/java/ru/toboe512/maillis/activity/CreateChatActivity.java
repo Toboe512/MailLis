@@ -19,8 +19,6 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import java.io.IOException;
-import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,7 +28,6 @@ import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.crypto.CryptoService;
 import ru.toboe512.maillis.crypto.CryptoServiceImpl;
-import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;
@@ -40,13 +37,9 @@ public class CreateChatActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private ContactsAdapter adapter;
     private List<Contact> contactList;
-    private ChatDbHelper dbHelper;
-
     private DBService dbService;
     private EditText editTextGroupName;
-
     private EmailClient emailClient;
-    private CryptoService cryptoService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,15 +58,14 @@ public class CreateChatActivity extends AppCompatActivity {
             return windowInsets;
         });
 
-        // >>> ВОТ ЭТОТ КОД НУЖНО ДОБАВИТЬ: Прямой клик по стрелке на самом тулбаре <<<
+        //  Прямой клик по стрелке на самом тулбаре <<<
         toolbar.setNavigationOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 finish(); // Мгновенно закрывает экран и возвращает на MainActivity
             }
         });
-        dbHelper = new ChatDbHelper(this);
-        dbService = new DBServiceSQLite(dbHelper);
+        dbService = new DBServiceSQLite(this);
         contactList = new ArrayList<>();
 
         // Стрелочка назад
@@ -104,11 +96,7 @@ public class CreateChatActivity extends AppCompatActivity {
         adapter = new ContactsAdapter(this, contactList);
         recyclerView.setAdapter(adapter);
 
-        dbHelper = adapter.getDbHelper();
-
-        cryptoService = new CryptoServiceImpl(CreateChatActivity.this);
-
-        emailClient = new EmailClientImpl(dbHelper, dbService, cryptoService);
+        emailClient = new EmailClientImpl(dbService, this);
 
 
         Button buttonCreateContact = findViewById(R.id.buttonViewContactTitle);
@@ -147,32 +135,19 @@ public class CreateChatActivity extends AppCompatActivity {
                 }
                 // Загружаем наш собственный логин из SharedPreferences
                 SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
-                //TODO добавить возможность групповых чатов
 
+                //TODO добавить возможность групповых чатов
                 String recipientEmail = selectedEmails.get(0);
 
-                //если чат ещё не в БД
-                //  if (dbService.getChatIdBySender(selectedEmails.get(0)) <= 0) {
                 long newChatId = dbService.saveChat(groupName, recipientEmail);// Сохраняем созданный чат в базу данных SQLite
-                try {
-                    String myPublicKeyBas64 = cryptoService.getMyPublicKeyBas64();
-                    byte[] publicKeyBytes = emailClient.sendHandshakeRequest(recipientEmail, CreateChatActivity.this, newChatId, prefs, myPublicKeyBas64);
-                    //dbService.saveSharedSecretKey(recipientEmail, publicKeyBytes);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                } catch (GeneralSecurityException e) {
-                    throw new RuntimeException(e);
+                emailClient.sendHandshakeRequest(recipientEmail, CreateChatActivity.this, newChatId, prefs);
+
+                if (newChatId != -1) {
+                    Toast.makeText(CreateChatActivity.this, "Чат успешно создан!", Toast.LENGTH_SHORT).show();
+                    finish();
+                } else {
+                    Toast.makeText(CreateChatActivity.this, "Ошибка создания чата", Toast.LENGTH_SHORT).show();
                 }
-
-                //}
-
-
-//                if (newChatId != -1) {
-//                    Toast.makeText(this, "Чат успешно создан!", Toast.LENGTH_SHORT).show();
-//                    finish();
-//                } else {
-//                    Toast.makeText(this, "Ошибка создания чата", Toast.LENGTH_SHORT).show();
-//                }
 
                 finish();
             }

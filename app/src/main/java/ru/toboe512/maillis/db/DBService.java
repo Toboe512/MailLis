@@ -7,9 +7,15 @@ import ru.toboe512.maillis.dto.Contact;
 import ru.toboe512.maillis.dto.Message;
 
 public interface DBService {
+    List<Message> getAllMessages(long chatId, String myEmail);
+
     List<Message> getMessages(long chatId, String myEmail);
 
-    int saveMessage(long chatId, String myEmail, String subject, String text, long timestamp);
+    Message getMessage(long localMessageId);
+
+    int saveMessage(long chatId, String myEmail, String subject, String text, boolean isMine, long timestamp);
+
+    void markMessageAsSent(int localMessageId, String serverUid);
 
     List<ChatPreview> loadChats();
 
@@ -23,8 +29,6 @@ public interface DBService {
 
     int deleteContact(String email);
 
-    ChatDbHelper getDbHelper();
-
     long getChatIdByRecipientEmail(String email);
 
     int deleteMassage(int msdId);
@@ -37,4 +41,18 @@ public interface DBService {
     String getRecipientEmailByChatId(long chatId);
 
     byte[] getSharedSecret(long chatId);
+
+    List<Message> getUnsentMessages();
+
+    int getChatIdByMessageId(int messageId);
+
+    boolean banUser(String email);
+
+    boolean unbanUser(String email);
+
+    boolean isUserBanned(String email);
+    List<String> getBannedUsers();
+
+    boolean deleteChatAndMessages(long chatId);
+
 }
