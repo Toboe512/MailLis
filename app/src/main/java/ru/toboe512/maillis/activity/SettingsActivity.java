@@ -11,7 +11,6 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
 
 import java.util.Properties;
 
@@ -219,59 +218,59 @@ public class SettingsActivity extends AppCompatActivity {
                     Toast.makeText(SettingsActivity.this, "❌ Ошибка авторизации:\n" + finalError, Toast.LENGTH_LONG).show();
                 }
             });
-    }).
+        }).
 
-    start();
-}
-
-// Метод сохранения данных в память устройства
-private void saveSettings() {
-    var sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-    SharedPreferences.Editor editor = sharedPreferences.edit();
-
-    // Записываем строковые значения из полей ввода
-    editor.putString(KEY_IMAP_SERVER, editTextImapServer.getText().toString().trim());
-    editor.putString(KEY_IMAP_PORT, editTextImapPort.getText().toString().trim());
-    editor.putString(KEY_SMTP_SERVER, editTextSmtpServer.getText().toString().trim());
-    editor.putString(KEY_SMTP_PORT, editTextSmtpPort.getText().toString().trim());
-    editor.putString(KEY_EMAIL_LOGIN, editTextEmailLogin.getText().toString().trim());
-    editor.putString(KEY_EMAIL_PASSWORD, editTextEmailPassword.getText().toString().trim());
-
-    // Считываем то, что введено в поля прямо сейчас
-    final String imapHost = editTextImapServer.getText().toString().trim();
-    final String imapPort = editTextImapPort.getText().toString().trim();
-    final String smtpHost = editTextSmtpServer.getText().toString().trim();
-    final String smtpPort = editTextSmtpPort.getText().toString().trim();
-    final String user = editTextEmailLogin.getText().toString().trim();
-    final String pass = editTextEmailPassword.getText().toString().trim();
-
-    // Валидация полей перед запуском сети
-    if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() || smtpHost.isEmpty() || imapPort.isEmpty() || smtpPort.isEmpty()) {
-        Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", Toast.LENGTH_LONG).show();
-        return;
+                start();
     }
 
-    // Применяем изменения асинхронно на фоновом потоке
-    editor.apply();
+    // Метод сохранения данных в память устройства
+    private void saveSettings() {
+        var sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = sharedPreferences.edit();
 
-    Toast.makeText(this, "Настройки успешно сохранены!", Toast.LENGTH_SHORT).show();
-    finish(); // Закрываем экран и возвращаемся на главный
-}
+        // Записываем строковые значения из полей ввода
+        editor.putString(KEY_IMAP_SERVER, editTextImapServer.getText().toString().trim());
+        editor.putString(KEY_IMAP_PORT, editTextImapPort.getText().toString().trim());
+        editor.putString(KEY_SMTP_SERVER, editTextSmtpServer.getText().toString().trim());
+        editor.putString(KEY_SMTP_PORT, editTextSmtpPort.getText().toString().trim());
+        editor.putString(KEY_EMAIL_LOGIN, editTextEmailLogin.getText().toString().trim());
+        editor.putString(KEY_EMAIL_PASSWORD, editTextEmailPassword.getText().toString().trim());
 
-// Метод загрузки данных из памяти при старте экрана
-private void loadSavedSettings() {
-    var sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        // Считываем то, что введено в поля прямо сейчас
+        final String imapHost = editTextImapServer.getText().toString().trim();
+        final String imapPort = editTextImapPort.getText().toString().trim();
+        final String smtpHost = editTextSmtpServer.getText().toString().trim();
+        final String smtpPort = editTextSmtpPort.getText().toString().trim();
+        final String user = editTextEmailLogin.getText().toString().trim();
+        final String pass = editTextEmailPassword.getText().toString().trim();
 
-    // Второй аргумент — это значение по умолчанию, если в памяти еще ничего нет
-    editTextImapServer.setText(sharedPreferences.getString(KEY_IMAP_SERVER, "imap.mail.ru"));
-    editTextImapPort.setText(sharedPreferences.getString(KEY_IMAP_PORT, "993"));
-    editTextSmtpServer.setText(sharedPreferences.getString(KEY_SMTP_SERVER, "smtp.mail.ru"));
-    editTextSmtpPort.setText(sharedPreferences.getString(KEY_SMTP_PORT, "465"));
+        // Валидация полей перед запуском сети
+        if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() || smtpHost.isEmpty() || imapPort.isEmpty() || smtpPort.isEmpty()) {
+            Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", Toast.LENGTH_LONG).show();
+            return;
+        }
 
-    // Логин и пароль оставляем пустыми по умолчанию
-    editTextEmailLogin.setText(sharedPreferences.getString(KEY_EMAIL_LOGIN, ""));
-    editTextEmailPassword.setText(sharedPreferences.getString(KEY_EMAIL_PASSWORD, ""));
-}
+        // Применяем изменения асинхронно на фоновом потоке
+        editor.apply();
+
+        Toast.makeText(this, "Настройки успешно сохранены!", Toast.LENGTH_SHORT).show();
+        finish(); // Закрываем экран и возвращаемся на главный
+    }
+
+    // Метод загрузки данных из памяти при старте экрана
+    private void loadSavedSettings() {
+        var sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+        // Второй аргумент — это значение по умолчанию, если в памяти еще ничего нет
+        editTextImapServer.setText(sharedPreferences.getString(KEY_IMAP_SERVER, "imap.mail.ru"));
+        editTextImapPort.setText(sharedPreferences.getString(KEY_IMAP_PORT, "993"));
+        editTextSmtpServer.setText(sharedPreferences.getString(KEY_SMTP_SERVER, "smtp.mail.ru"));
+        editTextSmtpPort.setText(sharedPreferences.getString(KEY_SMTP_PORT, "465"));
+
+        // Логин и пароль оставляем пустыми по умолчанию
+        editTextEmailLogin.setText(sharedPreferences.getString(KEY_EMAIL_LOGIN, ""));
+        editTextEmailPassword.setText(sharedPreferences.getString(KEY_EMAIL_PASSWORD, ""));
+    }
 
 
 }

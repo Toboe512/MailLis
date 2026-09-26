@@ -112,13 +112,6 @@ public class ChatActivity extends AppCompatActivity {
 
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
 
-        //TODO Убрать в релизе
-        // Если контакт не найден, временно отправляем себе для теста
-        if (recipientEmail == null || recipientEmail.isEmpty()) {
-            String fallbackEmail = prefs.getString("email_login", myEmail);
-            recipientEmail = (fallbackEmail != null) ? fallbackEmail : myEmail;
-        }
-
         messageList = new ArrayList<>();
         messagesAdapter = new MessagesAdapter(this, messageList, emailClient, dbService);
 

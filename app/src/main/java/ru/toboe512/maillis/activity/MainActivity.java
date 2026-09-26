@@ -163,9 +163,11 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     }
 
     // ОС Android сама вызовет этот метод для обработки кликов по кнопкам в панели
+
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         int id = item.getItemId();
+
 
         if (id == R.id.action_add_contact) {
             Toast.makeText(this, "Открываем добавление контакта", Toast.LENGTH_SHORT).show();
@@ -174,10 +176,16 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
             return true;
         }
 
-        if (id == R.id.action_settings) {
-            Toast.makeText(this, "Открываем настройки", Toast.LENGTH_SHORT).show();
-            Intent intent = new Intent(MainActivity.this, SettingsActivity.class);
+        if (id == R.id.action_contacts) {
+            // Открываем экран со списком контактов
+            Intent intent = new Intent(MainActivity.this, ContactsActivity.class);
             startActivity(intent);
+            return true;
+        }
+
+        // Ваши старые обработки (настройки и т.д.)
+        if (id == R.id.action_settings) {
+            startActivity(new Intent(MainActivity.this, SettingsActivity.class));
             return true;
         }
 

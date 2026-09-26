@@ -9,6 +9,12 @@
         android:icon="@android:drawable/ic_menu_add"
         app:showAsAction="ifRoom" />
 
+    <!-- Пункт вызова списка контактов -->
+    <item
+        android:id="@+id/action_contacts"
+        android:title="Контакты"
+        app:showAsAction="never" />
+
     <!-- Кнопка «Настройки» -->
     <item
         android:id="@+id/action_settings"

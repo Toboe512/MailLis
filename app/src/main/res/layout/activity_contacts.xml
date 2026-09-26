@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://android.com"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <!-- Верхняя панель навигации -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbarContacts"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:background="#2196F3"
+        app:titleTextColor="#FFFFFF"
+        app:title="Контакты" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <!-- Кнопка перехода к добавлению нового контакта -->
+        <Button
+            android:id="@+id/buttonGoToAddContact"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="+ Добавить новый контакт"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ваши контакты:"
+            android:layout_marginTop="16dp"
+            android:textSize="14sp"
+            android:textColor="#757575" />
+
+        <!-- Список существующих контактов -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recyclerViewContactsList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="8dp" />
+
+    </LinearLayout>
+</LinearLayout>

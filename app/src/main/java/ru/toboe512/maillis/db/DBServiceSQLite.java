@@ -307,11 +307,20 @@ public class DBServiceSQLite implements DBService {
     }
 
     // Нативное удаление строки из SQLite по ее ID
-    public int deleteContactFromDb(int contactId) {
+    public int deleteContact(int contactId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
         // Запрос удаления: DELETE FROM contacts WHERE id = contactId
         int rowsDeleted = db.delete("contacts", "id = ?", new String[]{String.valueOf(contactId)});
+        db.close();
+
+        return rowsDeleted;
+    }
+    public int deleteContact(String email) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+
+        // Запрос удаления: DELETE FROM contacts WHERE email = email
+        int rowsDeleted = db.delete("contacts", "email = ?", new String[]{String.valueOf(email)});
         db.close();
 
         return rowsDeleted;

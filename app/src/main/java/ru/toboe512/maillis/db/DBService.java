@@ -19,7 +19,8 @@ public interface DBService {
 
     List<Contact> getContacts();
 
-    int deleteContactFromDb(int contactId);
+    int deleteContact(int contactId);
+    int deleteContact(String email);
 
     ChatDbHelper getDbHelper();
 
