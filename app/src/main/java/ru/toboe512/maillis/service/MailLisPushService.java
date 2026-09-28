@@ -52,8 +52,8 @@ public class MailLisPushService extends Service {
         super.onCreate();
         Log.d(TAG, "Служба MailLisPushService успешно создана в памяти системы");
 
-        dbService = new DBServiceSQLite(this);
-        emailClient = new EmailClientImpl(dbService, this);
+        dbService = DBServiceSQLite.getInstance(this);
+        emailClient =  EmailClientImpl.getInstance(dbService, this);
         updateHandler = new Handler(Looper.getMainLooper());
 
         // Создаем обязательные для Android 8.0+ каналы уведомлений

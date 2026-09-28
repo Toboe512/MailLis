@@ -57,7 +57,7 @@ public class CreateChatActivity extends AppCompatActivity {
         //   Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
         toolbar.setNavigationOnClickListener(v -> finish());
 
-        dbService = new DBServiceSQLite(this);
+        dbService = DBServiceSQLite.getInstance(this);
         contactList = new ArrayList<>();
 
         // Стрелочка назад
@@ -88,7 +88,7 @@ public class CreateChatActivity extends AppCompatActivity {
         adapter = new ContactsAdapter(this, contactList);
         recyclerView.setAdapter(adapter);
 
-        emailClient = new EmailClientImpl(dbService, this);
+        emailClient = EmailClientImpl.getInstance(dbService, this);
 
 
         Button buttonCreateContact = findViewById(R.id.buttonViewContactTitle);

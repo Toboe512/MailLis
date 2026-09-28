@@ -21,7 +21,22 @@ public class DBServiceSQLite implements DBService {
     // Переменные для работы с базой данных
     private final ChatDbHelper dbHelper;
 
-    public DBServiceSQLite(Context cotext) {
+
+    // 2. Внутренний статический класс-держатель.
+    // Он загрузится в память строго в тот момент, когда впервые вызовут метод getInstance()
+    private static class Holder {
+        private static DBServiceSQLite INSTANCE;
+    }
+
+    // 3. Единственная глобальная точка доступа (Потокобезопасно на уровне JVM)
+    public static DBServiceSQLite getInstance(Context context) {
+        if (Holder.INSTANCE == null) {
+            Holder.INSTANCE = new DBServiceSQLite(context);
+        }
+        return Holder.INSTANCE;
+    }
+
+    private DBServiceSQLite(Context cotext) {
         this.dbHelper = new ChatDbHelper(cotext.getApplicationContext());
     }
 

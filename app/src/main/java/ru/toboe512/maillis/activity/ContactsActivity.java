@@ -47,7 +47,7 @@ public class ContactsActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v -> finish());
 
         // 2. Инициализируем сервисы работы с базой
-        dbService = new DBServiceSQLite(this);
+        dbService = DBServiceSQLite.getInstance(this);
         contactList = new ArrayList<>();
 
         // 3. Настраиваем RecyclerView

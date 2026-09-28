@@ -20,7 +20,6 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // ИСПРАВЛЕНИЕ: Оставляем один правильный раннер в едином блоке конфигурации
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -29,7 +28,6 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
-            // Отключаем оптимизацию и удаление кода для отладки
             isMinifyEnabled = false
             isShrinkResources = false
         }
@@ -69,7 +67,7 @@ dependencies {
     // Локальные Unit-тесты
     testImplementation(libs.junit)
 
-    // ИСПРАВЛЕНИЕ: РАСКОММЕНТИРОВАЛИ И ОБНОВИЛИ ОБЯЗАТЕЛЬНЫЙ СТЕК ДЛЯ ИНСТРУМЕНТАЛЬНЫХ ТЕСТОВ
+    // Инструментальные тесты
     androidTestImplementation("androidx.test:runner:1.6.1")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test:rules:1.6.1")
@@ -95,7 +93,4 @@ dependencies {
 
     // Криптография Google Tink
     implementation("com.google.crypto.tink:tink-android:1.15.0")
-
-
 }
-

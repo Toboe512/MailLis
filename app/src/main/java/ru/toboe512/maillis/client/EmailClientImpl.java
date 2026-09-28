@@ -51,8 +51,19 @@ public class EmailClientImpl implements EmailClient {
     // ГЛОБАЛЬНЫЙ ЕДИНЫЙ ПУЛ ПОТОКОВ ДЛЯ ВСЕЙ СЕТИ ПРИЛОЖЕНИЯ
     private final ExecutorService networkExecutor;
 
+    private static class Holder {
+        private static EmailClient INSTANCE;
+    }
 
-    public EmailClientImpl(DBService dbService, Context context) {
+    public static EmailClient getInstance(DBService dbService, Context context) {
+        if (Holder.INSTANCE == null) {
+            Holder.INSTANCE = new EmailClientImpl(dbService, context);
+        }
+        return Holder.INSTANCE;
+    }
+
+
+    private EmailClientImpl(DBService dbService, Context context) {
         this.dbService = dbService;
         // Создаем ОДИН поток на всё приложение. Задачи будут выполняться строго друг за другом!
         this.networkExecutor = Executors.newSingleThreadExecutor();

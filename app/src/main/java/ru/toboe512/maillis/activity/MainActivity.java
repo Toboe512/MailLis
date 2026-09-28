@@ -1,15 +1,10 @@
 package ru.toboe512.maillis.activity;
 
-import static ru.toboe512.maillis.consts.Consts.UPDATE_INTERVAL_MS;
-
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -26,8 +21,6 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ChatsAdapter;
-import ru.toboe512.maillis.client.EmailClient;
-import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.ChatPreview;
@@ -45,7 +38,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        dbService = new DBServiceSQLite(this);
+        dbService = DBServiceSQLite.getInstance(this);
         chatList = new ArrayList<>();
         chatsAdapter = new ChatsAdapter(this, chatList, dbService);
 

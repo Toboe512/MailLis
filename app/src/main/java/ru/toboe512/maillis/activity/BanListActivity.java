@@ -41,7 +41,7 @@ public class BanListActivity extends AppCompatActivity {
         }
         toolbar.setNavigationOnClickListener(v -> finish());
 
-        dbService = new DBServiceSQLite(this);
+        dbService = DBServiceSQLite.getInstance(this);
         bannedEmailsList = new ArrayList<>();
 
         // 2. Настройка списка

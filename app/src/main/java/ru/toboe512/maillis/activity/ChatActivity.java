@@ -82,8 +82,8 @@ public class ChatActivity extends AppCompatActivity {
         editTextMessage = findViewById(R.id.editTextMessage);
         recyclerView = findViewById(R.id.recyclerViewMessages);
 
-        dbService = new DBServiceSQLite(this);
-        emailClient = new EmailClientImpl(dbService, this);
+        dbService = DBServiceSQLite.getInstance(this);
+        emailClient = EmailClientImpl.getInstance(dbService, this);
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
         messageList = new ArrayList<>();
         messagesAdapter = new MessagesAdapter(this, messageList, emailClient, dbService);
