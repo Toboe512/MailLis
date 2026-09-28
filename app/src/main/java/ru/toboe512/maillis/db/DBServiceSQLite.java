@@ -446,6 +446,7 @@ public class DBServiceSQLite implements DBService {
                 values.put("subject", subject);
                 values.put("message_text", messageText);
                 values.put("timestamp", currentTimestamp);
+                values.put("is_sent", 2);
                 values.put("server_uid", serverUid);
                 db.insert("messages", null, values);
 

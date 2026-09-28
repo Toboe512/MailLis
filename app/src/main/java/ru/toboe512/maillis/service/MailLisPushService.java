@@ -130,7 +130,7 @@ public class MailLisPushService extends Service {
 
                             // Этап В: Запускаем очередь автоматического ретрая (переотправки локально застрявших писем).
                             // Метод перенаправит задачу в наш общий единый синглтон networkExecutor для отправки по очереди FIFO!
-                            //emailClient.retryUnsentMessages(prefs);
+                            emailClient.retryUnsentMessages(prefs);
 
                             Log.d(TAG, "=== КОНЕЦ ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ ===");
 
