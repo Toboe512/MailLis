@@ -118,7 +118,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     private void deleteMessageFromDb(int messageId, int position) {
 
         // Удаляем строго по первичному ключу ID сообщения
-        int rowsDeleted = dbService.deleteMassage(messageId);
+        int rowsDeleted = dbService.deleteMessage(messageId);
 
         if (rowsDeleted > 0) {
             messageList.remove(position);

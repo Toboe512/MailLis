@@ -4,16 +4,20 @@ import static ru.toboe512.maillis.consts.Consts.UPDATE_INTERVAL_MS;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -35,82 +39,114 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     private List<ChatPreview> chatList;
     private DBService dbService;
 
-    //клиент
-    private EmailClient emailClient;
-    private Runnable updateRunnable;
-
-    private final Handler updateHandler = new Handler(Looper.getMainLooper());
+    private android.content.BroadcastReceiver chatUpdateReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+
         dbService = new DBServiceSQLite(this);
         chatList = new ArrayList<>();
-        chatsAdapter = new ChatsAdapter(this, chatList);
-        emailClient = new EmailClientImpl(dbService, this);
+        chatsAdapter = new ChatsAdapter(this, chatList, dbService);
+
+        // Пропишите это в onCreate() вашей MainActivity для проверки и запроса прав
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+
+        setContentView(R.layout.activity_main);
 
         // Настраиваем RecyclerView для списка чатов
         RecyclerView recyclerViewChats = findViewById(R.id.recyclerViewChats);
         recyclerViewChats.setLayoutManager(new LinearLayoutManager(this));
         recyclerViewChats.setAdapter(chatsAdapter); // Привязываем готовый адаптер
 
-        // Инициализируем задачу для таймера
-        updateRunnable = new Runnable() {
+        // 2. ИСПРАВЛЕНИЕ: Переписываем инициализацию приемника с поддержкой асинхронности goAsync()
+        chatUpdateReceiver = new android.content.BroadcastReceiver() {
             @Override
-            public void run() {
-                // Загружаем наш собственный логин из SharedPreferences
-                SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
+            public void onReceive(Context context, Intent intent) {
+                Log.d("MailLis_UI", "Получен сигнал от фоновой службы! Запускаем безопасное обновление...");
 
-                // Запускаем сетевую операцию в отдельном фоновом потоке!
+                // Переводим BroadcastReceiver в асинхронный фоновый режим работы
+                final PendingResult pendingResult = goAsync();
+
+                // Запускаем чтение базы в фоновом потоке
                 new Thread(() -> {
                     try {
-                        // Опрашиваем сервер в фоне — интерфейс теперь полностью свободен
-                        if (emailClient.fetchIncomingHandshakeOverNetwork(MainActivity.this, prefs)) {
-                            new Handler(Looper.getMainLooper()).post(() -> refreshChatsList());
-                        }
-                        emailClient.retryUnsentMessages(prefs);
-                        // if (!messages.isEmpty()) {
-                            // Если во время рукопожатия база обновилась, обновляем UI список чатов на главном потоке
+                        // Считываем свежие данные чатов из SQLite
+                        final List<ru.toboe512.maillis.dto.ChatPreview> freshChats = dbService.loadChats();
 
-                       // }
-
+                        // Возвращаемся в главный поток для плавной отрисовки UI
+                        runOnUiThread(() -> {
+                            if (freshChats != null && chatsAdapter != null) {
+                                // Наш DiffUtil точечно и красиво выведет новый чат на экран
+                                chatsAdapter.updateChatsList(freshChats);
+                                Log.d("MailLis_UI", "Список чатов на экране успешно обновлен в реальном времени!");
+                            }
+                        });
                     } catch (Exception e) {
-
+                        Log.e("MailLis_UI", "Ошибка при фоновом обновлении UI из Broadcast", e);
                         e.printStackTrace();
+                    } finally {
+                        // КРИТИЧЕСКИ ВАЖНО: Обязательно сигнализируем системе, что фоновая задача завершена,
+                        // и теперь ресивер можно безопасно удалить из памяти Android!
+                        pendingResult.finish();
                     }
                 }).start();
-
-                // Планируем следующий запуск через 20 секунд
-                updateHandler.postDelayed(this, UPDATE_INTERVAL_MS);
             }
         };
 
-// Нижняя круглая кнопка "+" теперь открывает создание группового чата, как и должна
+        // Нижняя круглая кнопка "+" теперь открывает создание группового чата, как и должна
         View fabNewChat = findViewById(R.id.fabNewChat);
         fabNewChat.setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, CreateChatActivity.class);
             startActivity(intent);
         });
+    }
 
+    @Override
+    protected void onStart() {
+        super.onStart();
+
+        // Переносим запуск службы сюда — когда окно приложения гарантированно находится в фокусе!
+        Intent serviceIntent = new Intent(this, ru.toboe512.maillis.service.MailLisPushService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
+        Log.d("MailLis_Main", "Команда startForegroundService отправлена из метода onStart()");
     }
 
     // КРИТИЧЕСКИ ВАЖНО: Останавливаем таймер, когда пользователь сворачивает экран или уходит в настройки!
     @Override
     protected void onPause() {
         super.onPause();
-        // Выключаем опрос сервера, чтобы он не плодился в памяти и не тратил батарею в фоне
-        updateHandler.removeCallbacks(updateRunnable);
+
+        // 4. ОБЯЗАТЕЛЬНО отвязываем приемник при выходе с экрана, чтобы избежать утечки памяти Android
+        if (chatUpdateReceiver != null) {
+            unregisterReceiver(chatUpdateReceiver);
+        }
     }
 
     // Каждый раз, когда пользователь возвращается на этот экран, обновляем список чатов
     @Override
     protected void onResume() {
         super.onResume();
-        // 1. В фоновом потоке считываем свежие чаты из SQLite, чтобы не фризить UI
+
+        IntentFilter filter = new IntentFilter("ru.toboe512.maillis.UPDATE_CHATS");
+        // Используем ContextCompat вместо стандартного registerReceiver.
+        // Это полностью отключает проверку Lint и гарантирует защиту Android 14+ на уровне системы!
+        ContextCompat.registerReceiver(
+                this,
+                chatUpdateReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED // Указываем, что интент строго внутренний
+        );
+        // Фоновое обновление списков чатов из SQLite через DiffUtil
         refreshChatsList();
-        // 2. Включаем автоопрос почтового сервера Mail.ru
-        updateHandler.post(updateRunnable);
     }
 
     // ОС Android сама вызовет этот метод для отрисовки меню в AppCompat-панели
@@ -156,19 +192,15 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         return super.onOptionsItemSelected(item);
     }
 
-    // Вынесли обновление списка в отдельный удобный метод
+    // Фоновое обновление списков чатов из SQLite через DiffUtil
     private void refreshChatsList() {
         new Thread(() -> {
-            List<ChatPreview> freshChatsFromDb = dbService.loadChats();
-
+            List<ru.toboe512.maillis.dto.ChatPreview> freshChats = dbService.loadChats();
             runOnUiThread(() -> {
-                if (freshChatsFromDb != null && chatsAdapter != null) {
-                    // ИСПРАВЛЕНИЕ: Вместо очистки списка и notifyDataSetChanged
-                    // передаем данные в наш новый метод с поддержкой DiffUtil!
-                    chatsAdapter.updateChatsList(freshChatsFromDb);
+                if (freshChats != null && chatsAdapter != null) {
+                    chatsAdapter.updateChatsList(freshChats);
                 }
             });
         }).start();
-
     }
 }

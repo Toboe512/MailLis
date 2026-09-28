@@ -9,7 +9,7 @@ public class ChatDbHelper extends SQLiteOpenHelper {
 
     // Имя файла базы данных на устройстве и версия
     private static final String DATABASE_NAME = "MailLisChat.db";
-    private static final int DATABASE_VERSION = 11;
+    private static final int DATABASE_VERSION = 15;
 
     // Конструктор
     public ChatDbHelper(Context context) {
@@ -37,7 +37,7 @@ public class ChatDbHelper extends SQLiteOpenHelper {
                 "subject TEXT, " +
                 "timestamp INTEGER, " +
                 "server_uid TEXT UNIQUE," + // Уникальный ID письма с сервера
-                "is_sent INTEGER DEFAULT 1," + // 1 = Отправлено, 0 = Ожидает отправки (сеть упала)
+                "is_sent INTEGER DEFAULT 0," + // 1 = Отправлено, 0 = Ожидает отправки (сеть упала)
                 "is_mine INTEGER DEFAULT 0" + // ВОТ ЭТА КОЛОНКА: 1 = моё, 0 = чужое
                 ");");
 
@@ -54,6 +54,7 @@ public class ChatDbHelper extends SQLiteOpenHelper {
         db.execSQL("DROP TABLE IF EXISTS messages");
         db.execSQL("DROP TABLE IF EXISTS chats");
         db.execSQL("DROP TABLE IF EXISTS contacts");
+        db.execSQL("DROP TABLE IF EXISTS ban_list");
         onCreate(db);
     }
 }

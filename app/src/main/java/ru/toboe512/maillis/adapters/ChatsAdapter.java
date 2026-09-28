@@ -20,6 +20,7 @@ import java.util.List;
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.activity.ChatActivity;
 import ru.toboe512.maillis.db.ChatDbHelper;
+import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.ChatPreview;
 import ru.toboe512.maillis.utils.ChatDiffCallback;
 
@@ -28,12 +29,12 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     private final List<ChatPreview> chatList;
     private final Context context;
 
-    private final ChatDbHelper dbHelper; // Помощник для удаления из SQLite
+    private final DBService dbService; // Помощник для удаления из SQLite
 
-    public ChatsAdapter(Context context, List<ChatPreview> chatList) {
+    public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService) {
         this.context = context;
         this.chatList = chatList;
-        this.dbHelper = new ChatDbHelper(context);
+        this.dbService = dbService;
     }
 
     @NonNull
@@ -98,13 +99,10 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
 
     // Удаление записи из SQLite и анимация списка
     private void deleteChatFromDatabase(int chatId, int position) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-
         // Удаляем сам чат. Связанные сообщения в SQLite удалятся автоматически благодаря ON DELETE CASCADE
-        int rowsDeleted = db.delete("chats", "id = ?", new String[]{String.valueOf(chatId)});
-        db.close();
+        boolean deleted = dbService.deleteChatAndMessages(chatId);
 
-        if (rowsDeleted > 0) {
+        if (deleted) {
             // Удаляем объект из массива памяти устройства
             chatList.remove(position);
 

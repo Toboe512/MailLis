@@ -2,7 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- КРИТИЧЕСКИ ВАЖНО: Разрешаем приложению выходить в интернет для связи с серверами Mail.ru -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Также рекомендуется добавить разрешение на проверку состояния сети: -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -50,10 +58,11 @@
             android:name=".activity.BanListActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
-
+        <service
+            android:name=".service.MailLisPushService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" /> <!-- Тип должен строго совпадать с разрешением выше! -->
     </application>
-    <!-- КРИТИЧЕСКИ ВАЖНО: Разрешаем приложению выходить в интернет для связи с серверами Mail.ru -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Также рекомендуется добавить разрешение на проверку состояния сети: -->
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
 </manifest>

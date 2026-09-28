@@ -31,7 +31,7 @@ public interface DBService {
 
     long getChatIdByRecipientEmail(String email);
 
-    int deleteMassage(int msdId);
+    int deleteMessage(int msgId);
 
 
     boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp, String serverUid);
@@ -40,7 +40,7 @@ public interface DBService {
 
     String getRecipientEmailByChatId(long chatId);
 
-    byte[] getSharedSecret(long chatId);
+    byte[] getSevedPublicKey(long chatId);
 
     List<Message> getUnsentMessages();
 
@@ -54,5 +54,15 @@ public interface DBService {
     List<String> getBannedUsers();
 
     boolean deleteChatAndMessages(long chatId);
+
+    void markMessageAsRead(String serverUid);
+
+    void markMessageAsSending(int localMessageId);
+
+    void resetMessageStatusToUnsent(int localMessageId);
+
+    int getTotalMessagesCount();
+
+    Message getLastIncomingMessage();
 
 }

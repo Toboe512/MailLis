@@ -39,8 +39,8 @@ public class MessageDiffCallback extends DiffUtil.Callback {
         Message newMsg = newList.get(newItemPosition);
 
         // Если текст, время или UID сервера изменились — элемент будет точечно перерисован
-        return oldMsg.getText().equals(newMsg.getText()) &&
-                oldMsg.getTimestamp() == newMsg.getTimestamp() &&
-                oldMsg.getServerUid().equals(newMsg.getServerUid());
+        boolean changText = oldMsg.getText() == null || oldMsg.getText().equals(newMsg.getText());
+        boolean changeServerUid = oldMsg.getServerUid() == null || oldMsg.getServerUid().equals(newMsg.getServerUid());
+        return changText && oldMsg.getTimestamp() == newMsg.getTimestamp() && changeServerUid;
     }
 }
