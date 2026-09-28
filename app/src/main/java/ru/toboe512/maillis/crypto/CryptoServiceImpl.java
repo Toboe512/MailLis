@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import android.content.Context;
 import android.util.Base64;
+import android.util.Log;
 
 import com.google.crypto.tink.BinaryKeysetReader;
 import com.google.crypto.tink.BinaryKeysetWriter;
@@ -17,7 +18,6 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 
 public class CryptoServiceImpl implements CryptoService {
@@ -47,7 +47,7 @@ public class CryptoServiceImpl implements CryptoService {
         // Из восстановленного приватного ключа ВСЕГДА можно мгновенно получить публичный
         devicePublicKeyHandle = devicePrivateKeyHandle.getPublicKeysetHandle();
 
-        android.util.Log.d("MailLis_Crypto", "Приватный ключ успешно восстановлен из хранилища Android!");
+        Log.d("MailLis_Crypto", "Приватный ключ успешно восстановлен из хранилища Android!");
 
     }
 

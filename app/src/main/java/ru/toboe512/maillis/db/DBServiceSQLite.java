@@ -7,6 +7,7 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,15 +59,17 @@ public class DBServiceSQLite implements DBService {
                 int uidIndex = cursor.getColumnIndex("server_uid");
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int isMineIndex = cursor.getColumnIndex("is_mine");
+                int statusIndex = cursor.getColumnIndex("is_sent");
 
                 // 2. Безопасная проверка: все ли критически важные колонки существуют в БД
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >=0) {
                     do {
                         // Читаем данные строки
                         int realId = cursor.getInt(idIndex);
                         String sender = cursor.getString(senderIndex);
                         String text = cursor.getString(textIndex);
                         long time = cursor.getLong(timeIndex);
+                        int status = cursor.getInt(statusIndex);
 
                         // Необязательные колонки (могут не проверяться в if, но читаются безопасно)
                         String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
@@ -76,7 +79,7 @@ public class DBServiceSQLite implements DBService {
                         boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                         // Добавляем готовый объект в список
-                        messageList.add(new Message(realId, sender, subject, text, time, isMine, serverUid));
+                        messageList.add(new Message(realId, sender, subject, text, time, isMine, serverUid, status));
 
                     } while (cursor.moveToNext()); // Переходим к следующей строке переписки
                 }
@@ -121,26 +124,30 @@ public class DBServiceSQLite implements DBService {
                 int uidIndex = cursor.getColumnIndex("server_uid");
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int isMineIndex = cursor.getColumnIndex("is_mine"); // Индекс новой колонки
+                int statusIndex = cursor.getColumnIndex("is_sent");
 
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >= 0) {
                     int realId = cursor.getInt(idIndex);
                     String sender = cursor.getString(senderIndex);
                     String text = cursor.getString(textIndex);
                     long time = cursor.getLong(timeIndex);
+                    int status = cursor.getInt(statusIndex);
 
-                    String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : "";
-                    String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : "";
+                    String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
+                    String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
 
                     // Считываем готовое значение из БД: если в базе лежит 1, то это true, иначе false
                     boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                     // Собираем объект сообщения
-                    lastMessage = new Message(realId, sender, subject, text, time, isMine, serverUid);
+                    lastMessage = new Message(realId, sender, subject, text, time, isMine, serverUid, status);
                 }
             }
         }
         // Если чат пустой, возвращаем дефолтный объект во избежание NullPointerException на главном экране
-        return lastMessage != null ? lastMessage : new Message(0, EMPTI_STRING, EMPTI_STRING, "Сообщений нет", 0L, false, EMPTI_STRING);
+        return lastMessage != null
+                ? lastMessage :
+                new Message(0, EMPTI_STRING, EMPTI_STRING, "Сообщений нет", 0L, false, EMPTI_STRING, 0);
     }
 
     // Метод сохранения сообщения в локальную таблицу SQLite
@@ -216,7 +223,7 @@ public class DBServiceSQLite implements DBService {
                     boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                     // Создаем объект сообщения
-                    message = new Message(realId, sender, subject, text, time, isMine, serverUid);
+                    message = new Message(realId, sender, subject, text, time, isMine, serverUid, isSend);
                 }
             }
         }
@@ -420,7 +427,7 @@ public class DBServiceSQLite implements DBService {
                 }
             }
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Ошибка при поиске chatId по email: " + normalizedEmail, e);
+            Log.e("MailLis_DB", "Ошибка при поиске chatId по email: " + normalizedEmail, e);
             e.printStackTrace();
         }
 
@@ -497,7 +504,7 @@ public class DBServiceSQLite implements DBService {
                 }
             }
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Критическая ошибка при поиске recipient_email по chatId: " + chatId, e);
+            Log.e("MailLis_DB", "Критическая ошибка при поиске recipient_email по chatId: " + chatId, e);
             e.printStackTrace();
         }
 
@@ -548,14 +555,16 @@ public class DBServiceSQLite implements DBService {
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int uidIndex = cursor.getColumnIndex("server_uid");
                 int isMineIndex = cursor.getColumnIndex("is_mine");
+                int statusIndex = cursor.getColumnIndex("is_sent");
 
                 // Проверяем существование критически важных для структуры полей
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex>=0) {
                     do {
                         int realId = cursor.getInt(idIndex);
                         String sender = cursor.getString(senderIndex);
                         String text = cursor.getString(textIndex);
                         long time = cursor.getLong(timeIndex);
+                        int status = cursor.getInt(statusIndex);
 
                         // Безопасное чтение необязательных текстовых колонок
                         String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
@@ -565,20 +574,20 @@ public class DBServiceSQLite implements DBService {
                         boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                         // Создаем чистый объект сообщения
-                        Message message = new Message(realId, sender, subject, text, time, isMine, serverUid);
+                        Message message = new Message(realId, sender, subject, text, time, isMine, serverUid, status);
                         unsentList.add(message);
 
                     } while (cursor.moveToNext()); // Переходим к следующему неотправленному письму
 
-                    android.util.Log.d("MailLis_DB", "getUnsentMessages() успешно нашёл в SQLite строк: " + unsentList.size());
+                    Log.d("MailLis_DB", "getUnsentMessages() успешно нашёл в SQLite строк: " + unsentList.size());
                 } else {
-                    android.util.Log.e("MailLis_DB", "Критическая ошибка: В таблице messages не найдены базовые колонки!");
+                    Log.e("MailLis_DB", "Критическая ошибка: В таблице messages не найдены базовые колонки!");
                 }
             } else {
-                android.util.Log.d("MailLis_DB", "getUnsentMessages(): Очередь неотправленных сообщений пуста (0 писем со статусом 0).");
+                Log.d("MailLis_DB", "getUnsentMessages(): Очередь неотправленных сообщений пуста (0 писем со статусом 0).");
             }
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Критический сбой выполнения rawQuery в getUnsentMessages()", e);
+            Log.e("MailLis_DB", "Критический сбой выполнения rawQuery в getUnsentMessages()", e);
             e.printStackTrace();
         }
 
@@ -718,10 +727,10 @@ public class DBServiceSQLite implements DBService {
             db.setTransactionSuccessful();
             success = rows > 0;
 
-            android.util.Log.d("MailLis_DB", "Чат " + chatId + " и его сообщения стерты. Результат: " + success);
+            Log.d("MailLis_DB", "Чат " + chatId + " и его сообщения стерты. Результат: " + success);
 
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Критическая ошибка при удалении чата " + chatId, e);
+            Log.e("MailLis_DB", "Критическая ошибка при удалении чата " + chatId, e);
             e.printStackTrace();
         } finally {
             // Обязательно закрываем транзакцию, возвращая базу в пул многопоточности WAL
@@ -782,7 +791,7 @@ public class DBServiceSQLite implements DBService {
                 totalCount = cursor.getInt(0);
             }
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Критический сбой подсчета сообщений в getTotalMessagesCount()", e);
+            Log.e("MailLis_DB", "Критический сбой подсчета сообщений в getTotalMessagesCount()", e);
             e.printStackTrace();
         }
 
@@ -813,26 +822,25 @@ public class DBServiceSQLite implements DBService {
                 int timeIndex = cursor.getColumnIndex("timestamp");
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int uidIndex = cursor.getColumnIndex("server_uid");
+                int statusIndex = cursor.getColumnIndex("is_sent");
 
                 // Проверяем, что все базовые колонки присутствуют в таблице
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >= 0) {
                     int realId = cursor.getInt(idIndex);
                     String sender = cursor.getString(senderIndex);
                     String text = cursor.getString(textIndex);
                     long time = cursor.getLong(timeIndex);
+                    int status = cursor.getInt(statusIndex);
 
                     String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
                     String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
 
-                    // Так как мы искали по условию is_mine = 0, флаг изначального авторства гарантированно false
-                    boolean isMine = false;
-
                     // Собираем чистый объект сообщения
-                    lastMessage = new Message(realId, sender, subject, text, time, isMine, serverUid);
+                    lastMessage = new Message(realId, sender, subject, text, time, false, serverUid, status);
                 }
             }
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Ошибка при получении последнего входящего сообщения для Push", e);
+            Log.e("MailLis_DB", "Ошибка при получении последнего входящего сообщения для Push", e);
             e.printStackTrace();
         }
 

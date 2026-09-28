@@ -2,6 +2,7 @@ package ru.toboe512.maillis.activity;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.Toast;
 
@@ -15,7 +16,6 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ManageContactsAdapter;
-import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;
 
@@ -81,7 +81,7 @@ public class ContactsActivity extends AppCompatActivity {
 
                 // АРГУМЕНТ 3: Лямбда для кнопки БАНА (серый замок). ПРОВЕРЬТЕ НАЛИЧИЕ ЭТОГО БЛОКА!
                 (contact, position) -> {
-                    android.util.Log.d("MailLis_Click", "Ура, клик по кнопке бана сработал для: " + contact.getEmail());
+                    Log.d("MailLis_Click", "Ура, клик по кнопке бана сработал для: " + contact.getEmail());
 
                     new androidx.appcompat.app.AlertDialog.Builder(ContactsActivity.this)
                             .setTitle("Блокировка контакта")

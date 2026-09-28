@@ -9,8 +9,6 @@ public interface EmailClient {
 
     CryptoService getCryptoService();
 
-    //List<Message> fetchIncomingEmailsOverNetwork(long chatId, String myEmail, Context context, SharedPreferences prefs);
-
     boolean fetchIncomingOverNetwork(Context context, SharedPreferences prefs);
 
     boolean sendEmailOverNetwork(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);

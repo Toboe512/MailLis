@@ -1,6 +1,5 @@
 package ru.toboe512.maillis.activity;
 
-import static ru.toboe512.maillis.R.*;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 
 import android.content.Context;
@@ -12,7 +11,6 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
 
-import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
@@ -60,7 +58,7 @@ public class SettingsActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
 
-      //   Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
+        //   Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
         toolbar.setNavigationOnClickListener(v -> finish());
 
         // Связываем переменные с элементами интерфейса XML

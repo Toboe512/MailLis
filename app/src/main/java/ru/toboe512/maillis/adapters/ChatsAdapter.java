@@ -4,7 +4,6 @@ package ru.toboe512.maillis.adapters;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
-import android.database.sqlite.SQLiteDatabase;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,7 +18,6 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.activity.ChatActivity;
-import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.ChatPreview;
 import ru.toboe512.maillis.utils.ChatDiffCallback;

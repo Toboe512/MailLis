@@ -17,11 +17,8 @@ import android.util.Log;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import java.util.List;
-
 import ru.toboe512.maillis.activity.MainActivity;
 import ru.toboe512.maillis.client.EmailClient;
-
 import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Message;
@@ -53,7 +50,7 @@ public class MailLisPushService extends Service {
         Log.d(TAG, "Служба MailLisPushService успешно создана в памяти системы");
 
         dbService = DBServiceSQLite.getInstance(this);
-        emailClient =  EmailClientImpl.getInstance(dbService, this);
+        emailClient = EmailClientImpl.getInstance(dbService, this);
         updateHandler = new Handler(Looper.getMainLooper());
 
         // Создаем обязательные для Android 8.0+ каналы уведомлений
@@ -122,7 +119,7 @@ public class MailLisPushService extends Service {
 
                                 // Логика показа Push-уведомления (наш старый отлаженный код)
                                 Message lastIncoming = dbService.getLastIncomingMessage();
-                                if (lastIncoming != null) {
+                                if (lastIncoming != null && !lastIncoming.isMine()) {
                                     // Передаем в Push чистый, уже расшифрованный на этапе скачивания текст сообщения
                                     showPushNotification(lastIncoming.getSenderEmail(), lastIncoming.getText());
                                 }

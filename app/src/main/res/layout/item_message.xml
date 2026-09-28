@@ -44,6 +44,17 @@
                 android:text="Привет!"
                 android:textColor="#000000"
                 android:textSize="16sp" />
+
+            <!-- НОВЫЙ ЭЛЕМЕНТ: Текстовое поле для галочек статуса -->
+            <TextView
+                android:id="@+id/textViewMessageStatus"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:text="🕒"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold" />
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 </RelativeLayout>

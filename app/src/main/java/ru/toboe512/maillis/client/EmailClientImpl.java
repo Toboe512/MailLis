@@ -1,5 +1,6 @@
 package ru.toboe512.maillis.client;
 
+import static android.content.Context.MODE_PRIVATE;
 import static android.util.Base64.NO_WRAP;
 import static java.lang.Boolean.FALSE;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
@@ -13,6 +14,7 @@ import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
+import android.util.Log;
 import android.widget.Toast;
 
 import java.io.IOException;
@@ -36,6 +38,8 @@ import jakarta.mail.Store;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.search.MessageIDTerm;
+import jakarta.mail.search.SearchTerm;
 import ru.toboe512.maillis.crypto.CryptoService;
 import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
@@ -70,7 +74,7 @@ public class EmailClientImpl implements EmailClient {
         try {
             this.cryptoService = new CryptoServiceImpl(context);
         } catch (GeneralSecurityException | IOException e) {
-            android.util.Log.e("EmailClientImpl", "Ошибка инициализациии CryptoServiceImpl" + e.getMessage());
+            Log.e("EmailClientImpl", "Ошибка инициализациии CryptoServiceImpl" + e.getMessage());
             throw new RuntimeException(e);
         }
     }
@@ -109,7 +113,7 @@ public class EmailClientImpl implements EmailClient {
                     String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
                     // ПРОВЕРКА НА БАН: Если отправитель в черном списке — стираем письмо и игнорируем!
                     if (dbService.isUserBanned(senderEmail)) {
-                        android.util.Log.w("MailLis_Security", "🛑 Заблокированный спам от " + senderEmail + " проигнорирован.");
+                        Log.w("MailLis_Security", "🛑 Заблокированный спам от " + senderEmail + " проигнорирован.");
                         // Сразу удаляем служебное/обычное письмо с сервера Mail.ru, чтобы оно не висело во входящих
                         deleteMessage(msg, inbox);
                         continue; // Мгновенно переходим к следующему письму, этот объект дальше не обрабатываем!
@@ -153,11 +157,11 @@ public class EmailClientImpl implements EmailClient {
 //                                }
                             }
 
-                            android.util.Log.d("MailLis_P2P", "Новое сообщение успешно добавлено в чат " + chatId);
+                            Log.d("MailLis_P2P", "Новое сообщение успешно добавлено в чат " + chatId);
                         } else {
                             // СТРОГОЕ ПРАВИЛО: Если один из пользователей удалил чат,
                             // обычные сообщения от него просто тихо стираются с сервера и игнорируются!
-                            android.util.Log.w("MailLis_P2P", "Чат удален или не создан. Сообщение от " + senderEmail + " проигнорировано.");
+                            Log.w("MailLis_P2P", "Чат удален или не создан. Сообщение от " + senderEmail + " проигнорировано.");
                             deleteMessage(msg, inbox);
                         }
                         continue;
@@ -172,16 +176,7 @@ public class EmailClientImpl implements EmailClient {
 //                        android.util.Log.d("MailLis_Status", "Собеседник прочитал наше сообщение! Статус обновлен на ✓✓");
 //
 //                        // Стираем служебное письмо с сервера Mail.ru, чтобы оно не висело во входящих
-//                        // Создаем массив из одного элемента и принудительно ставим флаг удаления через папку
-//                        String[] mimeIds = msg.getHeader("Message-ID");
-//                        String messageId = (mimeIds != null && mimeIds.length > 0) ? mimeIds[0] : null;
-//                        if (messageId == null) {
-//                            jakarta.mail.Message[] messageArray = new jakarta.mail.Message[]{msg};
-//                            inbox.setFlags(messageArray, new jakarta.mail.Flags(jakarta.mail.Flags.Flag.DELETED), true);
-//                            // 2. ДОБАВИТЬ СТРОКУ: Принудительно заставляем IMAP-сервер физически стереть помеченные сообщения прямо сейчас
-//                            inbox.expunge();
-//                            android.util.Log.d("MailLis_Delete", "Письмо с Message-ID успешно найдено и удалено.");
-//                        }
+//                        deleteMessage(msg, inbox);
 //                        continue;
 //                    }
 
@@ -198,9 +193,8 @@ public class EmailClientImpl implements EmailClient {
                         // Если чата еще нет (или он был удален ранее) — создаем его заново!
                         if (chatId < 0) {
                             chatId = dbService.saveChat(senderEmail, senderEmail);
-                            android.util.Log.d("MailLis_P2P", "Получен запрос. Чат успешно создан у получателя. ID: " + chatId);
+                            Log.d("MailLis_P2P", "Получен запрос. Чат успешно создан у получателя. ID: " + chatId);
                         }
-
 
                         // СЛУЧАЙ 1: Нам прислали ключ и просят наш в ответ
                         // 1. Декодируем публичный ключ собеседника из Base64 обратно в byte[]
@@ -240,13 +234,11 @@ public class EmailClientImpl implements EmailClient {
                 inbox.close(true);
                 store.close();
             } catch (Exception e) {
-                //TODO логировааниее
+                Log.e("fetchIncomingHandshakeOverNetwork", "Ошибка обновления" + e.getMessage());
                 e.printStackTrace();
-                android.util.Log.e("fetchIncomingHandshakeOverNetwork", "Ошибка обновления" + e.getMessage());
             }
             return result;
         };
-
 
         // 3. Отправляем задачу в пул и получаем объект Future
         Future<Boolean> future = executor.submit(task);
@@ -255,8 +247,8 @@ public class EmailClientImpl implements EmailClient {
             // 4. Метод get() блокирует текущий поток и ждет завершения задачи
             result = future.get();
         } catch (InterruptedException | ExecutionException e) {
+            Log.e("fetchIncomingHandshakeOverNetwork", "Ошибка обновления" + e.getMessage());
             e.printStackTrace();
-            android.util.Log.e("fetchIncomingHandshakeOverNetwork", "Ошибка обновления" + e.getMessage());
         } finally {
             // 5. Обязательно закрываем пул потоков
             executor.shutdown();
@@ -275,7 +267,7 @@ public class EmailClientImpl implements EmailClient {
     public boolean sendEmailOverNetwork(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs, OnMessagesSynchronizedListener listener) {
 
         if (listener == null) {
-            android.util.Log.e("EmailClient.sendEmailOverNetwork listener", "Критическая ошибка listener == null");
+            Log.e("EmailClient.sendEmailOverNetwork listener", "Критическая ошибка listener == null");
             return false;
         }
 
@@ -309,24 +301,24 @@ public class EmailClientImpl implements EmailClient {
                 Message freshlyLoadedMessages = dbService.getMessage(localMessageId);
 
                 mainHandler.post(() -> listener.onSynchronized(freshlyLoadedMessages));
-            } catch (jakarta.mail.AuthenticationFailedException e) {
+            } catch (AuthenticationFailedException e) {
                 // Сбой! Сбрасываем статус обратно в 0, чтобы фоновый ретрай подхватил его через 20 секунд
                 dbService.resetMessageStatusToUnsent(localMessageId);
                 // Неверный пароль. Прерываем отправку всей пачки, так как данные авторизации сломаны.
-                android.util.Log.e("MailLis_Retry", "Критическая ошибка: неверный пароль для " + myEmail);
+                Log.e("MailLis_Retry", "Критическая ошибка: неверный пароль для " + myEmail);
                 mainHandler.post(() -> listener.onError(e)); // Передаем ошибку в слушатель
 
-            } catch (jakarta.mail.MessagingException e) {
+            } catch (MessagingException e) {
                 // Любая другая ошибка (чаще всего — пропала сеть).
                 // Оставляем сообщение со статусом 0 и выходим из цикла до следующего тика таймера.
                 // Сбой! Сбрасываем статус обратно в 0, чтобы фоновый ретрай подхватил его через 20 секунд
                 dbService.resetMessageStatusToUnsent(localMessageId);
-                android.util.Log.w("MailLis_Retry", "Сбой отправки сообщения , попробуем позже. Причина: " + e.getMessage()); //+ message.getId() + ", попробуем позже. Причина: " + e.getMessage());
+                Log.w("MailLis_Retry", "Сбой отправки сообщения , попробуем позже. Причина: " + e.getMessage()); //+ message.getId() + ", попробуем позже. Причина: " + e.getMessage());
                 mainHandler.post(() -> listener.onError(e)); // Передаем ошибку в слушатель
             } catch (Exception e) {
                 // Сбой! Сбрасываем статус обратно в 0, чтобы фоновый ретрай подхватил его через 20 секунд
                 dbService.resetMessageStatusToUnsent(localMessageId);
-                android.util.Log.e("MailLis_Retry", "Сбой отправки сообщения Причина: " + e.getMessage());
+                Log.e("MailLis_Retry", "Сбой отправки сообщения Причина: " + e.getMessage());
                 mainHandler.post(() -> listener.onError(e)); // Передаем ошибку в слушатель
             }
         });
@@ -368,7 +360,7 @@ public class EmailClientImpl implements EmailClient {
                         public void onSynchronized(Message updatedMessage) {
                             // Сеть отработала успешно, сообщение улетело на Mail.ru
                             if (updatedMessage != null) {
-                                android.util.Log.d("MailLis_Handshake", "Запрос рукопожатия успешно отправлен в сеть на адрес: " + targetEmail);
+                                Log.d("MailLis_Handshake", "Запрос рукопожатия успешно отправлен в сеть на адрес: " + targetEmail);
                             }
                         }
 
@@ -376,7 +368,7 @@ public class EmailClientImpl implements EmailClient {
                         public void onError(Exception e) {
                             // Ошибка сети или авторизации — сработает наша логика ретрая,
                             // сообщение останется со статусом is_sent = 0 в SQLite
-                            android.util.Log.e("MailLis_Handshake", "Сбой отправки рукопожатия, отложено в очередь ретрая: " + e.getMessage());
+                            Log.e("MailLis_Handshake", "Сбой отправки рукопожатия, отложено в очередь ретрая: " + e.getMessage());
                         }
                     }
             );
@@ -384,7 +376,7 @@ public class EmailClientImpl implements EmailClient {
             return true;
 
         } catch (Exception e) {
-            android.util.Log.e("MailLis_Handshake", "Критическая ошибка внутри метода sendHandshakeRequest", e);
+            Log.e("MailLis_Handshake", "Критическая ошибка внутри метода sendHandshakeRequest", e);
             return false;
         }
     }
@@ -411,7 +403,7 @@ public class EmailClientImpl implements EmailClient {
         localMessageId = dbService.saveMessage(
                 (int) chatId,
                 myEmail,
-                MAILLIS_KEY_RESPONSE, // "[MailLis-Key-Response]"
+                MAILLIS_KEY_RESPONSE,
                 myPublicKeyBase64,
                 true,
                 currentTimestamp
@@ -427,46 +419,13 @@ public class EmailClientImpl implements EmailClient {
             dbService.updateServerUid(serverUid, localMessageId);
             dbService.markMessageAsSent(localMessageId, serverUid);
 
-            android.util.Log.d("MailLis_Handshake", "Ответный ключ синхронно отправлен. UID: " + serverUid);
-
+            Log.d("MailLis_Handshake", "Ответный ключ синхронно отправлен. UID: " + serverUid);
             // Возвращаем долгожданный UID обратно
             return serverUid;
         }
         // Если произошла ошибка, возвращаем дефолтную пустую строку во избежание крэша
         return EMPTI_STRING;
     }
-//    public String sendHandshakeResponseAsin(String targetEmail, long chatId, final int localMessageId, SharedPreferences prefs, CryptoService cryptoService) {
-//        var messages = new ArrayList<Message>();
-//        try {
-//            String myEmail = prefs.getString("email_login", "my@mail.ru");
-//            long currentTimestamp = System.currentTimeMillis();
-//            dbService.saveMessage(chatId, myEmail, MAILLIS_KEY_RESPONSE, cryptoService.getMyPublicKeyBas64(), true, currentTimestamp);
-//            // Отправляем свой ключ в ответ
-//            sendEmailOverNetwork(chatId, targetEmail, MAILLIS_KEY_RESPONSE, cryptoService.getMyPublicKeyBas64(), localMessageId, prefs,
-//                    new OnMessagesSynchronizedListener() {
-//                        @Override
-//                        public void onSynchronized(Message updatedMessage) {
-//                            android.util.Log.d("MailLis_Handshake", "Ответный ключ успешно улетел в сеть на " + targetEmail);
-//                            messages.add(updatedMessage);
-//                        }
-//
-//                        @Override
-//                        public void onError(Exception e) {
-//                            // Если пропала сеть, сообщение останется в базе со статусом is_sent = 0
-//                            // и наш фоновый ретрай автоматически дошлет его позже
-//                            android.util.Log.e("MailLis_Handshake", "Ошибка при отправке ответа, отложено в ретрай: " + e.getMessage());
-//                        }
-//                    });
-//            System.out.println("Ответный ключ отправлен на " + targetEmail);
-//
-//
-//        } catch (Exception e) {
-//            android.util.Log.e("MailLis_Handshake", "Критический сбой в методе sendHandshakeResponse", e);
-//            e.printStackTrace();
-//        }
-//        return messages.get(0).getServerUid();
-//    }
-
 
     // Фоновый метод для удаления письма по протоколу IMAP
     public void deleteMessageFromMailRuServer(final String serverUid, Context context) {
@@ -478,41 +437,24 @@ public class EmailClientImpl implements EmailClient {
             jakarta.mail.Store store;
             jakarta.mail.Folder inbox;
             try {
-                android.content.SharedPreferences prefs = context.getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
+                android.content.SharedPreferences prefs = context.getSharedPreferences("MailLis_Prefs", MODE_PRIVATE);
 
                 store = connectToImapServer(prefs);
 
                 inbox = store.getFolder("INBOX");
                 inbox.open(jakarta.mail.Folder.READ_WRITE);
 
-                int messageCount = inbox.getMessageCount();
-                // Ищем в последних 50 письмах
-                int startMessage = Math.max(1, messageCount - 50);
-                jakarta.mail.Message[] messages = inbox.getMessages(startMessage, messageCount);
+                // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: Создаем поисковый терм для Message-ID
+                SearchTerm searchTerm = new MessageIDTerm(serverUid);
 
-                // Очищаем искомый заголовок от скобок и пробелов
-                String cleanTargetMimeId = serverUid.replace("<", EMPTI_STRING).replace(">", EMPTI_STRING).trim();
-                boolean messageFound = false;
+                // Сервер выполняет поиск у себя и возвращает массив (там будет строго 0 или 1 элемент)
+                jakarta.mail.Message[] foundMessages = inbox.search(searchTerm);
 
-                for (jakarta.mail.Message msg : messages) {
-                    // Извлекаем заголовок Message-ID текущего письма
-                    String mimeIds = extractMsgId(msg);
-
-                    if (mimeIds.isEmpty()) {
-                        continue;
-                    }
-                    // Тоже очищаем его от скобок для точного сравнения
-                    String currentMimeId = mimeIds.replace("<", EMPTI_STRING).replace(">", EMPTI_STRING).trim();
-                    if (currentMimeId.equalsIgnoreCase(cleanTargetMimeId)) {
-                        deleteMessage(msg, inbox);
-                        messageFound = true;
-                        break;
-                    }
-
-                }
-
-                if (!messageFound) {
-                    android.util.Log.e("MailLis_Delete", "Письмо с Message-ID " + cleanTargetMimeId + " не найдено в последних 50 сообщениях.");
+                if (foundMessages != null && foundMessages.length > 0) {
+                    Log.d("MailLis_IMAP_Delete", "Сообщение успешно найдено на сервере по UID: " + serverUid);
+                    deleteMessage(foundMessages[0], inbox);
+                } else {
+                    Log.w("MailLis_IMAP_Delete", "Сообщение с UID " + serverUid + " не найдено на сервере.");
                 }
 
                 // Закрываем с флагом true для применения удаления (Expunge)
@@ -525,7 +467,7 @@ public class EmailClientImpl implements EmailClient {
                 );
 
             } catch (Exception e) {
-                android.util.Log.e("MailLis_Delete", Objects.requireNonNull(e.getMessage()));
+                Log.e("MailLis_Delete", Objects.requireNonNull(e.getMessage()));
             }
         }).start();
     }
@@ -565,25 +507,26 @@ public class EmailClientImpl implements EmailClient {
                     dbService.markMessageAsSending(msg.getId());
 
                     String sendTxt = msg.getText();
-                    //  try {
-                    byte[] sharedSecret = dbService.getSevedPublicKey(chatId);
-                    sendTxt = sharedSecret != null ? cryptoService.encode(sendTxt, sharedSecret) : sendTxt;
-//                    } catch (GeneralSecurityException | IOException e) {
-//                        throw new RuntimeException(e);
-//                    }
+                    try {
+                        byte[] sharedSecret = dbService.getSevedPublicKey(chatId);
+                        sendTxt = sharedSecret != null ? cryptoService.encode(sendTxt, sharedSecret) : sendTxt;
+                    } catch (GeneralSecurityException | IOException e) {
+                        Log.e("MailLis_Retry", "Ошибка шифрования при повторно отправке");
+                        throw new RuntimeException(e);
+                    }
                     // Переотправляем письмо по SMTP
                     sendEmailOverNetwork(chatId, recipientEmail, msg.getSubject(), sendTxt, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
                         @Override
                         public void onSynchronized(Message updatedMessage) {
                             // Сеть прошла успешно! Переводим часики (0) в одну галочку (1)
-                            android.util.Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() + " успешно переотправлено после восстановления сети. UID: " + updatedMessage.getServerUid());
+                            Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() + " успешно переотправлено после восстановления сети. UID: " + updatedMessage.getServerUid());
                         }
 
                         @Override
                         public void onError(Exception e) {
                             // Ошибка сети или авторизации — сработает наша логика ретрая,
                             // сообщение останется со статусом is_sent = 0 в SQLite
-                            android.util.Log.e("MailLis_Handshake", "Сбой отправки рукопожатия, отложено в очередь ретрая: " + e.getMessage());
+                            Log.e("MailLis_Retry", "Сбой переотправки сообщения, отложено в очередь ретрая: " + e.getMessage());
                             dbService.resetMessageStatusToUnsent(msg.getId());
                         }
                     });
@@ -594,7 +537,7 @@ public class EmailClientImpl implements EmailClient {
                     dbService.resetMessageStatusToUnsent(msg.getId());
                     // Если интернета всё еще нет — SMTP выкинет ошибку.
                     // Прерываем отправку пачки до следующего тика таймера (через 20 секунд)
-                    android.util.Log.w("MailLis_Retry", "Ретрай не удался, сеть по-прежнему недоступна: " + e.getMessage());
+                    Log.w("MailLis_Retry", "Ретрай не удался, сеть по-прежнему недоступна: " + e.getMessage());
                     break;
                 }
             }
@@ -623,18 +566,18 @@ public class EmailClientImpl implements EmailClient {
             // 3. БЕЗОПАСНО ИЗВЛЕКАЕМ Message-ID
             generatedServerUid = message.getMessageID(); // Используем встроенный метод вместо getHeader()
 
-        } catch (jakarta.mail.AuthenticationFailedException e) {
+        } catch (AuthenticationFailedException e) {
             // Неверный пароль. Прерываем отправку всей пачки, так как данные авторизации сломаны.
-            android.util.Log.e("MailLis_Retry", "Критическая ошибка: неверный пароль для " + myEmail);
+            Log.e("MailLis_Retry", "Критическая ошибка: неверный пароль для " + myEmail);
             return null;
 
-        } catch (jakarta.mail.MessagingException e) {
+        } catch (MessagingException e) {
             // Любая другая ошибка (чаще всего — пропала сеть).
             // Оставляем сообщение со статусом 0 и выходим из цикла до следующего тика таймера.
-            android.util.Log.w("MailLis_Retry", "Сбой отправки сообщения , попробуем позже. Причина: " + e.getMessage()); //+ message.getId() + ", попробуем позже. Причина: " + e.getMessage());
+            Log.w("MailLis_Retry", "Сбой отправки сообщения , попробуем позже. Причина: " + e.getMessage()); //+ message.getId() + ", попробуем позже. Причина: " + e.getMessage());
             return null;
         } catch (Exception e) {
-            android.util.Log.e("MailLis_Retry", "Сбой отправки сообщения Причина: " + e.getMessage());
+            Log.e("MailLis_Retry", "Сбой отправки сообщения Причина: " + e.getMessage());
             return null;
         }
         return generatedServerUid;
@@ -714,7 +657,7 @@ public class EmailClientImpl implements EmailClient {
         inbox.setFlags(messageArray, new jakarta.mail.Flags(jakarta.mail.Flags.Flag.DELETED), true);
         // 2. ДОБАВИТЬ СТРОКУ: Принудительно заставляем IMAP-сервер физически стереть помеченные сообщения прямо сейчас
         inbox.expunge();
-        android.util.Log.d("MailLis_Delete", "Письмо с Message-ID успешно найдено и удалено.");
+        Log.d("MailLis_Delete", "Письмо с Message-ID успешно найдено и удалено.");
         return true;
     }
 

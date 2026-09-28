@@ -13,9 +13,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -26,8 +23,6 @@ import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ContactsAdapter;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
-import ru.toboe512.maillis.crypto.CryptoService;
-import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;

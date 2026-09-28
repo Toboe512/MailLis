@@ -37,8 +37,8 @@ public class ChatDbHelper extends SQLiteOpenHelper {
                 "subject TEXT, " +
                 "timestamp INTEGER, " +
                 "server_uid TEXT UNIQUE," + // Уникальный ID письма с сервера
-                "is_sent INTEGER DEFAULT 0," + // 1 = Отправлено, 0 = Ожидает отправки (сеть упала)
-                "is_mine INTEGER DEFAULT 0" + // ВОТ ЭТА КОЛОНКА: 1 = моё, 0 = чужое
+                "is_sent INTEGER DEFAULT 0," + // 1 = Отправлено, 0 = Ожидает отправки (сеть упала) 3 - взято в отправку
+                "is_mine INTEGER DEFAULT 0" + //  1 = моё, 0 = чужое
                 ");");
 
         db.execSQL("CREATE TABLE ban_list (" +

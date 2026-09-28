@@ -1,6 +1,7 @@
 package ru.toboe512.maillis.adapters;
 
 
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -20,7 +21,7 @@ public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAd
     private final List<Contact> contacts;
     private final OnContactDeleteListener deleteListener;
 
-    private final  OnContactBanListener banListener; // НОВЫЙ ЛИСТЕНЕР
+    private final OnContactBanListener banListener; // НОВЫЙ ЛИСТЕНЕР
 
     // НОВЫЙ ИНТЕРФЕЙС ДЛЯ БАНА
     public interface OnContactBanListener {
@@ -68,7 +69,7 @@ public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAd
                     }
                 });
             } else {
-                android.util.Log.e("MailLis_Bug", "Критическая ошибка: кнопка buttonBan не найдена в item_contact.xml!");
+                Log.e("MailLis_Bug", "Критическая ошибка: кнопка buttonBan не найдена в item_contact.xml!");
             }
         }
     }

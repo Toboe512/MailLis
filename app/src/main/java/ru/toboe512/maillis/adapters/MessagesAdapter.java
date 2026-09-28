@@ -60,6 +60,26 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             params.addRule(RelativeLayout.ALIGN_PARENT_END);
             holder.layoutBackground.setBackgroundColor(Color.parseColor("#E3F2FD"));
             holder.textViewSender.setVisibility(View.GONE);
+            holder.textViewStatus.setVisibility(View.VISIBLE);
+
+            int status = message.getStatus(); // Получаем циферку статуса из вашей DTO
+
+            switch (status) {
+                case 0:
+                    holder.textViewStatus.setText("🕒"); // Сети не было, ждет очереди ретрая
+                    break;
+                case 1:
+                    holder.textViewStatus.setText("✓");  // Успешно улетело на сервера Mail.ru
+                    break;
+                case 2:
+                    holder.textViewStatus.setText("✓✓"); // Друг скачал сообщение и открыл чат!
+                    break;
+                default:
+                    holder.textViewStatus.setText("✓");
+                    break;
+            }
+
+
         } else {
             // Чужое сообщение: прижимаем влево, красим в серый, показываем автора
             params.removeRule(RelativeLayout.ALIGN_PARENT_END);
@@ -67,6 +87,9 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             holder.layoutBackground.setBackgroundColor(Color.parseColor("#F5F5F5"));
             holder.textViewSender.setVisibility(View.VISIBLE);
             holder.textViewSender.setText(message.getSenderEmail());
+
+            // Для входящих сообщений друга галочки рисовать не нужно
+            holder.textViewStatus.setVisibility(View.GONE);
         }
         holder.cardMessage.setLayoutParams(params);
 
@@ -85,7 +108,9 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     static class MessageViewHolder extends RecyclerView.ViewHolder {
         CardView cardMessage;
         LinearLayout layoutBackground;
-        TextView textViewSender, textViewText;
+        TextView textViewSender;
+        TextView textViewText;
+        TextView textViewStatus; // НОВОЕ ПОЛЕ
 
         public MessageViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -93,6 +118,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             layoutBackground = itemView.findViewById(R.id.layoutMessageBackground);
             textViewSender = itemView.findViewById(R.id.textViewSender);
             textViewText = itemView.findViewById(R.id.textViewMessageText);
+            textViewStatus = itemView.findViewById(R.id.textViewMessageStatus);
         }
     }
 
