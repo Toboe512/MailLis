@@ -2,6 +2,7 @@
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://android.com"
+    xmlns:app2="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -10,21 +11,13 @@
     android:fitsSystemWindows="true"
     tools:ignore="HardcodedText,Autofill">
 
-<!--    <androidx.appcompat.widget.Toolbar-->
-<!--        android:id="@+id/toolbarChat"-->
-<!--        android:layout_width="match_parent"-->
-<!--        android:layout_height="?attr/actionBarSize"-->
-<!--        android:background="?attr/colorPrimary"-->
-<!--        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"-->
-<!--        app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />-->
-
     <!-- Верхняя панель со стрелкой назад -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbarChat"
         android:layout_width="match_parent"
         android:layout_height="56dp"
         android:background="#2196F3"
-        app:titleTextColor="#FFFFFF"  />
+        app:titleTextColor="#FFFFFF" />
 
 
     <!-- Список сообщений чата с фиксированным отступом сверху -->
@@ -46,6 +39,16 @@
         android:padding="8dp"
         android:background="#FFFFFF"
         android:gravity="center_vertical">
+
+        <!-- КНОПКА СКРЕПКИ: Выбор фото из галереи -->
+        <ImageButton
+            android:id="@+id/buttonAttachFile"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_share"
+            android:contentDescription="Прикрепить фото"
+            app2:tint="#757575" />
 
         <EditText
             android:id="@+id/editTextMessage"

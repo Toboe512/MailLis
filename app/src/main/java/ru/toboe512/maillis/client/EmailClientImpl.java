@@ -5,6 +5,7 @@ import static android.util.Base64.NO_WRAP;
 import static java.lang.Boolean.FALSE;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_IMAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_RESPONSE;
@@ -37,7 +38,9 @@ import jakarta.mail.Session;
 import jakarta.mail.Store;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.search.MessageIDTerm;
 import jakarta.mail.search.SearchTerm;
 import ru.toboe512.maillis.crypto.CryptoService;
@@ -131,14 +134,14 @@ public class EmailClientImpl implements EmailClient {
                             // Если чат существует у обоих — сохраняем сообщение в базу
                             String messageText = msg.getContent().toString();
 
-                            byte[] sharedSecret = dbService.getSevedPublicKey(chatId);
+                            byte[] sharedSecret = dbService.getPublicKey(chatId);
                             // Расшифровываем СВОИМ приватным ключом (метод decode больше не требует чужих ключей!)
                             if (!senderEmail.equals(myEmail)) {
-                                messageText = sharedSecret != null ? cryptoService.decode(messageText) : messageText;
+                                messageText = sharedSecret != null ? cryptoService.decrypted(messageText) : messageText;
                                 long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
 
                                 String messageId = extractMsgId(msg);
-                                result = dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_MESSAGE, messageText, currentTimestamp, messageId);
+                                result = dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_MESSAGE, messageText, currentTimestamp, messageId, "TEXT", EMPTI_STRING);
 //
 //                                // СРАЗУ ШЛЕМ СИГНАЛ ПРОЧТЕНИЯ: Отправляем скрытое SMTP письмо обратно другу
 //                                if (messageId != null && !messageId.isEmpty()) {
@@ -163,6 +166,52 @@ public class EmailClientImpl implements EmailClient {
                             // обычные сообщения от него просто тихо стираются с сервера и игнорируются!
                             Log.w("MailLis_P2P", "Чат удален или не создан. Сообщение от " + senderEmail + " проигнорировано.");
                             deleteMessage(msg, inbox);
+                        }
+                        continue;
+                    }
+                    if (subject.contains(MAILLIS_CHAT_IMAGE)) {
+                        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
+                        if (chatId > 0) {
+                            try {
+                                // 1. Извлекаем Multipart контент из письма
+                                MimeMultipart multipart = (MimeMultipart) msg.getContent();
+                                MimeBodyPart part = (MimeBodyPart) multipart.getBodyPart(0);
+
+                                String rawBase64  = part.getContent().toString();
+                                // ОПТИМИЗАЦИЯ СЕТЕВОГО ТЕКСТА: Жестко вырезаем все скрытые переносы строк (\r, \n)
+                                // и пробелы, которые Mail.ru вставил во вложение для транспортировки!
+                                String cleanBase64EncryptedImage = rawBase64
+                                        .replaceAll("\\r", EMPTI_STRING)
+                                        .replaceAll("\\n", EMPTI_STRING)
+                                        .trim();
+                                byte[] encryptedBytes = Base64.decode(cleanBase64EncryptedImage, NO_WRAP);
+                                // Расшифровываем СВОИМ приватным ключом (метод decode больше не требует чужих ключей!)
+                                if (!senderEmail.equals(myEmail)) {
+                                    // 3. РАСШИФРОВЫВАЕМ ПРИВАТНЫМ КЛЮЧОМ TINK
+                                    byte[] decryptedBytes =  cryptoService.decryptBytes(encryptedBytes); //Base64.decode(cleanBase64EncryptedImage, Base64.NO_WRAP);//Base64.decode(cleanBase64EncryptedImage, Base64.NO_WRAP);//
+
+                                    // 4. СОХРАНЯЕМ ФАЙЛ В ИЗОЛИРОВАННЫЙ КЭШ ТЕЛЕФОНА
+                                    String fileName = "p2p_img_" + System.currentTimeMillis() + ".jpg";
+                                    java.io.File file = new java.io.File(context.getCacheDir(), fileName);
+
+                                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+                                        fos.write(decryptedBytes);
+                                    }
+
+                                    // 5. ЗАПИСЫВАЕМ В SQLite
+                                    long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
+                                    String messageId = extractMsgId(msg);
+
+                                    // Сохраняем запись в базу данных, указав тип 'IMAGE' и путь к файлу на диске
+                                    dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_IMAGE, EMPTI_STRING,
+                                            currentTimestamp, messageId, "IMAGE", file.getAbsolutePath());
+
+                                    // Удаляем служебное тяжелое письмо с сервера Mail.ru, так как оно уже бережно сохранено локально!
+                                    // deleteMessage(msg, inbox);
+                                }
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
                         }
                         continue;
                     }
@@ -508,8 +557,8 @@ public class EmailClientImpl implements EmailClient {
 
                     String sendTxt = msg.getText();
                     try {
-                        byte[] sharedSecret = dbService.getSevedPublicKey(chatId);
-                        sendTxt = sharedSecret != null ? cryptoService.encode(sendTxt, sharedSecret) : sendTxt;
+                        byte[] sharedSecret = dbService.getPublicKey(chatId);
+                        sendTxt = sharedSecret != null ? cryptoService.encrypt(sendTxt, sharedSecret) : sendTxt;
                     } catch (GeneralSecurityException | IOException e) {
                         Log.e("MailLis_Retry", "Ошибка шифрования при повторно отправке");
                         throw new RuntimeException(e);
@@ -581,6 +630,62 @@ public class EmailClientImpl implements EmailClient {
             return null;
         }
         return generatedServerUid;
+    }
+
+    public void sendImageOverNetwork(long chatId, String recipientEmail, byte[] rawImageBytes, final int localMessageId, SharedPreferences prefs, OnMessagesSynchronizedListener listener) {
+        networkExecutor.execute(() -> {
+            String myEmail = prefs.getString("email_login", "my@mail.ru");
+            try {
+                dbService.markMessageAsSending(localMessageId); // Бронируем статус 3 (в процессе)
+
+                // 1. ШИФРОВАНИЕ TINK
+                byte[] peerPublicKeyBytes = dbService.getPublicKey(chatId);
+
+                // Переводим байты в Base64 строку для безопасной передачи по SMTP
+                byte[] encryptedImageBytes = rawImageBytes;
+
+                if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
+                    // Шифруем бинарный массив фотографии асимметричным ключом Tink
+                    encryptedImageBytes = cryptoService.encryptBytes(rawImageBytes, peerPublicKeyBytes);
+                }
+
+                // Превращаем зашифрованный бинарник в безопасную для почты Base64-строку
+                String base64EncryptedImage = Base64.encodeToString(encryptedImageBytes, NO_WRAP);
+
+                // 2. СБОРКА MIME ПИСЬМА С ВЛОЖЕНИЕМ
+                Session session = createSmtpSession(prefs);
+                var message = new MimeMessage(session);
+                message.setFrom(new InternetAddress(myEmail));
+                message.setRecipients(jakarta.mail.Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+                message.setSubject(MAILLIS_CHAT_IMAGE); // Специальный служебный заголовок
+
+                // Создаем Multipart контейнер
+                MimeMultipart multipart = new MimeMultipart();
+
+                // Помещаем зашифрованную Base64 строку в тело вложения
+                MimeBodyPart imagePart = new MimeBodyPart();
+                imagePart.setText(base64EncryptedImage);
+                imagePart.setFileName("encrypted_photo.lis");
+                multipart.addBodyPart(imagePart);
+
+                message.setContent(multipart);
+                message.saveChanges();
+
+                // 3. ОТПРАВКА
+                Transport.send(message);
+
+                String generatedServerUid = message.getMessageID();
+                dbService.markMessageAsSent(localMessageId, generatedServerUid);
+                dbService.updateServerUid(generatedServerUid, localMessageId);
+
+                Message freshMessages = dbService.getMessage(chatId);
+                new Handler(Looper.getMainLooper()).post(() -> listener.onSynchronized(freshMessages));
+
+            } catch (Exception e) {
+                dbService.resetMessageStatusToUnsent(localMessageId);
+                new Handler(Looper.getMainLooper()).post(() -> listener.onError(e));
+            }
+        });
     }
 
     private Store connectToImapServer(SharedPreferences prefs) throws MessagingException {

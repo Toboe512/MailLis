@@ -6,11 +6,17 @@ import java.security.GeneralSecurityException;
 public interface CryptoService {
 
 
-    String encode(String plainText, byte[] peerPublicKeyBytes) throws GeneralSecurityException, IOException;
+    String encrypt(String plainText, byte[] peerPublicKeyBytes) throws GeneralSecurityException, IOException;
 
-    String decode(String base64Ciphertext) throws GeneralSecurityException, IOException;
+    String decrypted(String base64Ciphertext) throws GeneralSecurityException, IOException;
+
+    byte[] encryptBytes(byte[] rawImageBytes, byte[] peerPublicKeyBytes) throws GeneralSecurityException, IOException;
+
+    byte[] decryptBytes(byte[] encryptedImageBytes) throws GeneralSecurityException;
 
     byte[] getMyPublicKeyBytes() throws IOException, GeneralSecurityException;
 
     String getMyPublicKeyBas64() throws IOException, GeneralSecurityException;
+
+
 }

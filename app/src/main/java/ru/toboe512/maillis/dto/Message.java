@@ -16,7 +16,10 @@ public class Message {
     private final String serverUid; // ДОБАВЛЕНО ПОЛЕ ДЛЯ СЕРВЕРНОГО ID
     private final int status;
 
-    public Message(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status) {
+    private String messageType; // "TEXT" или "IMAGE"
+    private String filePath;    // Путь к картинке во внутреннем кэше
+
+    public Message(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType) {
         this.id = id;
         this.senderEmail = senderEmail;
         this.subject = subject;
@@ -25,6 +28,28 @@ public class Message {
         this.isMine = isMine;
         this.serverUid = serverUid;
         this.status = status;
+        this.messageType = messageType;
+    }
+
+    public Message(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType, String filePath) {
+        this.id = id;
+        this.senderEmail = senderEmail;
+        this.subject = subject;
+        this.text = text;
+        this.timestamp = timestamp;
+        this.isMine = isMine;
+        this.serverUid = serverUid;
+        this.status = status;
+        this.messageType = messageType;
+        this.filePath = filePath;
+    }
+
+    public String getMessageType() {
+        return messageType;
+    }
+
+    public String getFilePath() {
+        return filePath;
     }
 
     public int getStatus() {

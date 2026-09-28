@@ -38,6 +38,10 @@ public class MessageDiffCallback extends DiffUtil.Callback {
         Message oldMsg = oldList.get(oldItemPosition);
         Message newMsg = newList.get(newItemPosition);
 
+        if (oldMsg == null || newMsg == null) {
+            return false;
+        }
+
         // Если текст, время или UID сервера изменились — элемент будет точечно перерисован
         boolean changText = oldMsg.getText() == null || oldMsg.getText().equals(newMsg.getText());
         boolean changeServerUid = oldMsg.getServerUid() == null || oldMsg.getServerUid().equals(newMsg.getServerUid());

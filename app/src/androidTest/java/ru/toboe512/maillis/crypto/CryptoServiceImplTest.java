@@ -72,14 +72,14 @@ public class CryptoServiceImplTest {
             assertNotNull(bobsPublicKeyBytes);
 
             // 2. Алиса шифрует исходный текст, используя публичный ключ Боба
-            String encryptedBase64Text = aliceCryptoService.encode(originalMessage, bobsPublicKeyBytes);
+            String encryptedBase64Text = aliceCryptoService.encrypt(originalMessage, bobsPublicKeyBytes);
             assertNotNull(encryptedBase64Text);
 
             // Проверяем, что текст зашифровался и больше не равен оригиналу
             assertTrue("Шифротекст должен отличаться от исходного сообщения", !originalMessage.equals(encryptedBase64Text));
 
             // 3. Боб получает зашифрованную Base64 строку и расшифровывает её СВОИМ приватным ключом
-            String decryptedMessage = bobCryptoService.decode(encryptedBase64Text);
+            String decryptedMessage = bobCryptoService.decrypted(encryptedBase64Text);
 
             // 4. ПРОВЕРКА: Текст после дешифрования обязан совпадать с оригиналом байт-в-байт
             assertEquals("Расшифрованное сообщение должно совпадать с исходным", originalMessage, decryptedMessage);
@@ -90,12 +90,12 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testEncode_WithNullOrEmptyPublicKey_ShouldThrowException() {
+    public void testEncrypt_WithNullOrEmptyPublicKey_ShouldThrowException() {
         String message = "Тестовое сообщение";
 
         // Проверка на передачу null
         try {
-            aliceCryptoService.encode(message, null);
+            aliceCryptoService.encrypt(message, null);
             fail("Метод encode должен был выбросить GeneralSecurityException при передачи null ключа");
         } catch (GeneralSecurityException e) {
             assertEquals("Публичный ключ собеседника пуст или не получен!", e.getMessage());
@@ -105,7 +105,7 @@ public class CryptoServiceImplTest {
 
         // Проверка на передачу пустого массива байт
         try {
-            aliceCryptoService.encode(message, new byte[0]);
+            aliceCryptoService.encrypt(message, new byte[0]);
             fail("Метод encode должен был выбросить GeneralSecurityException при передаче пустого массива ключа");
         } catch (GeneralSecurityException e) {
             assertEquals("Публичный ключ собеседника пуст или не получен!", e.getMessage());
@@ -115,12 +115,12 @@ public class CryptoServiceImplTest {
     }
 
     @Test
-    public void testDecode_WithCorruptedCiphertext_ShouldThrowException() {
+    public void testDecode_Str_WithCorruptedCiphertext_ShouldThrowException() {
         // Передаем заведомо испорченную, но валидную для Base64 строку
         String corruptedBase64 = "YmFkX2NpcGhlcnRleHQ=";
 
         try {
-            bobCryptoService.decode(corruptedBase64);
+            bobCryptoService.decrypted(corruptedBase64);
             fail("Метод decode должен выбросить GeneralSecurityException при попытке расшифровать битые данные");
         } catch (GeneralSecurityException e) {
             // Успех — Google Tink обнаружил подмену/порчу данных и выбросил decryption failed

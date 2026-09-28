@@ -16,11 +16,12 @@ public interface EmailClient {
     boolean sendHandshakeRequest(String targetEmail, Context context, long chatId, SharedPreferences prefs);
 
     String sendHandshakeResponse(String targetEmail, long chatId, SharedPreferences prefs);
-    //String sendHandshakeResponseAsin(String targetEmail, long chatId, final int localMessageId, SharedPreferences prefs, CryptoService cryptoService);
 
     void deleteMessageFromMailRuServer(final String serverUid, Context context);
 
     void retryUnsentMessages(SharedPreferences prefs);
 
     String sendEmailOverNetworkSync(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs);
+
+    void sendImageOverNetwork(long chatId, String recipientEmail, byte[] rawImageBytes, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);
 }

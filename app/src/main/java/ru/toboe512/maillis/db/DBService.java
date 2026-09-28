@@ -34,13 +34,13 @@ public interface DBService {
     int deleteMessage(int msgId);
 
 
-    boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp, String serverUid);
+    boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp, String serverUid, String type, String imgPath);
 
     void updateServerUid(String generatedServerUid, int localMessageId);
 
     String getRecipientEmailByChatId(long chatId);
 
-    byte[] getSevedPublicKey(long chatId);
+    byte[] getPublicKey(long chatId);
 
     List<Message> getUnsentMessages();
 
@@ -65,4 +65,5 @@ public interface DBService {
 
     Message getLastIncomingMessage();
 
+    void updateMessageTypeAndPath(int messageId, String type, String path);
 }

@@ -1,6 +1,7 @@
 package ru.toboe512.maillis.db;
 
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_IMAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 
 import android.content.ContentValues;
@@ -60,9 +61,12 @@ public class DBServiceSQLite implements DBService {
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int isMineIndex = cursor.getColumnIndex("is_mine");
                 int statusIndex = cursor.getColumnIndex("is_sent");
+                int messageTypeIndex = cursor.getColumnIndex("message_type");
+                int filePathIndex = cursor.getColumnIndex("file_path");
 
                 // 2. Безопасная проверка: все ли критически важные колонки существуют в БД
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >=0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >=0 &&
+                messageTypeIndex >=0 && filePathIndex >= 0) {
                     do {
                         // Читаем данные строки
                         int realId = cursor.getInt(idIndex);
@@ -70,6 +74,8 @@ public class DBServiceSQLite implements DBService {
                         String text = cursor.getString(textIndex);
                         long time = cursor.getLong(timeIndex);
                         int status = cursor.getInt(statusIndex);
+                        String messageType = cursor.getString(messageTypeIndex);
+                        String filePath = cursor.getString(filePathIndex);
 
                         // Необязательные колонки (могут не проверяться в if, но читаются безопасно)
                         String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
@@ -79,7 +85,7 @@ public class DBServiceSQLite implements DBService {
                         boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                         // Добавляем готовый объект в список
-                        messageList.add(new Message(realId, sender, subject, text, time, isMine, serverUid, status));
+                        messageList.add(new Message(realId, sender, subject, text, time, isMine, serverUid, status, messageType, filePath));
 
                     } while (cursor.moveToNext()); // Переходим к следующей строке переписки
                 }
@@ -92,7 +98,7 @@ public class DBServiceSQLite implements DBService {
     public List<Message> getMessages(long chatId, String myEmail) {
         return getAllMessages(chatId, myEmail)
                 .stream()
-                .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE))
+                .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE) || m.getSubject().contains(MAILLIS_CHAT_IMAGE))
                 .collect(Collectors.toList());
     }
 
@@ -125,13 +131,20 @@ public class DBServiceSQLite implements DBService {
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int isMineIndex = cursor.getColumnIndex("is_mine"); // Индекс новой колонки
                 int statusIndex = cursor.getColumnIndex("is_sent");
+                int messageTypeIndex = cursor.getColumnIndex("message_type");
+                int filePathIndex = cursor.getColumnIndex("file_path");
 
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >= 0) {
+
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >= 0 &&
+                        messageTypeIndex >=0 && filePathIndex >= 0) {
                     int realId = cursor.getInt(idIndex);
                     String sender = cursor.getString(senderIndex);
                     String text = cursor.getString(textIndex);
                     long time = cursor.getLong(timeIndex);
                     int status = cursor.getInt(statusIndex);
+                    String messageType = cursor.getString(messageTypeIndex);
+                    String filePath = cursor.getString(filePathIndex);
+
 
                     String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
                     String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
@@ -140,14 +153,15 @@ public class DBServiceSQLite implements DBService {
                     boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                     // Собираем объект сообщения
-                    lastMessage = new Message(realId, sender, subject, text, time, isMine, serverUid, status);
+                    lastMessage = new Message(realId, sender, subject, text, time, isMine, serverUid, status, messageType, filePath);
                 }
             }
         }
         // Если чат пустой, возвращаем дефолтный объект во избежание NullPointerException на главном экране
         return lastMessage != null
                 ? lastMessage :
-                new Message(0, EMPTI_STRING, EMPTI_STRING, "Сообщений нет", 0L, false, EMPTI_STRING, 0);
+                new Message(0, EMPTI_STRING, EMPTI_STRING, "Сообщений нет", 0L, false,
+                        EMPTI_STRING, 0, EMPTI_STRING, EMPTI_STRING);
     }
 
     // Метод сохранения сообщения в локальную таблицу SQLite
@@ -206,14 +220,19 @@ public class DBServiceSQLite implements DBService {
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int isMineIndex = cursor.getColumnIndex("is_mine"); // Считываем новое поле статуса
                 int isSendIndex = cursor.getColumnIndex("is_sent");
+                int messageTypeIndex = cursor.getColumnIndex("message_type");
+                int filePathIndex = cursor.getColumnIndex("file_path");
 
                 // Проверяем существование критически важных колонок
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 &&
+                        messageTypeIndex >=0 && filePathIndex >= 0) {
                     int realId = cursor.getInt(idIndex);
                     String sender = cursor.getString(senderIndex);
                     String text = cursor.getString(textIndex);
                     long time = cursor.getLong(timeIndex);
                     int isSend =cursor.getInt(isSendIndex);
+                    String messageType = cursor.getString(messageTypeIndex);
+                    String filePath = cursor.getString(filePathIndex);
 
                     // Безопасное чтение необязательных текстовых колонок
                     String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
@@ -223,7 +242,7 @@ public class DBServiceSQLite implements DBService {
                     boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                     // Создаем объект сообщения
-                    message = new Message(realId, sender, subject, text, time, isMine, serverUid, isSend);
+                    message = new Message(realId, sender, subject, text, time, isMine, serverUid, isSend, messageType, filePath);
                 }
             }
         }
@@ -440,7 +459,7 @@ public class DBServiceSQLite implements DBService {
     }
 
     @Override
-    public boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp, String serverUid) {
+    public boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp, String serverUid, String type, String imgPath) {
         boolean hasNewData = false;
 
         SQLiteDatabase db = dbHelper.getWritableDatabase();
@@ -455,6 +474,8 @@ public class DBServiceSQLite implements DBService {
                 values.put("timestamp", currentTimestamp);
                 values.put("is_sent", 2);
                 values.put("server_uid", serverUid);
+                values.put("message_type", type);
+                values.put("file_path", imgPath);
                 db.insert("messages", null, values);
 
                 hasNewData = true;
@@ -511,7 +532,7 @@ public class DBServiceSQLite implements DBService {
         return recipientEmail;
     }
     @Override
-    public byte[] getSevedPublicKey(long chatId) {
+    public byte[] getPublicKey(long chatId) {
         byte[] publicKey = null;
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         try (Cursor cursor = db.query(
@@ -556,15 +577,20 @@ public class DBServiceSQLite implements DBService {
                 int uidIndex = cursor.getColumnIndex("server_uid");
                 int isMineIndex = cursor.getColumnIndex("is_mine");
                 int statusIndex = cursor.getColumnIndex("is_sent");
+                int messageTypeIndex = cursor.getColumnIndex("message_type");
+                int filePathIndex = cursor.getColumnIndex("file_path");
 
                 // Проверяем существование критически важных для структуры полей
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex>=0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex>=0 &&
+                        messageTypeIndex >=0 && filePathIndex >= 0) {
                     do {
                         int realId = cursor.getInt(idIndex);
                         String sender = cursor.getString(senderIndex);
                         String text = cursor.getString(textIndex);
                         long time = cursor.getLong(timeIndex);
                         int status = cursor.getInt(statusIndex);
+                        String messageType = cursor.getString(messageTypeIndex);
+                        String filePath = cursor.getString(filePathIndex);
 
                         // Безопасное чтение необязательных текстовых колонок
                         String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
@@ -574,7 +600,7 @@ public class DBServiceSQLite implements DBService {
                         boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
 
                         // Создаем чистый объект сообщения
-                        Message message = new Message(realId, sender, subject, text, time, isMine, serverUid, status);
+                        Message message = new Message(realId, sender, subject, text, time, isMine, serverUid, status, messageType, filePath);
                         unsentList.add(message);
 
                     } while (cursor.moveToNext()); // Переходим к следующему неотправленному письму
@@ -823,20 +849,25 @@ public class DBServiceSQLite implements DBService {
                 int subjectIndex = cursor.getColumnIndex("subject");
                 int uidIndex = cursor.getColumnIndex("server_uid");
                 int statusIndex = cursor.getColumnIndex("is_sent");
+                int messageTypeIndex = cursor.getColumnIndex("message_type");
+                int filePathIndex = cursor.getColumnIndex("file_path");
 
                 // Проверяем, что все базовые колонки присутствуют в таблице
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >= 0) {
+                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >= 0 &&
+                        messageTypeIndex >=0 && filePathIndex >= 0) {
                     int realId = cursor.getInt(idIndex);
                     String sender = cursor.getString(senderIndex);
                     String text = cursor.getString(textIndex);
                     long time = cursor.getLong(timeIndex);
                     int status = cursor.getInt(statusIndex);
+                    String messageType = cursor.getString(messageTypeIndex);
+                    String filePath = cursor.getString(filePathIndex);
 
                     String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
                     String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
 
                     // Собираем чистый объект сообщения
-                    lastMessage = new Message(realId, sender, subject, text, time, false, serverUid, status);
+                    lastMessage = new Message(realId, sender, subject, text, time, false, serverUid, status, messageType, filePath);
                 }
             }
         } catch (Exception e) {
@@ -845,6 +876,21 @@ public class DBServiceSQLite implements DBService {
         }
 
         return lastMessage;
+    }
+
+    /**
+     * Обновляет тип сообщения и путь к локальному медиафайлу в SQLite.
+     */
+    public void updateMessageTypeAndPath(int messageId, String type, String path) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("message_type", type); // "IMAGE"
+            values.put("file_path", path);   // путь к .jpg на диске
+            db.update("messages", values, "id = CAST(? AS INTEGER)", new String[]{String.valueOf(messageId)});
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
 }

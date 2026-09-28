@@ -3,10 +3,13 @@ package ru.toboe512.maillis.adapters;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
@@ -50,46 +53,55 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     @Override
     public void onBindViewHolder(@NonNull MessageViewHolder holder, int position) {
         Message message = messageList.get(position);
-        holder.textViewText.setText(message.getText());
 
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) holder.cardMessage.getLayoutParams();
 
-        if (message.isMine()) {
-            // Наше сообщение: прижимаем вправо, красим в приятный голубой, скрываем email
-            params.removeRule(RelativeLayout.ALIGN_PARENT_START);
-            params.addRule(RelativeLayout.ALIGN_PARENT_END);
-            holder.layoutBackground.setBackgroundColor(Color.parseColor("#E3F2FD"));
-            holder.textViewSender.setVisibility(View.GONE);
-            holder.textViewStatus.setVisibility(View.VISIBLE);
+        // 1. НАСТРОЙКА ОТОБРАЖЕНИЯ КОНТЕНТА (ТЕКСТ ИЛИ ФОТО)
+        // Проверяем тип сообщения, сохраненный в SQLite
+        if ("IMAGE".equals(message.getMessageType()) && message.getFilePath() != null) {
 
-            int status = message.getStatus(); // Получаем циферку статуса из вашей DTO
+            // Скрываем текстовое поле, чтобы оно не занимало место
+            holder.textViewText.setVisibility(View.GONE);
 
-            switch (status) {
-                case 0:
-                    holder.textViewStatus.setText("🕒"); // Сети не было, ждет очереди ретрая
-                    break;
-                case 1:
-                    holder.textViewStatus.setText("✓");  // Успешно улетело на сервера Mail.ru
-                    break;
-                case 2:
-                    holder.textViewStatus.setText("✓✓"); // Друг скачал сообщение и открыл чат!
-                    break;
-                default:
-                    holder.textViewStatus.setText("✓");
-                    break;
+            // Показываем область изображения
+            if (holder.imageViewPhoto != null) {
+                holder.imageViewPhoto.setVisibility(View.VISIBLE);
+
+                // Безопасно декодируем и загружаем файл .jpg из изолированного кэша телефона
+                android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeFile(message.getFilePath());
+                if (bitmap != null) {
+                    holder.imageViewPhoto.setImageBitmap(bitmap);
+                } else {
+                    // Если файл поврежден или удален, показываем системную заглушку ошибки
+                    holder.imageViewPhoto.setImageResource(android.R.drawable.ic_menu_report_image);
+                }
             }
-
-
         } else {
-            // Чужое сообщение: прижимаем влево, красим в серый, показываем автора
-            params.removeRule(RelativeLayout.ALIGN_PARENT_END);
-            params.addRule(RelativeLayout.ALIGN_PARENT_START);
-            holder.layoutBackground.setBackgroundColor(Color.parseColor("#F5F5F5"));
-            holder.textViewSender.setVisibility(View.VISIBLE);
-            holder.textViewSender.setText(message.getSenderEmail());
+            // Если это обычное текстовое сообщение
+            if (holder.imageViewPhoto != null) {
+                holder.imageViewPhoto.setVisibility(View.GONE); // Прячем ImageView
+            }
+            holder.textViewText.setVisibility(View.VISIBLE);
+            holder.textViewText.setText(message.getText());
+        }
 
-            // Для входящих сообщений друга галочки рисовать не нужно
-            holder.textViewStatus.setVisibility(View.GONE);
+        // 2. НАСТРОЙКА СТАТУСА И ГАЛОЧЕК (Наш старый отлаженный код)
+        if (message.isMine()) {
+            if (holder.textViewStatus != null) {
+                holder.textViewStatus.setVisibility(View.VISIBLE);
+                int status = message.getStatus();
+                switch (status) {
+                    case 0: holder.textViewStatus.setText("🕒"); break; // Ожидание сети
+                    case 3: holder.textViewStatus.setText("⏳"); break; // В процессе отправки SMTP
+                    case 1: holder.textViewStatus.setText("✓"); break;  // На сервере Mail.ru
+                    case 2: holder.textViewStatus.setText("✓✓"); break; // Прочитано другом
+                    default: holder.textViewStatus.setText("✓"); break;
+                }
+            }
+        } else {
+            if (holder.textViewStatus != null) {
+                holder.textViewStatus.setVisibility(View.GONE);
+            }
         }
         holder.cardMessage.setLayoutParams(params);
 
@@ -111,6 +123,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
         TextView textViewSender;
         TextView textViewText;
         TextView textViewStatus; // НОВОЕ ПОЛЕ
+        ImageView imageViewPhoto;
 
         public MessageViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -119,6 +132,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             textViewSender = itemView.findViewById(R.id.textViewSender);
             textViewText = itemView.findViewById(R.id.textViewMessageText);
             textViewStatus = itemView.findViewById(R.id.textViewMessageStatus);
+            imageViewPhoto = itemView.findViewById(R.id.imageViewMessagePhoto);
         }
     }
 

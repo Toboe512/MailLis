@@ -2,6 +2,7 @@ package ru.toboe512.maillis.activity;
 
 
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_IMAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 
 import android.content.BroadcastReceiver;
@@ -9,6 +10,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.MenuItem;
@@ -16,6 +20,8 @@ import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
@@ -23,7 +29,9 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
@@ -51,7 +59,10 @@ public class ChatActivity extends AppCompatActivity {
     private String myEmail = EMPTI_STRING; // Наш реальный Email из настроек
 
     // 1. Объявляем переменную приемника на уровне класса ChatActivity
-    private android.content.BroadcastReceiver messageUpdateReceiver;
+    private BroadcastReceiver messageUpdateReceiver;
+
+    // Объявляем лаунчер как поле класса ChatActivity
+    private ActivityResultLauncher<Intent> photoPickerLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -122,9 +133,9 @@ public class ChatActivity extends AppCompatActivity {
 
             String sendTxt;
             try {
-                byte[] sharedSecret = dbService.getSevedPublicKey(chatId);
+                byte[] sharedSecret = dbService.getPublicKey(chatId);
                 sendTxt = sharedSecret != null
-                        ? emailClient.getCryptoService().encode(text, sharedSecret)
+                        ? emailClient.getCryptoService().encrypt(text, sharedSecret)
                         : text;
             } catch (GeneralSecurityException | IOException e) {
                 Log.e("CRYPTO_SERVICE_ERR", "Ошибка шифрования при отправке");
@@ -155,6 +166,29 @@ public class ChatActivity extends AppCompatActivity {
                         }
                     });
 
+        });
+
+        // ИНИЦИАЛИЗАЦИЯ ФОТО-ПИКЕРА ГАЛЕРЕИ
+        photoPickerLauncher = registerForActivityResult(
+                new ActivityResultContracts.StartActivityForResult(),
+                result -> {
+                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                        Uri selectedImageUri = result.getData().getData();
+                        if (selectedImageUri != null) {
+                            // Запускаем обработку и отправку картинки в фоновом потоке
+                            processAndSendPickedImage(selectedImageUri, prefs);
+                        }
+                    }
+                }
+        );
+
+        // Находим кнопку скрепки и вешаем клик
+        ImageButton buttonAttach = findViewById(R.id.buttonAttachFile);
+        buttonAttach.setOnClickListener(v -> {
+            // Запускаем современный системный Photo Picker (только изображения)
+            Intent intentImage = new Intent(Intent.ACTION_PICK);
+            intentImage.setType("image/*");
+            photoPickerLauncher.launch(intentImage);
         });
     }
 
@@ -330,5 +364,87 @@ public class ChatActivity extends AppCompatActivity {
                 }).start();
             }
         };
+    }
+
+    /**
+     * Извлекает Uri из галереи, сжимает картинку, сохраняет локально и передает в сетевой SMTP-слой.
+     */
+    private void processAndSendPickedImage(Uri imageUri, SharedPreferences prefs) {
+        new Thread(() -> {
+            try {
+                long currentTimestamp = System.currentTimeMillis();
+
+                // 1. СЖАТИЕ КАРТИНКИ (Оптимизация трафика)
+                InputStream inputStream = getContentResolver().openInputStream(imageUri);
+                Bitmap originalBitmap = BitmapFactory.decodeStream(inputStream);
+                if (inputStream != null) inputStream.close();
+
+                if (originalBitmap == null) return;
+
+                // Изменяем размер до разумного HD-предела (макс 1280px по большей стороне)
+                int maxSize = 1280;
+                int width = originalBitmap.getWidth();
+                int height = originalBitmap.getHeight();
+                if (width > maxSize || height > maxSize) {
+                    float bitmapRatio = (float) width / (float) height;
+                    if (bitmapRatio > 1) {
+                        width = maxSize;
+                        height = (int) (width / bitmapRatio);
+                    } else {
+                        height = maxSize;
+                        width = (int) (height * bitmapRatio);
+                    }
+                    originalBitmap = Bitmap.createScaledBitmap(originalBitmap, width, height, true);
+                }
+
+                // Конвертируем Bitmap в сжатый массив байт JPEG (качество 80%)
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                originalBitmap.compress(Bitmap.CompressFormat.JPEG, 80, baos);
+                byte[] rawImageBytes = baos.toByteArray();
+                baos.close();
+
+                // 2. СОХРАНЯЕМ ЛОКАЛЬНУЮ КОПИЮ НА ДИСКЕ ТЕЛЕФОНА (ДЛЯ НАШЕГО ЭКРАНА ЧАТА)
+                String localFileName = "sent_img_" + currentTimestamp + ".jpg";
+                java.io.File localFile = new java.io.File(getCacheDir(), localFileName);
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(localFile)) {
+                    fos.write(rawImageBytes);
+                }
+
+                // 3. ЗАПИСЫВАЕМ СТРОКУ В SQLITE БАЗУ ДАННЫХ
+                // Передаем тип "IMAGE" и путь к нашему файлу. Статус изначально 0 (часики)
+                int generatedId = dbService.saveMessage(chatId, myEmail,  MAILLIS_CHAT_IMAGE, MAILLIS_CHAT_IMAGE, true,  currentTimestamp);
+                // Принудительно обновляем тип и путь в базе данных
+                dbService.updateMessageTypeAndPath(generatedId, "IMAGE", localFile.getAbsolutePath());
+
+                // Мгновенно обновляем интерфейс через DiffUtil — картинка с часиками появится на экране!
+                updateUiFromDatabase();
+
+
+                // 4. ПЕРЕДАЕМ В СЕТЕВОЙ СЛОЙ НА ШИФРОВАНИЕ И ОТПРАВКУ ПО SMTP
+                // Используем метод, который мы спроектировали на прошлом шаге
+                emailClient.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
+                    @Override
+                    public void onSynchronized(Message updatedMessage) {
+                        // Успех! Сетевой слой сам вызвал markMessageAsSent, нам нужно только перерисовать галочку
+                        updateUiFromDatabase();
+
+                        // Пинаем MainActivity, чтобы обновилось превью чата
+//                        Intent updateChatsIntent = new Intent("ru.toboe512.maillis.UPDATE_CHATS");
+//                        updateChatsIntent.setPackage(getPackageName());
+//                        sendBroadcast(updateChatsIntent);
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        runOnUiThread(() -> Toast.makeText(ChatActivity.this, "Ошибка отправки медиафайла: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                        updateUiFromDatabase();
+                    }
+                });
+
+            } catch (Exception e) {
+                Log.e("MailLis_Media", "Ошибка подготовки фотографии к отправке", e);
+                e.printStackTrace();
+            }
+        }).start();
     }
 }
