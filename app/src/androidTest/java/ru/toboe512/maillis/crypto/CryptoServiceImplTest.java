@@ -23,14 +23,13 @@ import java.util.Arrays;
 @RunWith(AndroidJUnit4.class)
 public class CryptoServiceImplTest {
 
-    private Context context;
     private CryptoServiceImpl aliceCryptoService;
     private CryptoServiceImpl bobCryptoService;
 
     @Before
     public void setUp() throws GeneralSecurityException, IOException {
         // Получаем контекст тестируемого приложения Android
-        context = ApplicationProvider.getApplicationContext();
+        Context context = ApplicationProvider.getApplicationContext();
 
         // Инициализируем два независимых инстанса (как будто это два разных телефона)
         // Внимание: на одном эмуляторе они будут делить одни SharedPreferences,
@@ -38,13 +37,6 @@ public class CryptoServiceImplTest {
 
         aliceCryptoService = new CryptoServiceImpl(context);
         bobCryptoService = new CryptoServiceImpl(context);
-
-        // Избавляемся от ошибки "Method d in android.util.Log not mocked"
-        // Этот код перехватывает вызовы к Android Log и не дает тестам упасть
-//        MockedStatic<Log> mockedLog = Mockito.mockStatic(Log.class);
-//        mockedLog.when(() -> Log.d(Mockito.anyString(), Mockito.anyString())).thenReturn(0);
-//        mockedLog.when(() -> Log.e(Mockito.anyString(), Mockito.anyString(), Mockito.any(Throwable.class))).thenReturn(0);
-
     }
 
     @Test
@@ -65,7 +57,7 @@ public class CryptoServiceImplTest {
             String alicePublicKeyBase64 = aliceCryptoService.getMyPublicKeyBas64();
 
             assertNotNull("Базовое Base64 представление ключа не должно быть null", alicePublicKeyBase64);
-            assertTrue("Строка Base64 не должна быть пустой", alicePublicKeyBase64.trim().length() > 0);
+            assertFalse("Строка Base64 не должна быть пустой", alicePublicKeyBase64.trim().isEmpty());
         } catch (Exception e) {
             fail("Метод получения Base64 ключа выбросил исключение: " + e.getMessage());
         }
@@ -85,7 +77,7 @@ public class CryptoServiceImplTest {
             assertNotNull(encryptedBase64Text);
 
             // Проверяем, что текст зашифровался и больше не равен оригиналу
-            assertTrue("Шифротекст должен отличаться от исходного сообщения", !originalMessage.equals(encryptedBase64Text));
+            assertFalse("Шифротекст должен отличаться от исходного сообщения", originalMessage.equals(encryptedBase64Text));
 
             // 3. Боб получает зашифрованную Base64 строку и расшифровывает её СВОИМ приватным ключом
             String decryptedMessage = bobCryptoService.decrypted(encryptedBase64Text);
@@ -138,6 +130,4 @@ public class CryptoServiceImplTest {
             fail("Ожидалось криптографическое исключение, но выброшено системное IOException");
         }
     }
-
-
 }

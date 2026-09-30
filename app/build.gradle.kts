@@ -51,13 +51,6 @@ android {
             excludes.add("META-INF/NOTICE.txt")
         }
     }
-
-    testOptions {
-        unitTests {
-            isReturnDefaultValues = true // Для Kotlin DSL (.kts)
-            // Если у вас старый Groovy синтаксис (без .kts), пишите: returnDefaultValues = true
-        }
-    }
 }
 
 dependencies {
@@ -100,7 +93,4 @@ dependencies {
 
     // Криптография Google Tink
     implementation("com.google.crypto.tink:tink-android:1.15.0")
-
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.mockito:mockito-core:5.11.0") // Для моканья android.util.Log
 }
