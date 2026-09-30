@@ -1,12 +1,16 @@
 package ru.toboe512.maillis.client;
 
-import static android.content.Context.MODE_PRIVATE;
 import static android.util.Base64.NO_WRAP;
 import static java.lang.Boolean.FALSE;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
+import static jakarta.mail.Folder.READ_WRITE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_IMAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_GROUP_INVITE;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_GROUP_MESSAGE;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_GROUP_PRE_INVITE;
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_GROUP_PRE_INVITE_RESPONSE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_RESPONSE;
 
@@ -16,8 +20,8 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
-import android.widget.Toast;
 
+import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
@@ -32,6 +36,7 @@ import java.util.concurrent.Future;
 import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.Authenticator;
 import jakarta.mail.Folder;
+import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
 import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
@@ -46,7 +51,7 @@ import jakarta.mail.search.SearchTerm;
 import ru.toboe512.maillis.crypto.CryptoService;
 import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
-import ru.toboe512.maillis.dto.Message;
+import ru.toboe512.maillis.dto.MessageDto;
 
 public class EmailClientImpl implements EmailClient {
 
@@ -97,7 +102,7 @@ public class EmailClientImpl implements EmailClient {
             try {
                 Store store = connectToImapServer(prefs);
                 Folder inbox = store.getFolder("INBOX");
-                inbox.open(jakarta.mail.Folder.READ_WRITE);
+                inbox.open(READ_WRITE);
 
                 int messageCount = inbox.getMessageCount();
                 if (messageCount <= 0) {
@@ -106,13 +111,14 @@ public class EmailClientImpl implements EmailClient {
 
                 // Сканируем последние 25 писем, чтобы точно не пропустить ответы
                 int startMessage = Math.max(1, messageCount - 25);
-                jakarta.mail.Message[] messages = inbox.getMessages(startMessage, messageCount);
+                Message[] messages = inbox.getMessages(startMessage, messageCount);
 
-                for (jakarta.mail.Message msg : messages) {
-                    if (msg.getSubject() == null) {
+                for (Message msg : messages) {
+                    String subject = msg.getSubject();
+                    if (subject == null) {
                         continue;
                     }
-                    //TODO Доработать для группповых чатов
+
                     String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
                     // ПРОВЕРКА НА БАН: Если отправитель в черном списке — стираем письмо и игнорируем!
                     if (dbService.isUserBanned(senderEmail)) {
@@ -122,97 +128,21 @@ public class EmailClientImpl implements EmailClient {
                         continue; // Мгновенно переходим к следующему письму, этот объект дальше не обрабатываем!
                     }
 
-                    String subject = msg.getSubject();
-                    String myEmail = prefs.getString("email_login", "my@mail.ru");
-
-
                     // СЛУЧАЙ В: Прилетело обычное текстовое сообщение чата
                     if (subject.contains(MAILLIS_CHAT_MESSAGE)) {
-                        // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
-                        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
-                        if (chatId > 0) {
-                            // Если чат существует у обоих — сохраняем сообщение в базу
-                            String messageText = msg.getContent().toString();
-
-                            byte[] sharedSecret = dbService.getPublicKey(chatId);
-                            // Расшифровываем СВОИМ приватным ключом (метод decode больше не требует чужих ключей!)
-                            if (!senderEmail.equals(myEmail)) {
-                                messageText = sharedSecret != null ? cryptoService.decrypted(messageText) : messageText;
-                                long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
-
-                                String messageId = extractMsgId(msg);
-                                result = dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_MESSAGE, messageText, currentTimestamp, messageId, "TEXT", EMPTI_STRING);
-//
-//                                // СРАЗУ ШЛЕМ СИГНАЛ ПРОЧТЕНИЯ: Отправляем скрытое SMTP письмо обратно другу
-//                                if (messageId != null && !messageId.isEmpty()) {
-//                                    // Отправляем пустой текст, главное — тема [MailLis-Read-Receipt] и Message-ID в теле или теме
-//                                    sendEmailOverNetwork(chatId, senderEmail, MAILLIS_READ_RECEIPT, messageId, 0, prefs, new OnMessagesSynchronizedListener() {
-//                                        @Override
-//                                        public void onSynchronized(Message updatedMessage) {
-//                                            android.util.Log.d("MailLis_Status", "Отчет о прочтении (✓✓) отправлен для письма: " + messageId);
-//                                        }
-//
-//                                        @Override
-//                                        public void onError(Exception e) {
-//                                            // Если сети нет, отчет просто не улетит, ничего страшного
-//                                        }
-//                                    });
-//                                }
-                            }
-
-                            Log.d("MailLis_P2P", "Новое сообщение успешно добавлено в чат " + chatId);
-                        } else {
-                            // СТРОГОЕ ПРАВИЛО: Если один из пользователей удалил чат,
-                            // обычные сообщения от него просто тихо стираются с сервера и игнорируются!
-                            Log.w("MailLis_P2P", "Чат удален или не создан. Сообщение от " + senderEmail + " проигнорировано.");
+                        result = maillisChatMessageCase(msg, inbox, prefs);
+                        continue;
+                    }
+                    if (subject.contains(MAILLIS_CHAT_IMAGE)) {
+                        result = maillisChatImageCase(msg, context.getCacheDir(), prefs);
+                        if (result) {
+                            // Стираем служебное письмо с сервера Mail.ru, чтобы оно не висело во входящих
                             deleteMessage(msg, inbox);
                         }
                         continue;
                     }
-                    if (subject.contains(MAILLIS_CHAT_IMAGE)) {
-                        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
-                        if (chatId > 0) {
-                            try {
-                                // 1. Извлекаем Multipart контент из письма
-                                MimeMultipart multipart = (MimeMultipart) msg.getContent();
-                                MimeBodyPart part = (MimeBodyPart) multipart.getBodyPart(0);
-
-                                String rawBase64  = part.getContent().toString();
-                                // ОПТИМИЗАЦИЯ СЕТЕВОГО ТЕКСТА: Жестко вырезаем все скрытые переносы строк (\r, \n)
-                                // и пробелы, которые Mail.ru вставил во вложение для транспортировки!
-                                String cleanBase64EncryptedImage = rawBase64
-                                        .replaceAll("\\r", EMPTI_STRING)
-                                        .replaceAll("\\n", EMPTI_STRING)
-                                        .trim();
-                                byte[] encryptedBytes = Base64.decode(cleanBase64EncryptedImage, NO_WRAP);
-                                // Расшифровываем СВОИМ приватным ключом (метод decode больше не требует чужих ключей!)
-                                if (!senderEmail.equals(myEmail)) {
-                                    // 3. РАСШИФРОВЫВАЕМ ПРИВАТНЫМ КЛЮЧОМ TINK
-                                    byte[] decryptedBytes =  cryptoService.decryptBytes(encryptedBytes); //Base64.decode(cleanBase64EncryptedImage, Base64.NO_WRAP);//Base64.decode(cleanBase64EncryptedImage, Base64.NO_WRAP);//
-
-                                    // 4. СОХРАНЯЕМ ФАЙЛ В ИЗОЛИРОВАННЫЙ КЭШ ТЕЛЕФОНА
-                                    String fileName = "p2p_img_" + System.currentTimeMillis() + ".jpg";
-                                    java.io.File file = new java.io.File(context.getCacheDir(), fileName);
-
-                                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
-                                        fos.write(decryptedBytes);
-                                    }
-
-                                    // 5. ЗАПИСЫВАЕМ В SQLite
-                                    long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
-                                    String messageId = extractMsgId(msg);
-
-                                    // Сохраняем запись в базу данных, указав тип 'IMAGE' и путь к файлу на диске
-                                    dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_IMAGE, EMPTI_STRING,
-                                            currentTimestamp, messageId, "IMAGE", file.getAbsolutePath());
-
-                                    // Удаляем служебное тяжелое письмо с сервера Mail.ru, так как оно уже бережно сохранено локально!
-                                    // deleteMessage(msg, inbox);
-                                }
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
+                    if (subject.contains(MAILLIS_GROUP_MESSAGE)) {
+                        result = maillisGroupMessageCase(msg, inbox);
                         continue;
                     }
 //                    if (subject.contains(MAILLIS_READ_RECEIPT)) {
@@ -228,55 +158,34 @@ public class EmailClientImpl implements EmailClient {
 //                        deleteMessage(msg, inbox);
 //                        continue;
 //                    }
-
+                    String myEmail = prefs.getString("email_login", "my@mail.ru");
                     //Далее блок ловли хендшейка свои майлы нам не интересны
-
                     if (senderEmail.contains(myEmail)) {
                         continue;
                     }
-
-                    // СЛУЧАЙ А: Прилетел запрос на создание чата и обмен ключами
-                    if (subject.contains(MAILLIS_KEY_REQUEST)) {
-                        // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
-                        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
-                        // Если чата еще нет (или он был удален ранее) — создаем его заново!
-                        if (chatId < 0) {
-                            chatId = dbService.saveChat(senderEmail, senderEmail);
-                            Log.d("MailLis_P2P", "Получен запрос. Чат успешно создан у получателя. ID: " + chatId);
-                        }
-
-                        // СЛУЧАЙ 1: Нам прислали ключ и просят наш в ответ
-                        // 1. Декодируем публичный ключ собеседника из Base64 обратно в byte[]
-                        String trim = msg.getContent().toString().trim();
-                        byte[] peerPublicKeyBytes = Base64.decode(trim, NO_WRAP);
-
-                        //TODO Надо передавать название чата по сети
-
-                        // 2. Сохраняем его в нашу базу SQLite (в таблицу chats для этого отправителя)
-                        dbService.saveSharedSecretKey(senderEmail, peerPublicKeyBytes);
-                        result = true;
-
-                        // Стираем служебное письмо с сервера Mail.ru, чтобы оно не висело во входящих
-                        deleteMessage(msg, inbox);
-
-                        // 3. ОТВЕЧАЕМ СВОИМ КЛЮЧОМ
-                        String serverUid = sendHandshakeResponse(senderEmail, chatId, prefs);
-                        deleteMessageFromMailRuServer(serverUid, context);
+                    // СЦЕНАРИЙ 1: Нам прилетел Pre-Invite (Мы получатель, у нас просят ключ для вступления)
+                    if (subject.contains(MAILLIS_GROUP_PRE_INVITE)) {
+                        result = maillisGroupPreInviteCase(msg, inbox, prefs);
                         continue;
                     }
-
+                    // СЦЕНАРИЙ 2: Создателю группы прилетел ответный Tink-ключ от друга
+                    if (subject.contains(MAILLIS_GROUP_PRE_INVITE_RESPONSE)) {
+                        result = maillisGroupPreInviteResponseCase(msg, inbox, prefs);
+                        continue;
+                    }
+                    // СЦЕНАРИЙ 3: Получателю прилетел долгожданный ЗАШИФРОВАННЫЙ AES-ключ группы
+                    if (subject.contains(MAILLIS_GROUP_INVITE)) {
+                        result = maillisGroupInviteCase(msg, inbox);
+                        continue;
+                    }
+                    // СЛУЧАЙ А: Прилетел запрос на создание чата и обмен ключами
+                    if (subject.contains(MAILLIS_KEY_REQUEST)) {
+                        result = maillisKeyRequestCase(msg, inbox, prefs);
+                        continue;
+                    }
                     // СЛУЧАЙ Б: Прилетел ответный ключ (собеседник подтвердил создание нашего чата)
                     if (subject.contains(MAILLIS_KEY_RESPONSE)) {
-                        // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
-                        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
-                        if (chatId > 0) { // Обрабатываем, только если чат у нас существует
-                            // СЛУЧАЙ 2: Собеседник ответил на наш запрос и прислал свой ключ
-                            byte[] peerPublicKeyBytes = Base64.decode(msg.getContent().toString().trim(), NO_WRAP);
-                            // Сохраняем его в базу. Рукопожатие завершено!
-                            dbService.saveSharedSecretKey(senderEmail, peerPublicKeyBytes);
-                            result = true;
-                        }
-                        deleteMessage(msg, inbox);
+                        result = maillisKeyResponseCase(msg, inbox);
                     }
                 }
                 // Закрываем с флагом true для применения удаления (Expunge)
@@ -305,9 +214,294 @@ public class EmailClientImpl implements EmailClient {
         return result;
     }
 
+    private boolean maillisGroupMessageCase(Message msg, Folder inbox) throws Exception {
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        // Парсим ID родительского чата из темы письма
+        String[] parts = msg.getSubject().split(" ");
+        long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
+
+        if (groupChatId <= 0 || !dbService.isGroupChat(groupChatId)) {
+            return false;
+        }
+
+        byte[] groupKey = dbService.getGroupSecretKey(groupChatId);
+        String base64Text = msg.getContent().toString().trim();
+        byte[] encryptedBytes = Base64.decode(base64Text, NO_WRAP);
+
+        // Дешифруем общим симметричным ключом группы
+        String decryptedText = CryptoServiceImpl.decryptGroupText(encryptedBytes, groupKey);
+        long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
+        String messageId = extractMsgId(msg);
+
+        // Сохраняем в messages, привязывая к ID группы
+        dbService.saveIncomingMessage(groupChatId, senderEmail, "[Группа]",
+                decryptedText, currentTimestamp, messageId, "TEXT", EMPTI_STRING);
+
+        // Стираем с сервера
+        //deleteMessage(msg, inbox);
+
+        return true;
+    }
+
+    private boolean maillisGroupPreInviteCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException {
+
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        try {
+            // Парсим ID чата, назначенный создателем группы
+            String[] parts = msg.getSubject().split(" ");
+            long remoteChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
+
+            if (remoteChatId <= 0) {
+                return false;
+            }
+            String body = msg.getContent().toString().trim();
+            String[] bodyLines = body.split("\\r\\n");
+
+            String incomingGroupName = bodyLines[0].trim();
+            String creatorPublicKeyBase64 = bodyLines[1].trim();
+
+            byte[] creatorPublicKeyBytes = Base64.decode(creatorPublicKeyBase64, Base64.NO_WRAP);
+
+            // 1. Сохраняем публичный Tink-ключ создателя группы в таблицу контактов,
+            // чтобы мы могли шифровать сообщения лично для него
+            dbService.savePublicKey(senderEmail, creatorPublicKeyBytes);
+
+            // 2. Создаем у себя заготовку группового чата (пока без секретного AES-ключа группы)
+            dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, null, senderEmail);
+            dbService.addGroupMember(remoteChatId, senderEmail); // Записываем создателя как участника
+
+            Log.i("MailLis_P2P_Group", "Поймали Pre-Invite в группу \"" + incomingGroupName + "\". Высылаем свой Tink-ключ в ответ...");
+
+            // 3. АВТО-ОТВЕТ: Мгновенно отправляем создателю наш публичный Tink-ключ, чтобы он запечатал инвайт
+            sendGroupPreInviteResponse(senderEmail, remoteChatId, prefs);
+
+            // Удаляем служебное письмо с сервера Mail.ru, так как оно отработано
+            deleteMessage(msg, inbox);
+
+        } catch (Exception e) {
+            Log.e("MailLis_P2P_Group", "Ошибка обработки Pre-Invite", e);
+            return false;
+        }
+        return true;
+    }
+
+    private boolean maillisGroupPreInviteResponseCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException {
+
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        try {
+            String[] parts = msg.getSubject().split(" ");
+            long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
+
+            if (groupChatId <= 0) {
+                return false;
+            }
+            String peerPublicKeyBase64 = msg.getContent().toString().trim();
+            byte[] peerPublicKeyBytes = Base64.decode(peerPublicKeyBase64, Base64.NO_WRAP);
+
+            // 1. Сохраняем полученный публичный Tink-ключ друга в контакты
+            dbService.savePublicKey(senderEmail, peerPublicKeyBytes);
+            dbService.addGroupMember(groupChatId, senderEmail); // Фиксируем, что он в группе
+
+            Log.i("MailLis_P2P_Group", "Участник " + senderEmail + " прислал свой Tink-ключ. Досылаем ему секретный AES-ключ группы...");
+
+            // 2. КЛЮЧ ПОЛУЧЕН! Теперь мы можем взять секретный AES-ключ группы из SQLite
+            byte[] groupSecretKey = dbService.getGroupSecretKey(groupChatId);
+            String groupName = dbService.getRecipientEmailByChatId(groupChatId); // Имя группы лежит тут
+
+            // 3. Перевызываем метод отправки инвайта! Теперь у нас ЕСТЬ его ключ,
+            // и метод сработает по Варианту А (отправит зашифрованный AES-пакет)
+            sendGroupInviteOverNetwork(senderEmail, groupChatId, groupName, groupSecretKey, prefs);
+
+            deleteMessage(msg, inbox);
+
+        } catch (Exception e) {
+            Log.e("MailLis_P2P_Group", "Ошибка обработки Pre-Invite-Response", e);
+        }
+        return true;
+    }
+
+    private boolean maillisGroupInviteCase(Message msg, Folder inbox) throws MessagingException, GeneralSecurityException, IOException {
+
+        // Извлекаем ID чата, который назначил создатель группы
+        String[] subjectParts = msg.getSubject().split(" ");
+        long remoteChatId = subjectParts.length > 1 ? Long.parseLong(subjectParts[1].trim()) : -1;
+
+        if (remoteChatId <= 0) {
+            return false;
+        }
+        // Читаем тело письма: 1 строка - имя группы, 2 строка - Base64 зашифрованного ключа
+        String body = msg.getContent().toString();
+        String[] bodyLines = body.split("\\r\\n");
+
+        String incomingGroupName = bodyLines[0].trim();
+        String base64EncryptedKey = bodyLines[1].trim();
+
+        byte[] encryptedKeyBytes = Base64.decode(base64EncryptedKey, Base64.NO_WRAP);
+
+        // Расшифровываем СВОИМ локальным приватным Tink-ключом Keystore полученный AES-секрет группы!
+        byte[] decryptedGroupKey = cryptoService.decryptBytes(encryptedKeyBytes);
+
+        String creatorEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        // Перезаписываем заготовку чата, добавляя туда рабочий расшифрованный BLOB секретного ключа!
+        dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, decryptedGroupKey, creatorEmail);
+
+        Log.i("MailLis_P2P_Group", "🎉 Успешно получили и расшифровали AES-ключ группы \"" + incomingGroupName + "\". Теперь мы полноценный участник!");
+
+        deleteMessage(msg, inbox);
+
+        return true;
+    }
+
+    private boolean maillisChatMessageCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException, IOException, GeneralSecurityException {
+
+        boolean result = false;
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        String myEmail = prefs.getString("email_login", "my@mail.ru");
+
+        if (senderEmail.equals(myEmail)) {
+            return false;
+        }
+
+        // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
+        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
+        if (chatId <= 0) {
+            // СТРОГОЕ ПРАВИЛО: Если один из пользователей удалил чат,
+            // обычные сообщения от него просто тихо стираются с сервера и игнорируются!
+            Log.w("MailLis_P2P", "Чат удален или не создан. Сообщение от " + senderEmail + " проигнорировано.");
+            deleteMessage(msg, inbox);
+            return false;
+        }
+        // Если чат существует у обоих — сохраняем сообщение в базу
+        String messageText = msg.getContent().toString();
+        byte[] sharedSecret = dbService.getPublicKey(chatId);
+
+        messageText = sharedSecret != null ? cryptoService.decrypted(messageText) : messageText;
+        long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
+
+        String messageId = extractMsgId(msg);
+        result = dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_MESSAGE,
+                messageText, currentTimestamp, messageId, "TEXT", EMPTI_STRING);
+//
+//        // СРАЗУ ШЛЕМ СИГНАЛ ПРОЧТЕНИЯ: Отправляем скрытое SMTP письмо обратно другу
+//        if (messageId != null && !messageId.isEmpty()) {
+//            // Отправляем пустой текст, главное — тема [MailLis-Read-Receipt] и Message-ID в теле или теме
+//            sendEmailOverNetwork(chatId, senderEmail, MAILLIS_READ_RECEIPT, messageId, 0, prefs, new OnMessagesSynchronizedListener() {
+//                @Override
+//                public void onSynchronized(Message updatedMessage) {
+//                    android.util.Log.d("MailLis_Status", "Отчет о прочтении (✓✓) отправлен для письма: " + messageId);
+//                }
+//
+//                @Override
+//                public void onError(Exception e) {
+//                    // Если сети нет, отчет просто не улетит, ничего страшного
+//                }
+//            });
+//        }
+
+        Log.d("MailLis_P2P", "Новое сообщение успешно добавлено в чат " + chatId);
+
+        return result;
+    }
+
+    private boolean maillisChatImageCase(Message msg, File cacheDir, SharedPreferences prefs) throws MessagingException, IOException, GeneralSecurityException {
+
+        boolean result = false;
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        String myEmail = prefs.getString("email_login", "my@mail.ru");
+
+        if (senderEmail.equals(myEmail)) {
+            return false;
+        }
+
+        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
+        if (chatId <= 0) {
+            return false;
+        }
+
+        // 1. Извлекаем Multipart контент из письма
+        MimeMultipart multipart = (MimeMultipart) msg.getContent();
+        MimeBodyPart part = (MimeBodyPart) multipart.getBodyPart(0);
+
+        String rawBase64 = part.getContent().toString();
+        // ОПТИМИЗАЦИЯ СЕТЕВОГО ТЕКСТА: Жестко вырезаем все скрытые переносы строк (\r, \n)
+        // и пробелы, которые Mail.ru вставил во вложение для транспортировки!
+        String cleanBase64EncryptedImage = rawBase64
+                .replaceAll("\\r", EMPTI_STRING)
+                .replaceAll("\\n", EMPTI_STRING)
+                .trim();
+        byte[] encryptedBytes = Base64.decode(cleanBase64EncryptedImage, NO_WRAP);
+
+        // 3. РАСШИФРОВЫВАЕМ ПРИВАТНЫМ КЛЮЧОМ TINK
+        byte[] decryptedBytes = cryptoService.decryptBytes(encryptedBytes); //Base64.decode(cleanBase64EncryptedImage, Base64.NO_WRAP);//Base64.decode(cleanBase64EncryptedImage, Base64.NO_WRAP);//
+
+        // 4. СОХРАНЯЕМ ФАЙЛ В ИЗОЛИРОВАННЫЙ КЭШ ТЕЛЕФОНА
+        String fileName = "p2p_img_" + System.currentTimeMillis() + ".jpg";
+        java.io.File file = new java.io.File(cacheDir, fileName);
+
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
+            fos.write(decryptedBytes);
+        }
+
+        // 5. ЗАПИСЫВАЕМ В SQLite
+        long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
+        String messageId = extractMsgId(msg);
+
+        // Сохраняем запись в базу данных, указав тип 'IMAGE' и путь к файлу на диске
+        return dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_IMAGE, EMPTI_STRING,
+                currentTimestamp, messageId, "IMAGE", file.getAbsolutePath());
+    }
+
+    private boolean maillisKeyRequestCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException, IOException {
+        boolean result = false;
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
+        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
+        // Если чата еще нет (или он был удален ранее) — создаем его заново!
+        if (chatId < 0) {
+            chatId = dbService.saveChat(senderEmail, senderEmail);
+            Log.d("MailLis_P2P", "Получен запрос. Чат успешно создан у получателя. ID: " + chatId);
+        }
+
+        // СЛУЧАЙ 1: Нам прислали ключ и просят наш в ответ
+        // 1. Декодируем публичный ключ собеседника из Base64 обратно в byte[]
+        String trim = msg.getContent().toString().trim();
+        byte[] peerPublicKeyBytes = Base64.decode(trim, NO_WRAP);
+
+        //TODO Надо передавать название чата по сети
+
+        // 2. Сохраняем его в нашу базу SQLite (в таблицу chats для этого отправителя)
+        dbService.savePublicKey(senderEmail, peerPublicKeyBytes);
+        result = true;
+
+        // Стираем служебное письмо с сервера Mail.ru, чтобы оно не висело во входящих
+        deleteMessage(msg, inbox);
+
+        // 3. ОТВЕЧАЕМ СВОИМ КЛЮЧОМ
+        String serverUid = sendHandshakeResponse(senderEmail, chatId, prefs);
+        deleteMessageFromMailRuServer(serverUid, prefs);
+
+        return result;
+    }
+
+    private boolean maillisKeyResponseCase(Message msg, Folder inbox) throws MessagingException, IOException {
+        boolean result = false;
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
+        long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
+        if (chatId > 0) { // Обрабатываем, только если чат у нас существует
+            // СЛУЧАЙ 2: Собеседник ответил на наш запрос и прислал свой ключ
+            byte[] peerPublicKeyBytes = Base64.decode(msg.getContent().toString().trim(), NO_WRAP);
+            // Сохраняем его в базу. Рукопожатие завершено!
+            dbService.savePublicKey(senderEmail, peerPublicKeyBytes);
+            result = true;
+        }
+        deleteMessage(msg, inbox);
+        return result;
+    }
+
     public interface OnMessagesSynchronizedListener {
         // Этот метод сработает, когда отправка завершится и база обновится
-        void onSynchronized(Message updatedMessages);
+        void onSynchronized(MessageDto updatedMessages);
 
         void onError(Exception e);
     }
@@ -334,7 +528,7 @@ public class EmailClientImpl implements EmailClient {
 
                 var message = new MimeMessage(session);
                 message.setFrom(new InternetAddress(myEmail));
-                message.setRecipients(jakarta.mail.Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
                 message.setSubject(subject);
                 message.setText(messageText);
                 // 1. ПРИНУДИТЕЛЬНО ПРИМЕНЯЕМ ИЗМЕНЕНИЯ, чтобы сгенерировался Message-ID
@@ -347,7 +541,7 @@ public class EmailClientImpl implements EmailClient {
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
                 dbService.updateServerUid(generatedServerUid, localMessageId);
                 // Передаем (int) chatId, если ваша БД принимает инты
-                Message freshlyLoadedMessages = dbService.getMessage(localMessageId);
+                MessageDto freshlyLoadedMessages = dbService.getMessage(localMessageId);
 
                 mainHandler.post(() -> listener.onSynchronized(freshlyLoadedMessages));
             } catch (AuthenticationFailedException e) {
@@ -387,7 +581,7 @@ public class EmailClientImpl implements EmailClient {
 
             // 1. Сохраняем служебное сообщение в локальную SQLite историю
             // Метод saveMessage сам выставит нужные флаги (is_mine = 1, is_sent = 0)
-            int localMessageId = dbService.saveMessage(
+            int localMessageId = dbService.saveGenericMessage(
                     (int) chatId,
                     myEmail,
                     MAILLIS_KEY_REQUEST, // Тема письма, например "[MailLis-Key-Request]"
@@ -406,9 +600,9 @@ public class EmailClientImpl implements EmailClient {
                     prefs,
                     new OnMessagesSynchronizedListener() {
                         @Override
-                        public void onSynchronized(Message updatedMessage) {
+                        public void onSynchronized(MessageDto updatedMessageDto) {
                             // Сеть отработала успешно, сообщение улетело на Mail.ru
-                            if (updatedMessage != null) {
+                            if (updatedMessageDto != null) {
                                 Log.d("MailLis_Handshake", "Запрос рукопожатия успешно отправлен в сеть на адрес: " + targetEmail);
                             }
                         }
@@ -449,7 +643,7 @@ public class EmailClientImpl implements EmailClient {
 
         long currentTimestamp = System.currentTimeMillis();
         // 1. Сохраняем служебное сообщение в локальную SQLite историю
-        localMessageId = dbService.saveMessage(
+        localMessageId = dbService.saveGenericMessage(
                 (int) chatId,
                 myEmail,
                 MAILLIS_KEY_RESPONSE,
@@ -477,7 +671,7 @@ public class EmailClientImpl implements EmailClient {
     }
 
     // Фоновый метод для удаления письма по протоколу IMAP
-    public void deleteMessageFromMailRuServer(final String serverUid, Context context) {
+    public void deleteMessageFromMailRuServer(final String serverUid, android.content.SharedPreferences prefs) {
         if (serverUid == null || serverUid.isEmpty()) {
             return;
         }
@@ -486,18 +680,16 @@ public class EmailClientImpl implements EmailClient {
             jakarta.mail.Store store;
             jakarta.mail.Folder inbox;
             try {
-                android.content.SharedPreferences prefs = context.getSharedPreferences("MailLis_Prefs", MODE_PRIVATE);
-
                 store = connectToImapServer(prefs);
 
                 inbox = store.getFolder("INBOX");
-                inbox.open(jakarta.mail.Folder.READ_WRITE);
+                inbox.open(READ_WRITE);
 
                 // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ: Создаем поисковый терм для Message-ID
                 SearchTerm searchTerm = new MessageIDTerm(serverUid);
 
                 // Сервер выполняет поиск у себя и возвращает массив (там будет строго 0 или 1 элемент)
-                jakarta.mail.Message[] foundMessages = inbox.search(searchTerm);
+                Message[] foundMessages = inbox.search(searchTerm);
 
                 if (foundMessages != null && foundMessages.length > 0) {
                     Log.d("MailLis_IMAP_Delete", "Сообщение успешно найдено на сервере по UID: " + serverUid);
@@ -511,9 +703,9 @@ public class EmailClientImpl implements EmailClient {
                 store.close();
 
                 // Выводим тост
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
-                        Toast.makeText(context, "Сообщение удалено со своего устройства и сервера", Toast.LENGTH_SHORT).show()
-                );
+//                new android.os.Handler(android.os.Looper.getMainLooper()).post(() ->
+//                        Toast.makeText(context, "Сообщение удалено со своего устройства и сервера", Toast.LENGTH_SHORT).show()
+//                );
 
             } catch (Exception e) {
                 Log.e("MailLis_Delete", Objects.requireNonNull(e.getMessage()));
@@ -527,9 +719,9 @@ public class EmailClientImpl implements EmailClient {
         networkExecutor.execute(() -> {
 
             // 1. Просто запрашиваем у сервиса БД список всех неотправленных писем
-            List<Message> unsentMessages = dbService.getUnsentMessages();
+            List<MessageDto> unsentMessageDtos = dbService.getUnsentMessages();
 
-            if (unsentMessages.isEmpty()) {
+            if (unsentMessageDtos.isEmpty()) {
                 return; // Если очередь пуста, тихо выходим
             }
 
@@ -539,7 +731,7 @@ public class EmailClientImpl implements EmailClient {
             }
 
             // 2. Бежим в цикле по готовым объектам сообщений
-            for (Message msg : unsentMessages) {
+            for (MessageDto msg : unsentMessageDtos) {
                 try {
                     // Вытаскиваем chatId для этого сообщения (нужно будет получить recipientEmail)
                     // Если вы добавили поле chatId в класс Message: int chatId = msg.getChatId();
@@ -566,9 +758,9 @@ public class EmailClientImpl implements EmailClient {
                     // Переотправляем письмо по SMTP
                     sendEmailOverNetwork(chatId, recipientEmail, msg.getSubject(), sendTxt, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
                         @Override
-                        public void onSynchronized(Message updatedMessage) {
+                        public void onSynchronized(MessageDto updatedMessageDto) {
                             // Сеть прошла успешно! Переводим часики (0) в одну галочку (1)
-                            Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() + " успешно переотправлено после восстановления сети. UID: " + updatedMessage.getServerUid());
+                            Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() + " успешно переотправлено после восстановления сети. UID: " + updatedMessageDto.getServerUid());
                         }
 
                         @Override
@@ -604,7 +796,7 @@ public class EmailClientImpl implements EmailClient {
 
             var message = new MimeMessage(session);
             message.setFrom(new InternetAddress(myEmail));
-            message.setRecipients(jakarta.mail.Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
             message.setSubject(subject);
             message.setText(messageText);
             // 1. ПРИНУДИТЕЛЬНО ПРИМЕНЯЕМ ИЗМЕНЕНИЯ, чтобы сгенерировался Message-ID
@@ -656,7 +848,7 @@ public class EmailClientImpl implements EmailClient {
                 Session session = createSmtpSession(prefs);
                 var message = new MimeMessage(session);
                 message.setFrom(new InternetAddress(myEmail));
-                message.setRecipients(jakarta.mail.Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
                 message.setSubject(MAILLIS_CHAT_IMAGE); // Специальный служебный заголовок
 
                 // Создаем Multipart контейнер
@@ -678,12 +870,122 @@ public class EmailClientImpl implements EmailClient {
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
                 dbService.updateServerUid(generatedServerUid, localMessageId);
 
-                Message freshMessages = dbService.getMessage(chatId);
+                MessageDto freshMessages = dbService.getMessage(chatId);
                 new Handler(Looper.getMainLooper()).post(() -> listener.onSynchronized(freshMessages));
 
             } catch (Exception e) {
                 dbService.resetMessageStatusToUnsent(localMessageId);
                 new Handler(Looper.getMainLooper()).post(() -> listener.onError(e));
+            }
+        });
+    }
+
+    public void sendGroupMessageOverNetwork(long chatId, String text, String cipherTextBase64, int localMessageId, SharedPreferences prefs) {
+        networkExecutor.execute(() -> {
+            try {
+                dbService.markMessageAsSending(localMessageId);
+                String myEmail = prefs.getString("email_login", "my@mail.ru");
+
+                // Получаем всех участников этой группы из SQLite
+                List<String> recipients = dbService.getGroupMembers(chatId, myEmail);
+                Session session = createSmtpSession(prefs);
+
+                // ВЕЕРНАЯ РАССЫЛКА: Шлем копию письма каждому участнику отдельно
+                for (String recipientEmail : recipients) {
+                    try {
+                        var message = new MimeMessage(session);
+                        message.setFrom(new InternetAddress(myEmail));
+                        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+
+                        // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
+                        message.setSubject(MAILLIS_GROUP_MESSAGE + " " + chatId);
+                        message.setText(text + "\\n" + cipherTextBase64);
+                        message.saveChanges();
+
+                        Transport.send(message);
+                    } catch (Exception e) {
+                        Log.e("MailLis_GroupNet", "Не удалось доставить пакет для " + recipientEmail);
+                    }
+                }
+
+                // Помечаем в локальной базе как отправлено (хотя бы сервером)
+                dbService.markMessageAsSent(localMessageId, "GROUP_SENT_" + System.currentTimeMillis());
+
+                // Стреляем локальным Broadcast для обновления UI
+//                Intent updateIntent = new Intent("ru.toboe512.maillis.UPDATE_MESSAGES");
+//                updateIntent.setPackage(context.getPackageName());
+//                context.sendBroadcast(updateIntent);
+
+            } catch (Exception e) {
+                dbService.resetMessageStatusToUnsent(localMessageId);
+            }
+        });
+    }
+
+    /**
+     * Безопасно рассылает секретный AES-ключ группы участнику.
+     * Ключ шифруется индивидуальным публичным Tink-ключом получателя.
+     */
+    public void sendGroupInviteOverNetwork(String recipientEmail, long chatId, String groupName, byte[] groupSecretKey, SharedPreferences prefs) {
+        networkExecutor.execute(() -> {
+            try {
+                String myEmail = prefs.getString("email_login", "my@mail.ru");
+                Session session = createSmtpSession(prefs);
+
+                // Проверяем, есть ли у нас публичный ключ Tink этого друга
+                byte[] peerPublicKeyBytes = dbService.getPublicKeyByEmail(recipientEmail);
+
+                var message = new MimeMessage(session);
+                message.setFrom(new InternetAddress(myEmail));
+                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+
+                if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
+                    // ВАРИАНТ А: Ключ друга есть! Шлем финальный ЗАШИФРОВАННЫЙ инвайт с ключом группы
+                    byte[] encryptedKeyBytes = cryptoService.encryptBytes(groupSecretKey, peerPublicKeyBytes);
+                    String base64EncryptedKey = Base64.encodeToString(encryptedKeyBytes, Base64.NO_WRAP);
+
+                    message.setSubject(MAILLIS_GROUP_INVITE + " " + chatId);
+                    message.setText(groupName + "\r\n" + base64EncryptedKey);
+
+                    Log.d("MailLis_Group", "Отправлен финальный защищенный инвайт для: " + recipientEmail);
+                } else {
+                    // ВАРИАНТ Б: Ключа друга нет! Шлем открытый Pre-Invite и прикрепляем СВОЙ публичный ключ
+                    String myPublicKeyBase64 = cryptoService.getMyPublicKeyBas64();
+
+                    message.setSubject(MAILLIS_GROUP_PRE_INVITE + " " + chatId);
+                    message.setText(groupName + "\r\n" + myPublicKeyBase64);
+
+                    Log.w("MailLis_Group", "Ключа друга нет. Отправлен безопасный Pre-Invite для: " + recipientEmail);
+                }
+
+                message.saveChanges();
+                Transport.send(message);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public void sendGroupPreInviteResponse(String creatorEmail, long chatId, SharedPreferences prefs) {
+        networkExecutor.execute(() -> {
+            try {
+                String myEmail = prefs.getString("email_login", "my@mail.ru");
+                Session session = createSmtpSession(prefs);
+
+                var message = new MimeMessage(session);
+                message.setFrom(new InternetAddress(myEmail));
+                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(creatorEmail));
+
+                // Сигнализируем создателю группы, возвращая наш публичный ключ Tink
+                message.setSubject(MAILLIS_GROUP_PRE_INVITE_RESPONSE + " " + chatId);
+                message.setText(cryptoService.getMyPublicKeyBas64());
+
+                message.saveChanges();
+                Transport.send(message);
+                android.util.Log.d("MailLis_Group", "Ответ на Pre-Invite успешно отправлен создателю: " + creatorEmail);
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         });
     }
@@ -698,7 +1000,7 @@ public class EmailClientImpl implements EmailClient {
             throw new AuthenticationFailedException("Логин или пароль для Mail.ru не заполнены.");
         }
 
-        Properties props = new Properties();
+        var props = new Properties();
         props.put("mail.store.protocol", "imaps");
         props.put("mail.imaps.host", imapServer);
         props.put("mail.imaps.port", imapPort);
@@ -735,7 +1037,7 @@ public class EmailClientImpl implements EmailClient {
             throw new AuthenticationFailedException("Логин или пароль для SMTP Mail.ru не заполнены.");
         }
 
-        Properties props = new Properties();
+        var props = new Properties();
         props.put("mail.smtp.host", smtpServer);
         props.put("mail.smtp.socketFactory.port", smtpPort);
         props.put("mail.smtp.socketFactory.class", "javax.net.ssl.SSLSocketFactory");
@@ -750,7 +1052,7 @@ public class EmailClientImpl implements EmailClient {
         });
     }
 
-    private boolean deleteMessage(jakarta.mail.Message message, Folder inbox) throws MessagingException {
+    private boolean deleteMessage(Message message, Folder inbox) throws MessagingException {
 
         String messageId = extractMsgId(message);
         if (messageId.isEmpty()) {
@@ -758,7 +1060,7 @@ public class EmailClientImpl implements EmailClient {
         }
 
         // Создаем массив из одного элемента и принудительно ставим флаг удаления через папку
-        jakarta.mail.Message[] messageArray = new jakarta.mail.Message[]{message};
+        Message[] messageArray = new Message[]{message};
         inbox.setFlags(messageArray, new jakarta.mail.Flags(jakarta.mail.Flags.Flag.DELETED), true);
         // 2. ДОБАВИТЬ СТРОКУ: Принудительно заставляем IMAP-сервер физически стереть помеченные сообщения прямо сейчас
         inbox.expunge();
@@ -766,7 +1068,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private String extractMsgId(jakarta.mail.Message message) throws MessagingException {
+    private String extractMsgId(Message message) throws MessagingException {
         String[] mimeIds = message.getHeader("Message-ID");
         String messageId = (mimeIds != null && mimeIds.length > 0) ? mimeIds[0] : null;
         if (messageId == null) {

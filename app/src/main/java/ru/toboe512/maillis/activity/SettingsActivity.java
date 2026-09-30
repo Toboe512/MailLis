@@ -1,6 +1,7 @@
 package ru.toboe512.maillis.activity;
 
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -16,7 +17,9 @@ import androidx.appcompat.widget.Toolbar;
 
 import java.util.Properties;
 
+import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.Authenticator;
+import jakarta.mail.MessagingException;
 import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
@@ -24,9 +27,6 @@ import jakarta.mail.Transport;
 import ru.toboe512.maillis.R;
 
 public class SettingsActivity extends AppCompatActivity {
-
-    // Имя файла настроек на диске телефона
-    private static final String PREFS_NAME = "MailLis_Prefs";
 
     // Ключи для сохранения каждого поля
     private static final String KEY_IMAP_SERVER = "imap_server";
@@ -36,9 +36,14 @@ public class SettingsActivity extends AppCompatActivity {
     private static final String KEY_EMAIL_LOGIN = "email_login";
     private static final String KEY_EMAIL_PASSWORD = "email_password";
 
-    private EditText editTextImapServer, editTextImapPort, editTextSmtpServer, editTextSmtpPort;
-    private EditText editTextEmailLogin, editTextEmailPassword;
-    private Button buttonTestConnection, buttonSaveSettings;
+    private EditText editTextImapServer;
+    private EditText editTextImapPort;
+    private EditText editTextSmtpServer;
+    private EditText editTextSmtpPort;
+    private EditText editTextEmailLogin;
+    private EditText editTextEmailPassword;
+    private Button buttonTestConnection;
+    private Button buttonSaveSettings;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -75,43 +80,28 @@ public class SettingsActivity extends AppCompatActivity {
         loadSavedSettings();
 
         // Кнопка "Сохранить"
-        buttonSaveSettings.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                saveSettings();
-            }
-        });
+        buttonSaveSettings.setOnClickListener(v -> saveSettings());
 
         // РЕАЛИЗАЦИЯ КНОПКИ: Проверить соединение
-        buttonTestConnection.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                // Считываем то, что введено в поля прямо сейчас
-                final String imapHost = editTextImapServer.getText().toString().trim();
-                final String imapPort = editTextImapPort.getText().toString().trim();
-                final String smtpHost = editTextSmtpServer.getText().toString().trim();
-                final String smtpPort = editTextSmtpPort.getText().toString().trim();
-                final String user = editTextEmailLogin.getText().toString().trim();
-                final String pass = editTextEmailPassword.getText().toString().trim();
+        buttonTestConnection.setOnClickListener(v -> {
+            // Считываем то, что введено в поля прямо сейчас
+            final String imapHost = editTextImapServer.getText().toString().trim();
+            final String imapPort = editTextImapPort.getText().toString().trim();
+            final String smtpHost = editTextSmtpServer.getText().toString().trim();
+            final String smtpPort = editTextSmtpPort.getText().toString().trim();
+            final String user = editTextEmailLogin.getText().toString().trim();
+            final String pass = editTextEmailPassword.getText().toString().trim();
 
-                // Валидация полей перед запуском сети
-                if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() || smtpHost.isEmpty()) {
-                    Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", Toast.LENGTH_LONG).show();
-                    return;
-                }
-
-                Toast.makeText(SettingsActivity.this, "Начинаем проверку конфигурации...", Toast.LENGTH_SHORT).show();
-
-                // Запускаем сетевой тест на фоновом потоке
-                testMailConnectionOverNetwork(imapHost, imapPort, smtpHost, smtpPort, user, pass);
+            // Валидация полей перед запуском сети
+            if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() || smtpHost.isEmpty()) {
+                Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", Toast.LENGTH_LONG).show();
+                return;
             }
-        });
 
-        buttonSaveSettings.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                saveSettings();
-            }
+            Toast.makeText(SettingsActivity.this, "Начинаем проверку конфигурации...", Toast.LENGTH_SHORT).show();
+
+            // Запускаем сетевой тест на фоновом потоке
+            testMailConnectionOverNetwork(imapHost, imapPort, smtpHost, smtpPort, user, pass);
         });
     }
 
@@ -127,7 +117,7 @@ public class SettingsActivity extends AppCompatActivity {
 
     @Override
     public boolean onSupportNavigateUp() {
-        onBackPressed(); // Закрывает экран настроек и возвращает пользователя назад
+        getOnBackPressedDispatcher(); // Закрывает экран настроек и возвращает пользователя назад
         return true;
     }
 
@@ -143,7 +133,7 @@ public class SettingsActivity extends AppCompatActivity {
 
             // --- ШАГ 1: ТЕСТИРУЕМ ВХОДЯЩУЮ ПОЧТУ (IMAP) ---
             try {
-                Properties imapProps = new Properties();
+                var imapProps = new Properties();
                 String protocol = imapHost.contains("pop") ? "pop3s" : "imaps";
 
                 imapProps.put("mail.store.protocol", protocol);
@@ -162,18 +152,17 @@ public class SettingsActivity extends AppCompatActivity {
                 store.close();
                 imapSuccess = true;
 
-            } catch (jakarta.mail.AuthenticationFailedException e) {
+            } catch (AuthenticationFailedException e) {
                 errorMessage += "Ошибка IMAP: Неверный логин или Пароль приложения! (Проверьте, что сгенерировали 16-значный код в браузере)\n";
-            } catch (jakarta.mail.MessagingException e) {
+            } catch (MessagingException e) {
                 errorMessage += "Ошибка IMAP (Сеть/Порты): " + e.getLocalizedMessage() + "\n";
             } catch (Exception e) {
                 errorMessage += "Ошибка IMAP: " + e.getMessage() + "\n";
             }
 
-
             // --- ШАГ 2: ТЕСТИРУЕМ ИСХОДЯЩУЮ ПОЧТУ (SMTP) ---
             try {
-                Properties smtpProps = new Properties();
+                var smtpProps = new Properties();
                 smtpProps.put("mail.smtp.host", smtpHost);
                 smtpProps.put("mail.smtp.port", smtpPort);
                 smtpProps.put("mail.smtp.auth", "true");
@@ -213,9 +202,7 @@ public class SettingsActivity extends AppCompatActivity {
                     Toast.makeText(SettingsActivity.this, "❌ Ошибка авторизации:\n" + finalError, Toast.LENGTH_LONG).show();
                 }
             });
-        }).
-
-                start();
+        }).start();
     }
 
     // Метод сохранения данных в память устройства
@@ -266,6 +253,5 @@ public class SettingsActivity extends AppCompatActivity {
         editTextEmailLogin.setText(sharedPreferences.getString(KEY_EMAIL_LOGIN, EMPTI_STRING));
         editTextEmailPassword.setText(sharedPreferences.getString(KEY_EMAIL_PASSWORD, EMPTI_STRING));
     }
-
 
 }

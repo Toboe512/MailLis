@@ -1,5 +1,8 @@
 package ru.toboe512.maillis.service;
 
+import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
+import static ru.toboe512.maillis.consts.Consts.UPDATE_INTERVAL_MS;
+
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -21,7 +24,7 @@ import ru.toboe512.maillis.activity.MainActivity;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBServiceSQLite;
-import ru.toboe512.maillis.dto.Message;
+import ru.toboe512.maillis.dto.MessageDto;
 
 
 /**
@@ -37,7 +40,6 @@ public class MailLisPushService extends Service {
 
     private static final int PUSH_NOTIFICATION_ID = 101;
     private static final int SYSTEM_SERVICE_ID = 202;
-    private static final int UPDATE_INTERVAL_MS = 5000; // Интервал опроса сети (20 секунд)
 
     private Handler updateHandler;
     private Runnable updateRunnable;
@@ -88,8 +90,7 @@ public class MailLisPushService extends Service {
             updateRunnable = new Runnable() {
                 @Override
                 public void run() {
-                    SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
-                    String myEmail = prefs.getString("email_login", "");
+                    SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
                     // Уходим в выделенный рабочий поток, чтобы сетевые блокировки IMAP/SMTP не фризили устройство
                     new Thread(() -> {
@@ -118,7 +119,7 @@ public class MailLisPushService extends Service {
                                 sendBroadcast(updateMessagesIntent);
 
                                 // Логика показа Push-уведомления (наш старый отлаженный код)
-                                Message lastIncoming = dbService.getLastIncomingMessage();
+                                MessageDto lastIncoming = dbService.getLastIncomingMessage();
                                 if (lastIncoming != null && !lastIncoming.isMine()) {
                                     // Передаем в Push чистый, уже расшифрованный на этапе скачивания текст сообщения
                                     showPushNotification(lastIncoming.getSenderEmail(), lastIncoming.getText());

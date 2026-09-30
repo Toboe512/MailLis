@@ -1,5 +1,6 @@
 package ru.toboe512.maillis.activity;
 
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -31,8 +32,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     private ChatsAdapter chatsAdapter;
     private List<ChatPreview> chatList;
     private DBService dbService;
-
-    private android.content.BroadcastReceiver chatUpdateReceiver;
+    private BroadcastReceiver chatUpdateReceiver;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -69,7 +69,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
                 new Thread(() -> {
                     try {
                         // Считываем свежие данные чатов из SQLite
-                        final List<ru.toboe512.maillis.dto.ChatPreview> freshChats = dbService.loadChats();
+                        final List<ChatPreview> freshChats = dbService.loadChats();
 
                         // Возвращаемся в главный поток для плавной отрисовки UI
                         runOnUiThread(() -> {
@@ -188,7 +188,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     // Фоновое обновление списков чатов из SQLite через DiffUtil
     private void refreshChatsList() {
         new Thread(() -> {
-            List<ru.toboe512.maillis.dto.ChatPreview> freshChats = dbService.loadChats();
+            List<ChatPreview> freshChats = dbService.loadChats();
             runOnUiThread(() -> {
                 if (freshChats != null && chatsAdapter != null) {
                     chatsAdapter.updateChatsList(freshChats);

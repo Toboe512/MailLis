@@ -1,11 +1,13 @@
 package ru.toboe512.maillis.adapters;
 
 
+import static android.content.Context.MODE_PRIVATE;
+
+import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
+
 import android.app.AlertDialog;
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.graphics.Color;
+import android.content.SharedPreferences;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,20 +27,20 @@ import java.util.List;
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.db.DBService;
-import ru.toboe512.maillis.dto.Message;
+import ru.toboe512.maillis.dto.MessageDto;
 import ru.toboe512.maillis.utils.MessageDiffCallback;
 
 public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.MessageViewHolder> {
 
-    private final List<Message> messageList;
+    private final List<MessageDto> messageDtoList;
     private final Context context;
 
     private final DBService dbService;
     private EmailClient emailClient;
 
-    public MessagesAdapter(Context context, List<Message> messageList, EmailClient emailClient, DBService dbService) {
+    public MessagesAdapter(Context context, List<MessageDto> messageDtoList, EmailClient emailClient, DBService dbService) {
         this.context = context;
-        this.messageList = messageList;
+        this.messageDtoList = messageDtoList;
         this.emailClient = emailClient;
         this.dbService = dbService;
     }
@@ -52,13 +54,13 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
     @Override
     public void onBindViewHolder(@NonNull MessageViewHolder holder, int position) {
-        Message message = messageList.get(position);
+        MessageDto messageDto = messageDtoList.get(position);
 
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) holder.cardMessage.getLayoutParams();
 
         // 1. НАСТРОЙКА ОТОБРАЖЕНИЯ КОНТЕНТА (ТЕКСТ ИЛИ ФОТО)
         // Проверяем тип сообщения, сохраненный в SQLite
-        if ("IMAGE".equals(message.getMessageType()) && message.getFilePath() != null) {
+        if ("IMAGE".equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
 
             // Скрываем текстовое поле, чтобы оно не занимало место
             holder.textViewText.setVisibility(View.GONE);
@@ -68,7 +70,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
                 holder.imageViewPhoto.setVisibility(View.VISIBLE);
 
                 // Безопасно декодируем и загружаем файл .jpg из изолированного кэша телефона
-                android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeFile(message.getFilePath());
+                android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeFile(messageDto.getFilePath());
                 if (bitmap != null) {
                     holder.imageViewPhoto.setImageBitmap(bitmap);
                 } else {
@@ -82,20 +84,30 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
                 holder.imageViewPhoto.setVisibility(View.GONE); // Прячем ImageView
             }
             holder.textViewText.setVisibility(View.VISIBLE);
-            holder.textViewText.setText(message.getText());
+            holder.textViewText.setText(messageDto.getText());
         }
 
         // 2. НАСТРОЙКА СТАТУСА И ГАЛОЧЕК (Наш старый отлаженный код)
-        if (message.isMine()) {
+        if (messageDto.isMine()) {
             if (holder.textViewStatus != null) {
                 holder.textViewStatus.setVisibility(View.VISIBLE);
-                int status = message.getStatus();
+                int status = messageDto.getStatus();
                 switch (status) {
-                    case 0: holder.textViewStatus.setText("🕒"); break; // Ожидание сети
-                    case 3: holder.textViewStatus.setText("⏳"); break; // В процессе отправки SMTP
-                    case 1: holder.textViewStatus.setText("✓"); break;  // На сервере Mail.ru
-                    case 2: holder.textViewStatus.setText("✓✓"); break; // Прочитано другом
-                    default: holder.textViewStatus.setText("✓"); break;
+                    case 0:
+                        holder.textViewStatus.setText("🕒");// Ожидание сети
+                        break;
+                    case 3:
+                        holder.textViewStatus.setText("⏳");// В процессе отправки SMTP
+                        break;
+                    case 1:
+                        holder.textViewStatus.setText("✓");// На сервере Mail.ru
+                        break;
+                    case 2:
+                        holder.textViewStatus.setText("✓✓");// Прочитано другом
+                        break;
+                    default:
+                        holder.textViewStatus.setText("✓");
+                        break;
                 }
             }
         } else {
@@ -107,14 +119,14 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
         // ОБРАБОТКА ДОЛГОГО КЛИКА НА СООБЩЕНИЕ
         holder.itemView.setOnLongClickListener(v -> {
-            showDeleteMessageDialog(message, position);
+            showDeleteMessageDialog(messageDto, position);
             return true;
         });
     }
 
     @Override
     public int getItemCount() {
-        return messageList.size();
+        return messageDtoList.size();
     }
 
     static class MessageViewHolder extends RecyclerView.ViewHolder {
@@ -137,15 +149,16 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     }
 
     // Всплывающее окно подтверждения удаления
-    private void showDeleteMessageDialog(Message message, int position) {
+    private void showDeleteMessageDialog(MessageDto messageDto, int position) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Удалить сообщение");
         builder.setMessage("Вы уверены, что хотите удалить это сообщение?");
 
         builder.setPositiveButton("Удалить", (dialog, which) -> {
-            deleteMessageFromDb(message.getId(), position);
+            deleteMessageFromDb(messageDto.getId(), position);
             // ЗАПУСКАЕМ СЕТЕВОЕ УДАЛЕНИЕ С СЕРВЕРА MAIL.RU
-            emailClient.deleteMessageFromMailRuServer(message.getServerUid(), context);
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            emailClient.deleteMessageFromMailRuServer(messageDto.getServerUid(), prefs);
         });
 
         builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
@@ -161,29 +174,29 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
         int rowsDeleted = dbService.deleteMessage(messageId);
 
         if (rowsDeleted > 0) {
-            messageList.remove(position);
+            messageDtoList.remove(position);
 
             // Красивая плавная анимация исчезновения сообщения из списка
             notifyItemRemoved(position);
-            notifyItemRangeChanged(position, messageList.size());
+            notifyItemRangeChanged(position, messageDtoList.size());
 
             Toast.makeText(context, "Сообщение удалено", Toast.LENGTH_SHORT).show();
         } else {
             // Если сообщение было временным (не успело записаться в БД)
-            messageList.remove(position);
+            messageDtoList.remove(position);
             notifyItemRemoved(position);
         }
     }
 
     // Внутри класса MessagesAdapter:
-    public void setMessages(List<Message> newMessages) {
+    public void setMessages(List<MessageDto> newMessageDtos) {
         // Вычисляем разницу между старым списком (this.messageList) и новым
-        MessageDiffCallback diffCallback = new MessageDiffCallback(this.messageList, newMessages);
+        MessageDiffCallback diffCallback = new MessageDiffCallback(this.messageDtoList, newMessageDtos);
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
 
         // Обновляем данные в памяти адаптера
-        this.messageList.clear();
-        this.messageList.addAll(newMessages);
+        this.messageDtoList.clear();
+        this.messageDtoList.addAll(newMessageDtos);
 
         // Применяем точечные анимации (notifyItemInserted, notifyItemChanged автоматически!)
         diffResult.dispatchUpdatesTo(this);

@@ -4,14 +4,14 @@ import androidx.recyclerview.widget.DiffUtil;
 
 import java.util.List;
 
-import ru.toboe512.maillis.dto.Message;
+import ru.toboe512.maillis.dto.MessageDto;
 
 public class MessageDiffCallback extends DiffUtil.Callback {
 
-    private final List<Message> oldList;
-    private final List<Message> newList;
+    private final List<MessageDto> oldList;
+    private final List<MessageDto> newList;
 
-    public MessageDiffCallback(List<Message> oldList, List<Message> newList) {
+    public MessageDiffCallback(List<MessageDto> oldList, List<MessageDto> newList) {
         this.oldList = oldList;
         this.newList = newList;
     }
@@ -35,8 +35,8 @@ public class MessageDiffCallback extends DiffUtil.Callback {
     // Проверяем, изменилось ли что-то внутри самого сообщения (например, прилетел server_uid)
     @Override
     public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
-        Message oldMsg = oldList.get(oldItemPosition);
-        Message newMsg = newList.get(newItemPosition);
+        MessageDto oldMsg = oldList.get(oldItemPosition);
+        MessageDto newMsg = newList.get(newItemPosition);
 
         if (oldMsg == null || newMsg == null) {
             return false;

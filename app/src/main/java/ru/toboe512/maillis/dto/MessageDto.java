@@ -1,7 +1,7 @@
 package ru.toboe512.maillis.dto;
 
 
-public class Message {
+public class MessageDto {
     private final int id; // ДОБАВЛЕНО ПОЛЕ ID
     private final String senderEmail;
     private final String subject;
@@ -19,7 +19,7 @@ public class Message {
     private String messageType; // "TEXT" или "IMAGE"
     private String filePath;    // Путь к картинке во внутреннем кэше
 
-    public Message(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType) {
+    public MessageDto(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType) {
         this.id = id;
         this.senderEmail = senderEmail;
         this.subject = subject;
@@ -31,7 +31,7 @@ public class Message {
         this.messageType = messageType;
     }
 
-    public Message(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType, String filePath) {
+    public MessageDto(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType, String filePath) {
         this.id = id;
         this.senderEmail = senderEmail;
         this.subject = subject;

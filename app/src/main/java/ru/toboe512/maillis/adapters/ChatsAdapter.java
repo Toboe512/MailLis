@@ -14,6 +14,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import ru.toboe512.maillis.R;
@@ -45,16 +46,18 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     @Override
     public void onBindViewHolder(@NonNull ChatViewHolder holder, int position) {
         ChatPreview chat = chatList.get(position);
-        holder.textViewName.setText(chat.getTitle());
+        String chatTitle = chat.getTitle() != null ? chat.getTitle() : "";
+        holder.textViewName.setText(chatTitle);
         holder.textViewLastMessage.setText(chat.getLastMessage() != null ? chat.getLastMessage() : "Нет сообщений");
-        holder.textViewType.setText(chat.getType().equals("GROUP") ? "Группа" : "Личный");
+        holder.textViewType.setText(chat.isGroup() ? "Группа" : "Личный");
 
         // При клике на чат — открываем экран переписки ChatActivity
         holder.itemView.setOnClickListener(v -> {
             Intent intent = new Intent(context, ChatActivity.class);
             // Передаем ID и имя чата, чтобы ChatActivity знала, какую переписку открывать
             intent.putExtra("CHAT_ID", chat.getId());
-            intent.putExtra("CHAT_TITLE", chat.getTitle());
+            intent.putExtra("CHAT_TITLE", chatTitle);
+            intent.putExtra("IS_GROUP", chat.isGroup()); // КРИТИЧЕСКИ ВАЖНО: передаем тип чата!
             context.startActivity(intent);
         });
 
@@ -98,9 +101,32 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     // Удаление записи из SQLite и анимация списка
     private void deleteChatFromDatabase(int chatId, int position) {
         // Удаляем сам чат. Связанные сообщения в SQLite удалятся автоматически благодаря ON DELETE CASCADE
-        boolean deleted = dbService.deleteChatAndMessages(chatId);
+        boolean isDeleted;
 
-        if (deleted) {
+        List<String> members = new ArrayList<>();
+
+        ChatPreview chatPreview = chatList.get(position);
+
+        if (chatPreview == null) {
+            return;
+        }
+        if (chatPreview.isGroup()) {
+            //Вытаскиваем email участников, чтобы зачистить их ключи из public_keys
+           // members = dbService.getGroupMembers(chatId, myEmail);
+            isDeleted = dbService.deleteGroupChatAndMessages(chatId);
+        } else {
+            // Удаляем данные из SQLite
+            members.add(dbService.getRecipientEmailByChatId(chatId));
+            isDeleted = dbService.deleteChatAndMessages(chatId);
+        }
+        if (isDeleted) {
+            // 3. Если группа стерта, убираем из кэша публичные ключи участников
+            for (String memberEmail : members) {
+                dbService.deletePublicKeyByEmail(memberEmail);
+            }
+        }
+
+        if (isDeleted) {
             // Удаляем объект из массива памяти устройства
             chatList.remove(position);
 

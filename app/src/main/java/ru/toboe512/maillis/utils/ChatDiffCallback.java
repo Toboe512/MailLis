@@ -38,9 +38,16 @@ public class ChatDiffCallback extends DiffUtil.Callback {
         ChatPreview oldChat = oldList.get(oldItemPosition);
         ChatPreview newChat = newList.get(newItemPosition);
 
+        boolean oldChaNoNull = oldChat != null;
+        boolean newChaNoNull = newChat != null;
+        String oldChatTitle = oldChaNoNull && oldChat.getTitle() != null ? oldChat.getTitle() : "";
+        String oldChatLastMessage = oldChaNoNull && oldChat.getLastMessage() != null ? oldChat.getLastMessage() : "";
+
         // Сравниваем все поля, которые влияют на отображение карточки чата на экране
-        return oldChat.getTitle().equals(newChat.getTitle()) &&
-                oldChat.getLastMessage().equals(newChat.getLastMessage()) &&
+        return oldChaNoNull &&
+                newChaNoNull &&
+                oldChatTitle.equals(newChat.getTitle()) &&
+                oldChatLastMessage.equals(newChat.getLastMessage()) &&
                 oldChat.isHandShake() == newChat.isHandShake();
     }
 }

@@ -5,7 +5,6 @@ public class ChatPreview {
 
     private final int id;
     private String title;
-    private final String type; // "PERSONAL" или "GROUP"
     private final boolean isHandShake;
 
     public void setLastMessage(String lastMessage) {
@@ -13,6 +12,12 @@ public class ChatPreview {
     }
 
     private String lastMessage;
+
+    public boolean isGroup() {
+        return isGroup;
+    }
+
+    private final boolean isGroup;     // ФЛАГ: true - группа, false - Тет-а-Тет
 
     public void setTitle(String title) {
         this.title = title;
@@ -22,12 +27,12 @@ public class ChatPreview {
         return isHandShake;
     }
 
-    public ChatPreview(int id, String title, String type, String lastMessage, boolean isHandShake) {
+    public ChatPreview(int id, String title, String lastMessage, boolean isHandShake, boolean isGroup) {
         this.id = id;
         this.title = title;
-        this.type = type;
         this.lastMessage = lastMessage;
         this.isHandShake = isHandShake;
+        this.isGroup = isGroup;
     }
 
     public int getId() {
@@ -36,10 +41,6 @@ public class ChatPreview {
 
     public String getTitle() {
         return title;
-    }
-
-    public String getType() {
-        return type;
     }
 
     public String getLastMessage() {

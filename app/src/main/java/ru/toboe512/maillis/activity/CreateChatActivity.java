@@ -1,5 +1,8 @@
 package ru.toboe512.maillis.activity;
 
+import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
+import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
+
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -23,6 +26,7 @@ import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ContactsAdapter;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
+import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;
@@ -87,47 +91,45 @@ public class CreateChatActivity extends AppCompatActivity {
 
 
         Button buttonCreateContact = findViewById(R.id.buttonViewContactTitle);
-        buttonCreateContact.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(CreateChatActivity.this, AddContactActivity.class);
-                startActivity(intent);
-                finish();
-            }
+        buttonCreateContact.setOnClickListener(v -> {
+            Intent intent = new Intent(CreateChatActivity.this, AddContactActivity.class);
+            startActivity(intent);
+            finish();
         });
 
         Button buttonCreateGroup = findViewById(R.id.buttonCreateGroup);
-        buttonCreateGroup.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                String groupName = editTextGroupName.getText().toString().trim();
+        buttonCreateGroup.setOnClickListener(v -> {
+            String groupName = editTextGroupName.getText().toString().trim();
 
-                // Проверяем, ввел ли пользователь имя чата
-                if (groupName.isEmpty()) {
-                    Toast.makeText(CreateChatActivity.this, "Введите название группы!", Toast.LENGTH_SHORT).show();
-                    return;
+            // Проверяем, ввел ли пользователь имя чата
+            if (groupName.isEmpty()) {
+                Toast.makeText(CreateChatActivity.this, "Введите название группы!", Toast.LENGTH_SHORT).show();
+                return;
+            }
+
+            // Считаем, сколько человек выбрано галочками
+            List<String> selectedEmails = new ArrayList<>();
+            for (Contact c : contactList) {
+                if (c.isSelected()) {
+                    selectedEmails.add(c.getEmail());
                 }
+            }
 
-                // Считаем, сколько человек выбрано галочками
-                List<String> selectedEmails = new ArrayList<>();
-                for (Contact c : contactList) {
-                    if (c.isSelected()) {
-                        selectedEmails.add(c.getEmail());
-                    }
-                }
+            if (selectedEmails.isEmpty()) {
+                Toast.makeText(CreateChatActivity.this, "Выберите хотя бы одного участника!", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            // Загружаем наш собственный логин из SharedPreferences
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-                if (selectedEmails.isEmpty()) {
-                    Toast.makeText(CreateChatActivity.this, "Выберите хотя бы одного участника!", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                // Загружаем наш собственный логин из SharedPreferences
-                SharedPreferences prefs = getSharedPreferences("MailLis_Prefs", Context.MODE_PRIVATE);
+            // =========================================================================
+            // РЕЖИМ 1: ОДИНОЧНЫЙ ЧАТ (Выбран ровно 1 человек и поле имени группы пустое)
+            // =========================================================================
+            if (selectedEmails.size() == 1) {
+                String senderEmail = selectedEmails.get(0);
 
-                //TODO добавить возможность групповых чатов
-                String recipientEmail = selectedEmails.get(0);
-
-                long newChatId = dbService.saveChat(groupName, recipientEmail);// Сохраняем созданный чат в базу данных SQLite
-                emailClient.sendHandshakeRequest(recipientEmail, CreateChatActivity.this, newChatId, prefs);
+                long newChatId = dbService.saveChat(groupName, senderEmail);// Сохраняем созданный чат в базу данных SQLite
+                emailClient.sendHandshakeRequest(senderEmail, CreateChatActivity.this, newChatId, prefs);
 
                 if (newChatId != -1) {
                     Toast.makeText(CreateChatActivity.this, "Чат успешно создан!", Toast.LENGTH_SHORT).show();
@@ -135,9 +137,46 @@ public class CreateChatActivity extends AppCompatActivity {
                 } else {
                     Toast.makeText(CreateChatActivity.this, "Ошибка создания чата", Toast.LENGTH_SHORT).show();
                 }
-
-                finish();
+                return;
             }
+            // =========================================================================
+            // РЕЖИМ 2: ГРУППОВОЙ ЧАТ (Выбрано несколько человек ИЛИ заполнено имя группы)
+            // =========================================================================
+            final String finalGroupName = groupName;
+
+            // Уходим в фоновый поток для тяжелых крипто-операций генерации и веерной рассылки
+            new Thread(() -> {
+                try {
+                    // А. Генерируем уникальный 32-байтный секретный ключ AES-256 для этой группы
+                    byte[] groupSecretKey = CryptoServiceImpl.generateGroupSymmetricKey();
+
+                    String myEmail = prefs.getString("email_login", "my@mail.ru").trim();
+                    // Б. Создаем групповую комнату в SQLite (is_group = 1, пишем BLOB ключа)
+                    long newChatId = dbService.createGroupChat(finalGroupName, groupSecretKey, myEmail);
+
+                    if (newChatId != -1) {
+                        // В. В цикле привязываем участников к группе и высылаем им ключи в Tink-конвертах
+                        for (String memberEmail : selectedEmails) {
+                            dbService.addGroupMember(newChatId, memberEmail);
+
+                            // Веерный SMTP: шлем инвайт с зашифрованным ключом
+                            emailClient.sendGroupInviteOverNetwork(memberEmail, newChatId, finalGroupName, groupSecretKey, prefs);
+                        }
+
+                        // Возвращаемся в UI поток для закрытия экрана
+                        runOnUiThread(() -> {
+                            Toast.makeText(CreateChatActivity.this, "Группа \"" + finalGroupName + "\" создана!", Toast.LENGTH_SHORT).show();
+                            //sendUpdateBroadcast();
+                            finish();
+                        });
+                    } else {
+                        runOnUiThread(() -> Toast.makeText(CreateChatActivity.this, "Ошибка записи группы в БД", Toast.LENGTH_SHORT).show());
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    runOnUiThread(() -> Toast.makeText(CreateChatActivity.this, "Сбой криптографии: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                }
+            }).start();
         });
     }
 

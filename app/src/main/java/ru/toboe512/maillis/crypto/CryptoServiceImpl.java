@@ -2,6 +2,8 @@ package ru.toboe512.maillis.crypto;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+
 import android.content.Context;
 import android.util.Base64;
 import android.util.Log;
@@ -18,7 +20,15 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
+import java.security.SecureRandom;
+
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 
 public class CryptoServiceImpl implements CryptoService {
 
@@ -119,5 +129,75 @@ public class CryptoServiceImpl implements CryptoService {
     @Override
     public String getMyPublicKeyBas64() throws IOException {
         return Base64.encodeToString(getMyPublicKeyBytes(), Base64.NO_WRAP);
+    }
+
+    /**
+     * Генерирует надежный случайный симметричный секретный ключ для шифрования групп (AES-256).
+     *
+     * @return 32-байтный (256 бит) массив случайных байт
+     */
+    public static byte[] generateGroupSymmetricKey() {
+        try {
+            // Используем стандартный промышленный генератор ключей для алгоритма AES
+            KeyGenerator keyGen = KeyGenerator.getInstance("AES");
+
+            // Инициализируем генератор криптографически стойким источником случайных чисел
+            SecureRandom secureRandom = new SecureRandom();
+
+            // Генерируем ключ длиной 256 бит (32 байта) — золотой стандарт безопасности
+            keyGen.init(256, secureRandom);
+            SecretKey secretKey = keyGen.generateKey();
+
+            byte[] rawKeyBytes = secretKey.getEncoded();
+            android.util.Log.d("MailLis_Crypto", "Успешно сгенерирован новый AES-256 ключ группы. Длина: " + rawKeyBytes.length + " байт.");
+
+            return rawKeyBytes;
+        } catch (Exception e) {
+            android.util.Log.e("MailLis_Crypto", "Ошибка при генерации симметричного AES ключа", e);
+
+            // Фолбэк на случай непредвиденного сбоя инициализации алгоритма
+            byte[] fallbackKey = new byte[32];
+            new SecureRandom().nextBytes(fallbackKey);
+            return fallbackKey;
+        }
+    }
+
+    public static byte[] encryptGroupText(String plainText, byte[] groupKey) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        byte[] iv = new byte[12];
+        new SecureRandom().nextBytes(iv);
+        SecretKeySpec keySpec = new SecretKeySpec(groupKey, "AES");
+        GCMParameterSpec spec = new GCMParameterSpec(128, iv);
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, spec);
+        byte[] encrypted = cipher.doFinal(plainText.getBytes(UTF_8));
+
+        byte[] result = new byte[iv.length + encrypted.length];
+        System.arraycopy(iv, 0, result, 0, iv.length);
+        System.arraycopy(encrypted, 0, result, iv.length, encrypted.length);
+        return result;
+    }
+
+    public static String decryptGroupText(byte[] encryptedWithIv, byte[] groupKey) throws Exception {
+        if (encryptedWithIv == null || groupKey == null) {
+            return EMPTI_STRING;
+        }
+        byte[] iv = new byte[12];
+
+        // Извлекаем 12 байт вектора инициализации (IV) из начала массива
+        System.arraycopy(encryptedWithIv, 0, iv, 0, iv.length);
+        // Считаем размер зашифрованного контента
+        int encryptedSize = encryptedWithIv.length - iv.length;
+        byte[] payload = new byte[encryptedSize];
+
+        // Переносим саму зашифрованную часть в массив payload
+        System.arraycopy(encryptedWithIv, iv.length, payload, 0, encryptedSize);
+
+        // Инициализируем стандартный шифр AES-GCM
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        SecretKeySpec keySpec = new SecretKeySpec(groupKey, "AES");
+        GCMParameterSpec spec = new GCMParameterSpec(128, iv); // 128-битный тег аутентификации
+        cipher.init(Cipher.DECRYPT_MODE, keySpec, spec);
+
+        return new String(cipher.doFinal(payload), UTF_8);
     }
 }
