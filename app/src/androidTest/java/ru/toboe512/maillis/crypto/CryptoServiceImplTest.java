@@ -1,11 +1,13 @@
 package ru.toboe512.maillis.crypto;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import android.content.Context;
+import android.util.Log;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -16,6 +18,7 @@ import org.junit.runner.RunWith;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
 
 @RunWith(AndroidJUnit4.class)
 public class CryptoServiceImplTest {
@@ -35,6 +38,12 @@ public class CryptoServiceImplTest {
 
         aliceCryptoService = new CryptoServiceImpl(context);
         bobCryptoService = new CryptoServiceImpl(context);
+
+        // Избавляемся от ошибки "Method d in android.util.Log not mocked"
+        // Этот код перехватывает вызовы к Android Log и не дает тестам упасть
+//        MockedStatic<Log> mockedLog = Mockito.mockStatic(Log.class);
+//        mockedLog.when(() -> Log.d(Mockito.anyString(), Mockito.anyString())).thenReturn(0);
+//        mockedLog.when(() -> Log.e(Mockito.anyString(), Mockito.anyString(), Mockito.any(Throwable.class))).thenReturn(0);
 
     }
 
@@ -129,4 +138,6 @@ public class CryptoServiceImplTest {
             fail("Ожидалось криптографическое исключение, но выброшено системное IOException");
         }
     }
+
+
 }
