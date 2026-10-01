@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.activity;
 
+import static androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -30,7 +32,6 @@ import ru.toboe512.maillis.dto.ChatPreview;
 public class MainActivity extends AppCompatActivity { // Важно: наследуемся от AppCompatActivity
 
     private ChatsAdapter chatsAdapter;
-    private List<ChatPreview> chatList;
     private DBService dbService;
     private BroadcastReceiver chatUpdateReceiver;
 
@@ -38,8 +39,9 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        List<ChatPreview> chatList = new ArrayList<>();
+
         dbService = DBServiceSQLite.getInstance(this);
-        chatList = new ArrayList<>();
         chatsAdapter = new ChatsAdapter(this, chatList, dbService);
 
         // Пропишите это в onCreate() вашей MainActivity для проверки и запроса прав
@@ -113,12 +115,11 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         Log.d("MailLis_Main", "Команда startForegroundService отправлена из метода onStart()");
     }
 
-    // КРИТИЧЕСКИ ВАЖНО: Останавливаем таймер, когда пользователь сворачивает экран или уходит в настройки!
     @Override
     protected void onPause() {
         super.onPause();
 
-        // 4. ОБЯЗАТЕЛЬНО отвязываем приемник при выходе с экрана, чтобы избежать утечки памяти Android
+        // ОБЯЗАТЕЛЬНО отвязываем приемник при выходе с экрана, чтобы избежать утечки памяти Android
         if (chatUpdateReceiver != null) {
             unregisterReceiver(chatUpdateReceiver);
         }

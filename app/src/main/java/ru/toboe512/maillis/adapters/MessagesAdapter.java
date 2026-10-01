@@ -2,12 +2,22 @@ package ru.toboe512.maillis.adapters;
 
 
 import static android.content.Context.MODE_PRIVATE;
+import static android.view.View.GONE;
+import static android.view.View.VISIBLE;
+import static android.widget.RelativeLayout.ALIGN_PARENT_END;
+import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
+import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
+import static android.widget.RelativeLayout.ALIGN_PARENT_START;
+import static android.widget.RelativeLayout.TRUE;
 
+import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -34,9 +44,8 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
     private final List<MessageDto> messageDtoList;
     private final Context context;
-
     private final DBService dbService;
-    private EmailClient emailClient;
+    private final EmailClient emailClient;
 
     public MessagesAdapter(Context context, List<MessageDto> messageDtoList, EmailClient emailClient, DBService dbService) {
         this.context = context;
@@ -56,65 +65,83 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     public void onBindViewHolder(@NonNull MessageViewHolder holder, int position) {
         MessageDto messageDto = messageDtoList.get(position);
 
+        // Считываем LayoutParams. Убедитесь, что контейнер holder.cardMessage в XML — это прямой дочерний элемент RelativeLayout!
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) holder.cardMessage.getLayoutParams();
 
         // 1. НАСТРОЙКА ОТОБРАЖЕНИЯ КОНТЕНТА (ТЕКСТ ИЛИ ФОТО)
-        // Проверяем тип сообщения, сохраненный в SQLite
-        if ("IMAGE".equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
-
-            // Скрываем текстовое поле, чтобы оно не занимало место
-            holder.textViewText.setVisibility(View.GONE);
-
-            // Показываем область изображения
+        if (IMAGE_MSG.equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
+            holder.textViewText.setVisibility(GONE);
             if (holder.imageViewPhoto != null) {
-                holder.imageViewPhoto.setVisibility(View.VISIBLE);
-
-                // Безопасно декодируем и загружаем файл .jpg из изолированного кэша телефона
-                android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeFile(messageDto.getFilePath());
+                holder.imageViewPhoto.setVisibility(VISIBLE);
+                Bitmap bitmap = BitmapFactory.decodeFile(messageDto.getFilePath());
                 if (bitmap != null) {
                     holder.imageViewPhoto.setImageBitmap(bitmap);
                 } else {
-                    // Если файл поврежден или удален, показываем системную заглушку ошибки
                     holder.imageViewPhoto.setImageResource(android.R.drawable.ic_menu_report_image);
                 }
             }
         } else {
-            // Если это обычное текстовое сообщение
             if (holder.imageViewPhoto != null) {
-                holder.imageViewPhoto.setVisibility(View.GONE); // Прячем ImageView
+                holder.imageViewPhoto.setVisibility(GONE);
             }
-            holder.textViewText.setVisibility(View.VISIBLE);
+            holder.textViewText.setVisibility(VISIBLE);
             holder.textViewText.setText(messageDto.getText());
         }
 
-        // 2. НАСТРОЙКА СТАТУСА И ГАЛОЧЕК (Наш старый отлаженный код)
+        // 2. ИСПРАВЛЕНИЕ: ДИНАМИЧЕСКОЕ ВЫРАВНИВАНИЕ СТОРОН (ПРАВО / ЛЕВО)
         if (messageDto.isMine()) {
+            // --- НАШИ ИСХОДЯЩИЕ СООБЩЕНИЯ (ПРИЖИМАЕМ ВПРАВО) ---
+
+            // Сначала полностью очищаем старые правила, оставшиеся от переиспользования ячеек
+            params.removeRule(ALIGN_PARENT_LEFT);
+            params.removeRule(ALIGN_PARENT_START);
+
+            // Добавляем правило прижатия к правому краю экрана
+            params.addRule(ALIGN_PARENT_RIGHT, TRUE);
+            params.addRule(ALIGN_PARENT_END, TRUE);
+
+            holder.textViewSender.setText(messageDto.getSenderEmail());
+
+            // Настройка галочек статуса
             if (holder.textViewStatus != null) {
-                holder.textViewStatus.setVisibility(View.VISIBLE);
+                holder.textViewStatus.setVisibility(VISIBLE);
                 int status = messageDto.getStatus();
                 switch (status) {
                     case 0:
-                        holder.textViewStatus.setText("🕒");// Ожидание сети
-                        break;
+                        holder.textViewStatus.setText("🕒");
+                        break; // Ожидание сети
                     case 3:
-                        holder.textViewStatus.setText("⏳");// В процессе отправки SMTP
-                        break;
+                        holder.textViewStatus.setText("⏳");
+                        break; // В процессе отправки SMTP
                     case 1:
-                        holder.textViewStatus.setText("✓");// На сервере Mail.ru
-                        break;
+                        holder.textViewStatus.setText("✓");
+                        break;  // На сервере Mail.ru
                     case 2:
-                        holder.textViewStatus.setText("✓✓");// Прочитано другом
-                        break;
+                        holder.textViewStatus.setText("✓✓");
+                        break; // Прочитано другом
                     default:
                         holder.textViewStatus.setText("✓");
                         break;
                 }
             }
         } else {
+            // --- ЧУЖИЕ ВХОДЯЩИЕ СООБЩЕНИЯ (ПРИЖИМАЕМ ВЛЕВО) ---
+            // Очищаем правила прижатия к правому краю
+            params.removeRule(ALIGN_PARENT_RIGHT);
+            params.removeRule(ALIGN_PARENT_END);
+
+            // Добавляем правило прижатия к левому краю экрана
+            params.addRule(ALIGN_PARENT_LEFT, TRUE);
+            params.addRule(ALIGN_PARENT_START, TRUE);
+
+            // Прячем галочки статуса для чужих сообщений
             if (holder.textViewStatus != null) {
-                holder.textViewStatus.setVisibility(View.GONE);
+                holder.textViewStatus.setVisibility(GONE);
             }
+            holder.textViewSender.setVisibility(GONE);
         }
+
+        // КРИТИЧЕСКИ ВАЖНО: Применяем обновленные правила выравнивания обратно к контейнеру ячейки!
         holder.cardMessage.setLayoutParams(params);
 
         // ОБРАБОТКА ДОЛГОГО КЛИКА НА СООБЩЕНИЕ
@@ -134,7 +161,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
         LinearLayout layoutBackground;
         TextView textViewSender;
         TextView textViewText;
-        TextView textViewStatus; // НОВОЕ ПОЛЕ
+        TextView textViewStatus;
         ImageView imageViewPhoto;
 
         public MessageViewHolder(@NonNull View itemView) {
@@ -150,7 +177,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
     // Всплывающее окно подтверждения удаления
     private void showDeleteMessageDialog(MessageDto messageDto, int position) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        var builder = new AlertDialog.Builder(context);
         builder.setTitle("Удалить сообщение");
         builder.setMessage("Вы уверены, что хотите удалить это сообщение?");
 
@@ -173,25 +200,20 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
         // Удаляем строго по первичному ключу ID сообщения
         int rowsDeleted = dbService.deleteMessage(messageId);
 
-        if (rowsDeleted > 0) {
-            messageDtoList.remove(position);
-
-            // Красивая плавная анимация исчезновения сообщения из списка
-            notifyItemRemoved(position);
-            notifyItemRangeChanged(position, messageDtoList.size());
-
-            Toast.makeText(context, "Сообщение удалено", Toast.LENGTH_SHORT).show();
-        } else {
-            // Если сообщение было временным (не успело записаться в БД)
-            messageDtoList.remove(position);
-            notifyItemRemoved(position);
+        messageDtoList.remove(position);
+        // Красивая плавная анимация исчезновения сообщения из списка
+        notifyItemRemoved(position);
+        if (rowsDeleted <= 0) {
+            return;
         }
+        notifyItemRangeChanged(position, messageDtoList.size());
+        Toast.makeText(context, "Сообщение удалено", Toast.LENGTH_SHORT).show();
     }
 
     // Внутри класса MessagesAdapter:
     public void setMessages(List<MessageDto> newMessageDtos) {
         // Вычисляем разницу между старым списком (this.messageList) и новым
-        MessageDiffCallback diffCallback = new MessageDiffCallback(this.messageDtoList, newMessageDtos);
+        var diffCallback = new MessageDiffCallback(this.messageDtoList, newMessageDtos);
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
 
         // Обновляем данные в памяти адаптера

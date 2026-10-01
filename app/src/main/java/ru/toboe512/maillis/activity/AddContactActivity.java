@@ -16,7 +16,8 @@ import ru.toboe512.maillis.db.ChatDbHelper;
 
 public class AddContactActivity extends AppCompatActivity {
 
-    private EditText editTextName, editTextEmail;
+    private EditText editTextName;
+    private EditText editTextEmail;
     private Button buttonSave;
     private ChatDbHelper dbHelper; // Объявляем помощник БД
 

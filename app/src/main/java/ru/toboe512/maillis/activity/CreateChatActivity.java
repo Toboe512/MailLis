@@ -1,14 +1,11 @@
 package ru.toboe512.maillis.activity;
 
-import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.MenuItem;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -71,20 +68,20 @@ public class CreateChatActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recyclerViewSelectContacts);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+
         // Загружаем данные из SQLite
         contactList = dbService.getContacts();
 
+        adapter = new ContactsAdapter(this, contactList);
+
         // КРИТИЧЕСКИ ВАЖНО: Принудительно заставляем список на экране перерисовать полученные строки
-        if (adapter != null) {
-            adapter.notifyDataSetChanged();
-        }
+        adapter.notifyDataSetChanged();
 
         // Диагностика: если база пуста, вежливо сообщаем об этом
         if (contactList.isEmpty()) {
             Toast.makeText(this, "Список контактов пока пуст. Добавьте кого-нибудь через '+'.", Toast.LENGTH_LONG).show();
         }
 
-        adapter = new ContactsAdapter(this, contactList);
         recyclerView.setAdapter(adapter);
 
         emailClient = EmailClientImpl.getInstance(dbService, this);
@@ -120,11 +117,9 @@ public class CreateChatActivity extends AppCompatActivity {
                 return;
             }
             // Загружаем наш собственный логин из SharedPreferences
-            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
-            // =========================================================================
             // РЕЖИМ 1: ОДИНОЧНЫЙ ЧАТ (Выбран ровно 1 человек и поле имени группы пустое)
-            // =========================================================================
             if (selectedEmails.size() == 1) {
                 String senderEmail = selectedEmails.get(0);
 
@@ -139,9 +134,7 @@ public class CreateChatActivity extends AppCompatActivity {
                 }
                 return;
             }
-            // =========================================================================
             // РЕЖИМ 2: ГРУППОВОЙ ЧАТ (Выбрано несколько человек ИЛИ заполнено имя группы)
-            // =========================================================================
             final String finalGroupName = groupName;
 
             // Уходим в фоновый поток для тяжелых крипто-операций генерации и веерной рассылки

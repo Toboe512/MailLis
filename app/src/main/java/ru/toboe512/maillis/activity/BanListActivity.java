@@ -1,8 +1,12 @@
 package ru.toboe512.maillis.activity;
 
+import static android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
+import static android.widget.Toast.LENGTH_SHORT;
+
 import android.app.AlertDialog;
 import android.os.Bundle;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -64,9 +68,9 @@ public class BanListActivity extends AppCompatActivity {
                                     bannedEmailsList.remove(position);
                                     adapter.notifyItemRemoved(position);
                                     adapter.notifyItemRangeChanged(position, bannedEmailsList.size());
-                                    Toast.makeText(BanListActivity.this, "Пользователь разблокирован", Toast.LENGTH_SHORT).show();
+                                    Toast.makeText(BanListActivity.this, "Пользователь разблокирован", LENGTH_SHORT).show();
                                 } else {
-                                    Toast.makeText(BanListActivity.this, "Ошибка разблокировки", Toast.LENGTH_SHORT).show();
+                                    Toast.makeText(BanListActivity.this, "Ошибка разблокировки", LENGTH_SHORT).show();
                                 }
                             });
                         }).start();
@@ -82,9 +86,9 @@ public class BanListActivity extends AppCompatActivity {
 
         buttonAddSpammer.setOnClickListener(v -> {
             // 1. Создаем поле ввода текста программно
-            final android.widget.EditText inputEmail = new android.widget.EditText(BanListActivity.this);
+            final EditText inputEmail = new EditText(BanListActivity.this);
             inputEmail.setHint("example@mail.ru");
-            inputEmail.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+            inputEmail.setInputType(TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
             inputEmail.setPadding(50, 40, 50, 40); // Добавляем аккуратные отступы для текста
 
             // 2. Строим всплывающее диалоговое окно
@@ -97,7 +101,7 @@ public class BanListActivity extends AppCompatActivity {
                         String emailToBan = inputEmail.getText().toString().trim().toLowerCase();
 
                         // Валидация: проверяем, что поле не пустое и содержит символ @
-                        if (!emailToBan.isEmpty() && emailToBan.contains("@")) {
+                        if (emailToBan.contains("@")) {
                             new Thread(() -> {
                                 // Записываем нарушителя в таблицу ban_list в SQLite
                                 boolean isBanned = dbService.banUser(emailToBan);
@@ -110,17 +114,17 @@ public class BanListActivity extends AppCompatActivity {
 
                                 runOnUiThread(() -> {
                                     if (isBanned) {
-                                        Toast.makeText(BanListActivity.this, "Пользователь добавлен в чёрный список", Toast.LENGTH_SHORT).show();
+                                        Toast.makeText(BanListActivity.this, "Пользователь добавлен в чёрный список", LENGTH_SHORT).show();
 
                                         // Принудительно вызываем обновление списка из базы данных
                                         onResume();
                                     } else {
-                                        Toast.makeText(BanListActivity.this, "Пользователь уже заблокирован", Toast.LENGTH_SHORT).show();
+                                        Toast.makeText(BanListActivity.this, "Пользователь уже заблокирован", LENGTH_SHORT).show();
                                     }
                                 });
                             }).start();
                         } else {
-                            Toast.makeText(BanListActivity.this, "Некорректный Email адрес!", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(BanListActivity.this, "Некорректный Email адрес!", LENGTH_SHORT).show();
                         }
                     })
                     .setNegativeButton("Отмена", null)

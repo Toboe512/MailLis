@@ -6,6 +6,7 @@ import android.util.Log;
 import android.widget.Button;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -60,7 +61,7 @@ public class ContactsActivity extends AppCompatActivity {
 
                 // АРГУМЕНТ 2: Лямбда для кнопки удаления (красный крестик)
                 (contact, position) -> {
-                    new androidx.appcompat.app.AlertDialog.Builder(ContactsActivity.this)
+                    new AlertDialog.Builder(ContactsActivity.this)
                             .setTitle("Удаление контакта")
                             .setMessage("Вы действительно хотите удалить контакт " + contact.getEmail() + "?")
                             .setPositiveButton("Удалить", (dialog, which) -> {
@@ -83,7 +84,7 @@ public class ContactsActivity extends AppCompatActivity {
                 (contact, position) -> {
                     Log.d("MailLis_Click", "Ура, клик по кнопке бана сработал для: " + contact.getEmail());
 
-                    new androidx.appcompat.app.AlertDialog.Builder(ContactsActivity.this)
+                    new AlertDialog.Builder(ContactsActivity.this)
                             .setTitle("Блокировка контакта")
                             .setMessage("Вы уверены, что хотите заблокировать " + contact.getEmail() + "? Его сообщения будут автоматически уничтожаться, а сам он переместится в Чёрный список.")
                             .setCancelable(true)

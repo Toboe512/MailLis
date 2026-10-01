@@ -5,6 +5,7 @@ import static java.lang.Boolean.FALSE;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static jakarta.mail.Folder.READ_WRITE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_IMAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_GROUP_INVITE;
@@ -13,6 +14,8 @@ import static ru.toboe512.maillis.consts.Consts.MAILLIS_GROUP_PRE_INVITE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_GROUP_PRE_INVITE_RESPONSE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_REQUEST;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_KEY_RESPONSE;
+import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
+import static ru.toboe512.maillis.consts.Consts.TEXT_MSG;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -37,6 +40,7 @@ import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.Authenticator;
 import jakarta.mail.Folder;
 import jakarta.mail.Message;
+import jakarta.mail.Message.RecipientType;
 import jakarta.mail.MessagingException;
 import jakarta.mail.PasswordAuthentication;
 import jakarta.mail.Session;
@@ -235,10 +239,10 @@ public class EmailClientImpl implements EmailClient {
 
         // Сохраняем в messages, привязывая к ID группы
         dbService.saveIncomingMessage(groupChatId, senderEmail, "[Группа]",
-                decryptedText, currentTimestamp, messageId, "TEXT", EMPTI_STRING);
+                decryptedText, currentTimestamp, messageId, TEXT_MSG, EMPTI_STRING);
 
         // Стираем с сервера
-        //deleteMessage(msg, inbox);
+        deleteMessage(msg, inbox);
 
         return true;
     }
@@ -260,7 +264,7 @@ public class EmailClientImpl implements EmailClient {
             String incomingGroupName = bodyLines[0].trim();
             String creatorPublicKeyBase64 = bodyLines[1].trim();
 
-            byte[] creatorPublicKeyBytes = Base64.decode(creatorPublicKeyBase64, Base64.NO_WRAP);
+            byte[] creatorPublicKeyBytes = Base64.decode(creatorPublicKeyBase64, NO_WRAP);
 
             // 1. Сохраняем публичный Tink-ключ создателя группы в таблицу контактов,
             // чтобы мы могли шифровать сообщения лично для него
@@ -296,7 +300,7 @@ public class EmailClientImpl implements EmailClient {
                 return false;
             }
             String peerPublicKeyBase64 = msg.getContent().toString().trim();
-            byte[] peerPublicKeyBytes = Base64.decode(peerPublicKeyBase64, Base64.NO_WRAP);
+            byte[] peerPublicKeyBytes = Base64.decode(peerPublicKeyBase64, NO_WRAP);
 
             // 1. Сохраняем полученный публичный Tink-ключ друга в контакты
             dbService.savePublicKey(senderEmail, peerPublicKeyBytes);
@@ -336,7 +340,7 @@ public class EmailClientImpl implements EmailClient {
         String incomingGroupName = bodyLines[0].trim();
         String base64EncryptedKey = bodyLines[1].trim();
 
-        byte[] encryptedKeyBytes = Base64.decode(base64EncryptedKey, Base64.NO_WRAP);
+        byte[] encryptedKeyBytes = Base64.decode(base64EncryptedKey, NO_WRAP);
 
         // Расшифровываем СВОИМ локальным приватным Tink-ключом Keystore полученный AES-секрет группы!
         byte[] decryptedGroupKey = cryptoService.decryptBytes(encryptedKeyBytes);
@@ -380,7 +384,7 @@ public class EmailClientImpl implements EmailClient {
 
         String messageId = extractMsgId(msg);
         result = dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_MESSAGE,
-                messageText, currentTimestamp, messageId, "TEXT", EMPTI_STRING);
+                messageText, currentTimestamp, messageId, TEXT_MSG, EMPTI_STRING);
 //
 //        // СРАЗУ ШЛЕМ СИГНАЛ ПРОЧТЕНИЯ: Отправляем скрытое SMTP письмо обратно другу
 //        if (messageId != null && !messageId.isEmpty()) {
@@ -397,9 +401,8 @@ public class EmailClientImpl implements EmailClient {
 //                }
 //            });
 //        }
-
+        deleteMessage(msg, inbox);
         Log.d("MailLis_P2P", "Новое сообщение успешно добавлено в чат " + chatId);
-
         return result;
     }
 
@@ -448,7 +451,7 @@ public class EmailClientImpl implements EmailClient {
 
         // Сохраняем запись в базу данных, указав тип 'IMAGE' и путь к файлу на диске
         return dbService.saveIncomingMessage(chatId, senderEmail, MAILLIS_CHAT_IMAGE, EMPTI_STRING,
-                currentTimestamp, messageId, "IMAGE", file.getAbsolutePath());
+                currentTimestamp, messageId, IMAGE_MSG, file.getAbsolutePath());
     }
 
     private boolean maillisKeyRequestCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException, IOException {
@@ -523,12 +526,12 @@ public class EmailClientImpl implements EmailClient {
                 // 💥 ЗАЩИТА: Мгновенно бронируем статус сообщения перед выходом в сеть по SMTP!
                 dbService.markMessageAsSending(localMessageId);
 
-                // ИСПОЛЬЗУЕМ ВЫДЕЛЕННЫЙ МЕТОД: Получаем готовую SMTP сессию
+                // Получаем готовую SMTP сессию
                 Session session = createSmtpSession(prefs);
 
                 var message = new MimeMessage(session);
                 message.setFrom(new InternetAddress(myEmail));
-                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+                message.setRecipients(RecipientType.TO, InternetAddress.parse(recipientEmail));
                 message.setSubject(subject);
                 message.setText(messageText);
                 // 1. ПРИНУДИТЕЛЬНО ПРИМЕНЯЕМ ИЗМЕНЕНИЯ, чтобы сгенерировался Message-ID
@@ -796,7 +799,7 @@ public class EmailClientImpl implements EmailClient {
 
             var message = new MimeMessage(session);
             message.setFrom(new InternetAddress(myEmail));
-            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+            message.setRecipients(RecipientType.TO, InternetAddress.parse(recipientEmail));
             message.setSubject(subject);
             message.setText(messageText);
             // 1. ПРИНУДИТЕЛЬНО ПРИМЕНЯЕМ ИЗМЕНЕНИЯ, чтобы сгенерировался Message-ID
@@ -848,7 +851,7 @@ public class EmailClientImpl implements EmailClient {
                 Session session = createSmtpSession(prefs);
                 var message = new MimeMessage(session);
                 message.setFrom(new InternetAddress(myEmail));
-                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+                message.setRecipients(RecipientType.TO, InternetAddress.parse(recipientEmail));
                 message.setSubject(MAILLIS_CHAT_IMAGE); // Специальный служебный заголовок
 
                 // Создаем Multipart контейнер
@@ -895,10 +898,10 @@ public class EmailClientImpl implements EmailClient {
                     try {
                         var message = new MimeMessage(session);
                         message.setFrom(new InternetAddress(myEmail));
-                        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+                        message.setRecipients(RecipientType.TO, InternetAddress.parse(recipientEmail));
 
                         // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
-                        message.setSubject(MAILLIS_GROUP_MESSAGE + " " + chatId);
+                        message.setSubject(MAILLIS_GROUP_MESSAGE + SPACE_STRING + chatId);
                         message.setText(text + "\\n" + cipherTextBase64);
                         message.saveChanges();
 
@@ -910,11 +913,6 @@ public class EmailClientImpl implements EmailClient {
 
                 // Помечаем в локальной базе как отправлено (хотя бы сервером)
                 dbService.markMessageAsSent(localMessageId, "GROUP_SENT_" + System.currentTimeMillis());
-
-                // Стреляем локальным Broadcast для обновления UI
-//                Intent updateIntent = new Intent("ru.toboe512.maillis.UPDATE_MESSAGES");
-//                updateIntent.setPackage(context.getPackageName());
-//                context.sendBroadcast(updateIntent);
 
             } catch (Exception e) {
                 dbService.resetMessageStatusToUnsent(localMessageId);
@@ -937,14 +935,14 @@ public class EmailClientImpl implements EmailClient {
 
                 var message = new MimeMessage(session);
                 message.setFrom(new InternetAddress(myEmail));
-                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(recipientEmail));
+                message.setRecipients(RecipientType.TO, InternetAddress.parse(recipientEmail));
 
                 if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
                     // ВАРИАНТ А: Ключ друга есть! Шлем финальный ЗАШИФРОВАННЫЙ инвайт с ключом группы
                     byte[] encryptedKeyBytes = cryptoService.encryptBytes(groupSecretKey, peerPublicKeyBytes);
-                    String base64EncryptedKey = Base64.encodeToString(encryptedKeyBytes, Base64.NO_WRAP);
+                    String base64EncryptedKey = Base64.encodeToString(encryptedKeyBytes, NO_WRAP);
 
-                    message.setSubject(MAILLIS_GROUP_INVITE + " " + chatId);
+                    message.setSubject(MAILLIS_GROUP_INVITE + SPACE_STRING + chatId);
                     message.setText(groupName + "\r\n" + base64EncryptedKey);
 
                     Log.d("MailLis_Group", "Отправлен финальный защищенный инвайт для: " + recipientEmail);
@@ -952,7 +950,7 @@ public class EmailClientImpl implements EmailClient {
                     // ВАРИАНТ Б: Ключа друга нет! Шлем открытый Pre-Invite и прикрепляем СВОЙ публичный ключ
                     String myPublicKeyBase64 = cryptoService.getMyPublicKeyBas64();
 
-                    message.setSubject(MAILLIS_GROUP_PRE_INVITE + " " + chatId);
+                    message.setSubject(MAILLIS_GROUP_PRE_INVITE + SPACE_STRING + chatId);
                     message.setText(groupName + "\r\n" + myPublicKeyBase64);
 
                     Log.w("MailLis_Group", "Ключа друга нет. Отправлен безопасный Pre-Invite для: " + recipientEmail);
@@ -975,11 +973,12 @@ public class EmailClientImpl implements EmailClient {
 
                 var message = new MimeMessage(session);
                 message.setFrom(new InternetAddress(myEmail));
-                message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(creatorEmail));
+                message.setRecipients(RecipientType.TO, InternetAddress.parse(creatorEmail));
 
                 // Сигнализируем создателю группы, возвращая наш публичный ключ Tink
-                message.setSubject(MAILLIS_GROUP_PRE_INVITE_RESPONSE + " " + chatId);
-                message.setText(cryptoService.getMyPublicKeyBas64());
+                message.setSubject(MAILLIS_GROUP_PRE_INVITE_RESPONSE + SPACE_STRING + chatId);
+                String myPublicKeyBas64 = cryptoService.getMyPublicKeyBas64();
+                message.setText(myPublicKeyBas64);
 
                 message.saveChanges();
                 Transport.send(message);

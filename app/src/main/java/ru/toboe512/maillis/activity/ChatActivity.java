@@ -2,8 +2,10 @@ package ru.toboe512.maillis.activity;
 
 
 import static android.graphics.Bitmap.CompressFormat.JPEG;
+import static androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED;
 import static java.util.stream.Collectors.toList;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_IMAGE;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
@@ -146,9 +148,7 @@ public class ChatActivity extends AppCompatActivity {
             boolean isGroup = dbService.isGroupChat(chatId);
 
             if (isGroup) {
-                // =========================================================================
                 // РЕЖИМ А: ОТПРАВКА В ГРУППОВОЙ ЧАТ (Симметричный AES-GCM)
-                // =========================================================================
                 try {
                     // Достаем общий 32-байтный секретный ключ этой группы из SQLite
                     byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
@@ -173,9 +173,7 @@ public class ChatActivity extends AppCompatActivity {
                 }
                 return;
             }
-            // =========================================================================
             // РЕЖИМ Б: ОТПРАВКА В ОДИНОЧНЫЙ ЧАТ (Асимметричный Google Tink ECIES)
-            // =========================================================================
             String sendTxt = text;
             try {
                 // Извлекаем публичный Tink Protobuf-ключ собеседника
@@ -380,28 +378,30 @@ public class ChatActivity extends AppCompatActivity {
                         .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE) || m.getSubject().contains(MAILLIS_CHAT_IMAGE))
                         .collect(toList());
 
-                if (freshMessageDtos != null) {
-                    // 2. ВОЗВРАЩАЕМСЯ НА ГЛАВНЫЙ ПОТОК ANDROID для перерисовки экрана!
-                    runOnUiThread(() -> {
-                        if (messagesAdapter != null) {
-
-                            // Передаем список в наш адаптер с поддержкой DiffUtil
-                            messagesAdapter.setMessages(freshMessageDtos);
-
-                            // ХАК ДЛЯ ГАРАНТИРОВАННОГО ОБНОВЛЕНИЯ: Принудительно заставляем
-                            // RecyclerView обновить отображение последнего элемента (наших галочек)
-                            if (!freshMessageDtos.isEmpty()) {
-                                int lastPosition = freshMessageDtos.size() - 1;
-                                messagesAdapter.notifyItemChanged(lastPosition); // Жестко перерисовать статус!
-
-                                // Плавно доскролливаем вниз к нашему сообщению
-                                recyclerView.scrollToPosition(lastPosition);
-                            }
-
-                            Log.d("MailLis_UI_Fix", "Интерфейс чата принудительно перерисован. Сообщений: " + freshMessageDtos.size());
-                        }
-                    });
+                if (freshMessageDtos.isEmpty()) {
+                    return;
                 }
+                // 2. ВОЗВРАЩАЕМСЯ НА ГЛАВНЫЙ ПОТОК ANDROID для перерисовки экрана!
+                runOnUiThread(() -> {
+                    if (messagesAdapter != null) {
+
+                        // Передаем список в наш адаптер с поддержкой DiffUtil
+                        messagesAdapter.setMessages(freshMessageDtos);
+
+                        // ХАК ДЛЯ ГАРАНТИРОВАННОГО ОБНОВЛЕНИЯ: Принудительно заставляем
+                        // RecyclerView обновить отображение последнего элемента (наших галочек)
+                        if (!freshMessageDtos.isEmpty()) {
+                            int lastPosition = freshMessageDtos.size() - 1;
+                            messagesAdapter.notifyItemChanged(lastPosition); // Жестко перерисовать статус!
+
+                            // Плавно доскролливаем вниз к нашему сообщению
+                            recyclerView.scrollToPosition(lastPosition);
+                        }
+
+                        Log.d("MailLis_UI_Fix", "Интерфейс чата принудительно перерисован. Сообщений: " + freshMessageDtos.size());
+                    }
+                });
+
             } catch (Exception e) {
                 Log.e("MailLis_UI_Fix", "Ошибка при обновлении чата из базы данных", e);
                 e.printStackTrace();
@@ -487,7 +487,7 @@ public class ChatActivity extends AppCompatActivity {
                 // Передаем тип "IMAGE" и путь к нашему файлу. Статус изначально 0 (часики)
                 int generatedId = dbService.saveGenericMessage(chatId, myEmail, MAILLIS_CHAT_IMAGE, MAILLIS_CHAT_IMAGE, true, currentTimestamp);
                 // Принудительно обновляем тип и путь в базе данных
-                dbService.updateMessageTypeAndPath(generatedId, "IMAGE", localFile.getAbsolutePath());
+                dbService.updateMessageTypeAndPath(generatedId, IMAGE_MSG, localFile.getAbsolutePath());
 
                 // Мгновенно обновляем интерфейс через DiffUtil — картинка с часиками появится на экране!
                 updateUiFromDatabase();

@@ -18,8 +18,13 @@ public class Consts {
     public static final String MAILLIS_GROUP_PRE_INVITE = "[MailLis-Group-PreInvite]";
     public static final String MAILLIS_GROUP_PRE_INVITE_RESPONSE = "[MailLis-Group-PreInvite-Response]";
 
-    // Разное
-    public static final String EMPTI_STRING = "";
+    // Типы сообщений
+    public static final String TEXT_MSG = "TEXT";
+    public static final String IMAGE_MSG = "IMAGE";
 
     public static final int UPDATE_INTERVAL_MS = 5000; // Интервал опроса сервера в миллисекундах
+
+    // Разное
+    public static final String EMPTI_STRING = "";
+    public static final String SPACE_STRING = " ";
 }

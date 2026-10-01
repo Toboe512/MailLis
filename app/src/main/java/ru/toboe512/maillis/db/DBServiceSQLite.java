@@ -2,6 +2,7 @@ package ru.toboe512.maillis.db;
 
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
+import static ru.toboe512.maillis.consts.Consts.TEXT_MSG;
 
 import android.content.ContentValues;
 import android.content.Context;
@@ -40,16 +41,54 @@ public class DBServiceSQLite implements DBService {
         this.dbHelper = new ChatDbHelper(cotext.getApplicationContext());
     }
 
+    public List<Contact> getContacts() {
+        List<Contact> contactList = new ArrayList<>();
 
-    /**
-     * Извлекает полную историю переписки для конкретного экрана ChatActivity.
-     * Полностью адаптирован под раздельную структуру таблиц одиночных чатов и групп.
-     * Сортирует сообщения от старых к новым для правильного отображения в RecyclerView.
-     *
-     * @param chatId  локальный идентификатор комнаты (из таблицы chats или group_chats)
-     * @param isGroup флаг типа чата: true - если это группа, false - если одиночный Тет-а-Тет
-     * @return список объектов Message, готовый для передачи в DiffUtil и адаптер
-     */
+        // НЕ закрываем саму базу данных (db.close()), так как это ломает пул соединений приложения,
+        // но ОБЯЗАТЕЛЬНО оборачиваем Cursor в try-with-resources для автоматического закрытия!
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+
+        // Запрос всех колонок из таблицы contacts
+        try (// Вместо полной выборки делаем выборку с фильтрацией через inner/sub-запрос:
+             Cursor cursor = db.rawQuery(
+                     "SELECT * FROM contacts WHERE email NOT IN (SELECT email FROM ban_list) ORDER BY name ASC",
+                     null
+             )) {
+
+            if (cursor.moveToFirst()) {
+                // 1. ОПТИМИЗАЦИЯ: Узнаем индексы колонок строго ОДИН РАЗ до начала цикла
+                int idIndex = cursor.getColumnIndex("id");
+                int nameIndex = cursor.getColumnIndex("name");
+                int emailIndex = cursor.getColumnIndex("email");
+
+                // 2. Проверяем, что все необходимые колонки физически существуют в таблице
+                if (idIndex >= 0 && nameIndex >= 0 && emailIndex >= 0) {
+                    do {
+                        // Считываем значения из текущей строки
+                        int id = cursor.getInt(idIndex);
+                        String name = cursor.getString(nameIndex);
+                        String email = cursor.getString(emailIndex);
+
+                        // Добавляем готовый объект в наш список
+                        contactList.add(new Contact(id, name, email));
+
+                    } while (cursor.moveToNext()); // Переходим к следующему контакту
+                }
+            }
+        }
+        return contactList;
+    }
+
+    public int deleteContact(int contactId) {
+        // Запрос удаления: DELETE FROM contacts WHERE id = contactId
+        return dbHelper.getWritableDatabase().delete("contacts", "id = ?", new String[]{String.valueOf(contactId)});
+    }
+
+    public int deleteContact(String email) {
+        // Запрос удаления: DELETE FROM contacts WHERE email = email
+        return dbHelper.getWritableDatabase().delete("contacts", "email = ?", new String[]{String.valueOf(email)});
+    }
+
     public List<MessageDto> getAllMessages(long chatId, boolean isGroup) {
         List<MessageDto> messageDtoList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -95,7 +134,7 @@ public class DBServiceSQLite implements DBService {
                         int isSentStatus = sentIdx >= 0 ? cursor.getInt(sentIdx) : 1;
 
                         // Новые медиа-поля
-                        String messageType = typeIdx >= 0 ? cursor.getString(typeIdx) : "TEXT";
+                        String messageType = typeIdx >= 0 ? cursor.getString(typeIdx) : TEXT_MSG;
                         String filePath = pathIdx >= 0 ? cursor.getString(pathIdx) : null;
 
                         // Собираем полноценный DTO-объект сообщения
@@ -126,81 +165,6 @@ public class DBServiceSQLite implements DBService {
         return messageDtoList;
     }
 
-    /**
-     * Моментально возвращает последнее сообщение чата.
-     * Использует SQL-оптимизацию LIMIT 1, чтобы не фризить главный экран.
-     */
-    public MessageDto getLastMessages(long chatId) {
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-        MessageDto lastMessageDto = null;
-
-        // Запрашиваем строго ОДНУ строку (LIMIT 1), отсортированную от новых к старым (DESC)
-        try (Cursor cursor = db.query(
-                "messages",
-                null,
-                "chat_id = ?",
-                new String[]{String.valueOf(chatId)},
-                null, null,
-                "timestamp DESC",
-                "1" // Ультимативная оптимизация LIMIT 1
-        )) {
-
-            if (cursor.moveToFirst()) {
-                // Узнаем индексы колонок строго ОДИН РАЗ до начала чтения
-                int idIndex = cursor.getColumnIndex("id");
-                int senderIndex = cursor.getColumnIndex("sender_email");
-                int textIndex = cursor.getColumnIndex("message_text");
-                int timeIndex = cursor.getColumnIndex("timestamp");
-                int uidIndex = cursor.getColumnIndex("server_uid");
-                int subjectIndex = cursor.getColumnIndex("subject");
-                int isMineIndex = cursor.getColumnIndex("is_mine"); // Индекс новой колонки
-                int statusIndex = cursor.getColumnIndex("is_sent");
-                int messageTypeIndex = cursor.getColumnIndex("message_type");
-                int filePathIndex = cursor.getColumnIndex("file_path");
-
-
-                if (idIndex >= 0 && senderIndex >= 0 && textIndex >= 0 && timeIndex >= 0 && statusIndex >= 0 &&
-                        messageTypeIndex >= 0 && filePathIndex >= 0) {
-                    int realId = cursor.getInt(idIndex);
-                    String sender = cursor.getString(senderIndex);
-                    String text = cursor.getString(textIndex);
-                    long time = cursor.getLong(timeIndex);
-                    int status = cursor.getInt(statusIndex);
-                    String messageType = cursor.getString(messageTypeIndex);
-                    String filePath = cursor.getString(filePathIndex);
-
-
-                    String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : EMPTI_STRING;
-                    String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : EMPTI_STRING;
-
-                    // Считываем готовое значение из БД: если в базе лежит 1, то это true, иначе false
-                    boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
-
-                    // Собираем объект сообщения
-                    lastMessageDto = new MessageDto(realId, sender, subject, text, time, isMine, serverUid, status, messageType, filePath);
-                }
-            }
-        }
-        // Если чат пустой, возвращаем дефолтный объект во избежание NullPointerException на главном экране
-        return lastMessageDto != null
-                ? lastMessageDto :
-                new MessageDto(0, EMPTI_STRING, EMPTI_STRING, "Сообщений нет", 0L, false,
-                        EMPTI_STRING, 0, EMPTI_STRING, EMPTI_STRING);
-    }
-
-    /**
-     * Безопасно сохраняет сообщение (входящее или исходящее) в таблицу messages.
-     * Автоматически определяет тип комнаты (одиночный чат или группа) и выставляет флаги.
-     * Полностью очищен от обращения к удаленным колонкам таблицы chats.
-     *
-     * @param chatId    локальный числовой идентификатор чата или группы
-     * @param myEmail   email отправителя сообщения (свой или собеседника)
-     * @param subject   тема письма (служебный тег MailLis)
-     * @param text      чистый текст сообщения
-     * @param isMine    флаг авторства: true - если сообщение отправили вы, false - если оно входящее
-     * @param timestamp время создания сообщения
-     * @return сгенерированный базой данных уникальный локальный ID сообщения
-     */
     public int saveGenericMessage(long chatId, String myEmail, String subject, String text, boolean isMine, long timestamp) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long newId = -1;
@@ -226,10 +190,7 @@ public class DBServiceSQLite implements DBService {
                     }
                 }
             }
-
-            // =========================================================================
             // ШАГ 2: СБОРКА ДАННЫХ С УЧЕТОМ ОБНОВЛЕННОЙ СТРУКТУРЫ ТАБЛИЦЫ MESSAGES
-            // =========================================================================
             ContentValues values = new ContentValues();
             values.put("chat_id", chatId);
             values.put("sender_email", myEmail != null ? myEmail.trim().toLowerCase() : "");
@@ -243,15 +204,13 @@ public class DBServiceSQLite implements DBService {
             values.put("is_sent", isMine ? 0 : 1);
 
             // Дефолтные медиа-поля для обычного текста
-            values.put("message_type", "TEXT");
+            values.put("message_type", TEXT_MSG);
             values.put("file_path", (String) null);
 
             // ИСПРАВЛЕНИЕ: Записываем вычисленный реляционный флаг контекста (0 или 1)
             values.put("is_group_message", isGroup ? 1 : 0);
 
-            // =========================================================================
             // ШАГ 3: ЗАПИСЬ В БАЗУ ДАННЫХ В ОБХОД ТАБЛИЦЫ CHATS
-            // =========================================================================
             newId = db.insert("messages", null, values);
 
             android.util.Log.d("MailLis_DB", "Сообщение успешно добавлено. ID: " + newId
@@ -265,26 +224,12 @@ public class DBServiceSQLite implements DBService {
         return (int) newId;
     }
 
-    /**
-     * Сохраняет исходящее (собственное) сообщение в SQLite базу данных.
-     * Автоматически определяет контекст (одиночный чат или группа) и выставляет флаги.
-     * Защищено от багов приведения типов данных (Type Mismatch) на Android 14+.
-     *
-     * @param chatId           локальный числовой идентификатор чата (из chats или group_chats)
-     * @param senderEmail      email текущего пользователя приложения (myEmail)
-     * @param subject          тема письма (служебный тег MailLis, например MAILLIS_CHAT_MESSAGE)
-     * @param messageText      чистый, еще не зашифрованный текст сообщения для локального отображения
-     * @param currentTimestamp время создания сообщения на устройстве
-     * @return сгенерированный базой данных уникальный ID строки (id сообщения) для сетевого слоя ретрая
-     */
     public int saveMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         int generatedId = -1;
 
         try {
-            // =========================================================================
             // ШАГ 1: ИНТЕЛЛЕКТУАЛЬНОЕ АВТО-ОПРЕДЕЛЕНИЕ ТИПА КОМНАТЫ
-            // =========================================================================
             boolean isGroup = false;
 
             // 1. Сначала проверяем, существует ли этот ID в таблице одиночных чатов
@@ -305,9 +250,7 @@ public class DBServiceSQLite implements DBService {
                 }
             }
 
-            // =========================================================================
             // ШАГ 2: СБОРКА ДАННЫХ С УЧЕТОМ ОБНОВЛЕННОЙ СТРУКТУРЫ ТАБЛИЦЫ MESSAGES
-            // =========================================================================
             ContentValues values = new ContentValues();
             values.put("chat_id", chatId);
             values.put("sender_email", senderEmail.trim().toLowerCase());
@@ -320,15 +263,13 @@ public class DBServiceSQLite implements DBService {
             values.put("is_sent", 0); // 0 = Статус "Часики" (ожидает отправки сетевым SMTP-слоем)
 
             // Жестко выставляем тип контента по умолчанию
-            values.put("message_type", "TEXT");
+            values.put("message_type", TEXT_MSG);
             values.put("file_path", (String) null); // Пустое поле для текста (заполнится только в методе фото)
 
             // АВТОМАТИЗАЦИЯ: Пишем вычисленный реляционный флаг контекста (0 или 1)
             values.put("is_group_message", isGroup ? 1 : 0);
 
-            // =========================================================================
             // ШАГ 3: ЗАПИСЬ НА ДИСК
-            // =========================================================================
             long rowId = db.insert("messages", null, values);
             generatedId = (int) rowId;
 
@@ -343,12 +284,6 @@ public class DBServiceSQLite implements DBService {
         return generatedId;
     }
 
-    /**
-     * Находит и возвращает конкретное сообщение из таблицы messages по его уникальному ID.
-     *
-     * @param localMessageId уникальный локальный идентификатор сообщения (id)
-     * @return объект Message с заполненными данными или null, если сообщение не найдено
-     */
     public MessageDto getMessage(long localMessageId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         MessageDto messageDto = null;
@@ -403,7 +338,6 @@ public class DBServiceSQLite implements DBService {
         return messageDto;
     }
 
-    // 2. ДОБАВЛЯЕМ МЕТОД: Пометка сообщения как успешно отправленного
     public void markMessageAsSent(int localMessageId, String serverUid) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
@@ -415,7 +349,6 @@ public class DBServiceSQLite implements DBService {
         db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
     }
 
-    // Метод чтения активных чатов из SQLite
     public List<ChatPreview> loadChats() {
         List<ChatPreview> chatList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -490,14 +423,6 @@ public class DBServiceSQLite implements DBService {
         return chatList;
     }
 
-    /**
-     * Извлекает из SQLite самое последнее сообщение для конкретного чата или группы.
-     * Защищено от багов приведения типов (Type Mismatch) и смешивания контекстов.
-     *
-     * @param chatId  локальный идентификатор чата или группы
-     * @param isGroup флаг типа комнаты: true - группа, false - одиночный чат
-     * @return объект Message со всеми заполненными данными, либо null, если история пуста
-     */
     public MessageDto getLastMessage(long chatId, boolean isGroup) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         MessageDto lastMessageDto = null;
@@ -535,7 +460,7 @@ public class DBServiceSQLite implements DBService {
                     String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : "";
                     String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : "";
                     boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
-                    String messageType = typeIndex >= 0 ? cursor.getString(typeIndex) : "TEXT";
+                    String messageType = typeIndex >= 0 ? cursor.getString(typeIndex) : TEXT_MSG;
                     String filePath = pathIndex >= 0 ? cursor.getString(pathIndex) : null;
                     int isSent = cursor.getInt(isSentIndex);
 
@@ -551,14 +476,6 @@ public class DBServiceSQLite implements DBService {
         return lastMessageDto;
     }
 
-    /**
-     * Сохраняет новый одиночный чат (Тет-а-Тет) в таблицу 'chats'.
-     * Автоматически защищает от дублирования комнат с одним и тем же собеседником.
-     *
-     * @param title       отображаемое имя чата (обычно совпадает с email)
-     * @param targetEmail почтовый адрес собеседника
-     * @return уникальный ID чата (созданного или уже существующего), либо -1 в случае критической ошибки
-     */
     public long saveChat(String title, String targetEmail) {
         if (targetEmail == null || targetEmail.isEmpty()) {
             return -1;
@@ -607,63 +524,6 @@ public class DBServiceSQLite implements DBService {
         return chatId;
     }
 
-    // Метод нативного чтения строк из таблицы SQLite
-    public List<Contact> getContacts() {
-        List<Contact> contactList = new ArrayList<>();
-
-        // НЕ закрываем саму базу данных (db.close()), так как это ломает пул соединений приложения,
-        // но ОБЯЗАТЕЛЬНО оборачиваем Cursor в try-with-resources для автоматического закрытия!
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-
-        // Запрос всех колонок из таблицы contacts
-        try (// Вместо полной выборки делаем выборку с фильтрацией через inner/sub-запрос:
-             Cursor cursor = db.rawQuery(
-                     "SELECT * FROM contacts WHERE email NOT IN (SELECT email FROM ban_list) ORDER BY name ASC",
-                     null
-             )) {
-
-            if (cursor.moveToFirst()) {
-                // 1. ОПТИМИЗАЦИЯ: Узнаем индексы колонок строго ОДИН РАЗ до начала цикла
-                int idIndex = cursor.getColumnIndex("id");
-                int nameIndex = cursor.getColumnIndex("name");
-                int emailIndex = cursor.getColumnIndex("email");
-
-                // 2. Проверяем, что все необходимые колонки физически существуют в таблице
-                if (idIndex >= 0 && nameIndex >= 0 && emailIndex >= 0) {
-                    do {
-                        // Считываем значения из текущей строки
-                        int id = cursor.getInt(idIndex);
-                        String name = cursor.getString(nameIndex);
-                        String email = cursor.getString(emailIndex);
-
-                        // Добавляем готовый объект в наш список
-                        contactList.add(new Contact(id, name, email));
-
-                    } while (cursor.moveToNext()); // Переходим к следующему контакту
-                }
-            }
-        }
-        return contactList;
-    }
-
-    // Нативное удаление строки из SQLite по ее ID
-    public int deleteContact(int contactId) {
-        // Запрос удаления: DELETE FROM contacts WHERE id = contactId
-        return dbHelper.getWritableDatabase().delete("contacts", "id = ?", new String[]{String.valueOf(contactId)});
-    }
-
-    public int deleteContact(String email) {
-        // Запрос удаления: DELETE FROM contacts WHERE email = email
-        return dbHelper.getWritableDatabase().delete("contacts", "email = ?", new String[]{String.valueOf(email)});
-    }
-
-    /**
-     * Находит и возвращает ID личного чата (Тет-а-Тет) по Email-адресу собеседника.
-     * Ищет строго в таблице 'chats'. Защищено от багов разного регистра букв (Case-Insensitive).
-     *
-     * @param email почтовый адрес собеседника
-     * @return уникальный ID чата из таблицы chats, либо -1, если чат еще не создан
-     */
     public long getChatIdByRecipientEmail(String email) {
         if (email == null || email.isEmpty()) {
             return -1;
@@ -703,30 +563,13 @@ public class DBServiceSQLite implements DBService {
         return dbHelper.getWritableDatabase().delete("messages", "id = ?", new String[]{String.valueOf(msdId)});
     }
 
-    /**
-     * Безопасно сохраняет входящее сообщение (текст или медиа) в SQLite базу данных.
-     * Гарантированно поддерживает одиночные чаты (Тет-а-Тет) и группы, автоматически выставляя флаги.
-     * Защищено от дубликатов писем с помощью механизма CONFLICT_IGNORE.
-     *
-     * @param chatId           локальный идентификатор чата (из chats или group_chats)
-     * @param senderEmail      email отправителя сообщения
-     * @param subject          тема письма (служебный тег MailLis)
-     * @param messageText      чистый расшифрованный текст сообщения (или заглушка "[Изображение]")
-     * @param currentTimestamp время отправки сообщения сервером
-     * @param serverUid        уникальный Message-ID, присвоенный сервером Mail.ru
-     * @param type             тип контента: "TEXT" или "IMAGE"
-     * @param imgPath          абсолютный путь к расшифрованному файлу .jpg на диске телефона (или null)
-     * @return true, если сообщение успешно записано в базу; false, если произошел сбой или дубликат
-     */
     public boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText,
                                        long currentTimestamp, String serverUid, String type, String imgPath) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         boolean isSaved = false;
 
         try {
-            // =========================================================================
             // ШАГ 1: АВТО-ОПРЕДЕЛЕНИЕ ТИПА ЧАТА (Одиночный или Групповой)
-            // =========================================================================
             boolean isGroup = false;
 
             // 1. Сначала проверяем, существует ли этот ID в таблице одиночных чатов
@@ -746,9 +589,7 @@ public class DBServiceSQLite implements DBService {
                 }
             }
 
-            // =========================================================================
             // ШАГ 2: СБОРКА ДАННЫХ ДЛЯ ЗАПИСИ В ТАБЛИЦУ MESSAGES
-            // =========================================================================
             ContentValues values = new ContentValues();
             values.put("chat_id", chatId);
             values.put("sender_email", senderEmail.trim().toLowerCase());
@@ -762,12 +603,10 @@ public class DBServiceSQLite implements DBService {
 
             // Записываем правильный тип чата, тип контента и путь к картинке
             values.put("is_group_message", isGroup ? 1 : 0); // ИСПОЛЬЗУЕТСЯ ДЛЯ ОДИНОЧНЫХ (0) И ГРУПП (1)
-            values.put("message_type", type != null ? type : "TEXT");
+            values.put("message_type", type != null ? type : TEXT_MSG);
             values.put("file_path", imgPath);
 
-            // =========================================================================
             // ШАГ 3: БЕЗОПАСНАЯ АТОМАРНАЯ ВСТАВКА В БАЗУ ДАННЫХ
-            // =========================================================================
             // Флаг CONFLICT_IGNORE защищает от двоения: если server_uid уже есть в SQLite,
             // запись просто пропустится, не ломая интерфейс чата и не дублируя сообщения.
             long rowId = db.insertWithOnConflict(
@@ -798,14 +637,6 @@ public class DBServiceSQLite implements DBService {
         }
     }
 
-    /**
-     * Извлекает публичный Tink Protobuf-ключ собеседника по локальному ID одиночного чата.
-     * Использует реляционное объединение JOIN с изолированной таблицей-кэшем public_keys.
-     * Защищено от багов приведения типов данных (Type Mismatch) на Android 14+.
-     *
-     * @param chatId локальный числовой идентификатор одиночного чата из таблицы chats
-     * @return бинарный массив публичного ключа Tink, либо null, если ключ еще не был получен
-     */
     public byte[] getPublicKey(long chatId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         byte[] publicKey = null;
@@ -924,7 +755,6 @@ public class DBServiceSQLite implements DBService {
         return chatId;
     }
 
-    // 1. Добавить пользователя в бан-лист
     public boolean banUser(String email) {
         if (email == null || email.isEmpty()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
@@ -943,8 +773,6 @@ public class DBServiceSQLite implements DBService {
         }
         return id != -1;
     }
-
-    // 2. Удалить пользователя из бан-листа (разбанить)
     public boolean unbanUser(String email) {
         if (email == null || email.isEmpty()) return false;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
@@ -956,8 +784,6 @@ public class DBServiceSQLite implements DBService {
         }
         return rows > 0;
     }
-
-    // 3. КРИТИЧЕСКИЙ МЕТОД: Проверка, находится ли пользователь в бане
     public boolean isUserBanned(String email) {
         if (email == null || email.isEmpty()) return false;
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -1001,13 +827,6 @@ public class DBServiceSQLite implements DBService {
         return bannedList;
     }
 
-    /**
-     * Полностью и безвозвратно удаляет чат и всю историю сообщений из SQLite базы данных.
-     * Защищено от багов приведения типов (Type Mismatch) в современных Android SDK.
-     *
-     * @param chatId уникальный идентификатор удаляемого чата
-     * @return true, если чат был успешно стерт из таблицы chats
-     */
     public boolean deleteChatAndMessages(long chatId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         boolean success = false;
@@ -1046,9 +865,6 @@ public class DBServiceSQLite implements DBService {
         return success;
     }
 
-    /**
-     * Переводит статус сообщения в состояние "Прочитано" (две галочки).
-     */
     public void markMessageAsRead(String serverUid) {
         if (serverUid == null || serverUid.isEmpty()) return;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
@@ -1056,10 +872,8 @@ public class DBServiceSQLite implements DBService {
         ContentValues values = new ContentValues();
         values.put("is_sent", 2); // 2 = Две галочки
         db.update("messages", values, "server_uid = ?", new String[]{serverUid});
-
     }
 
-    // Метод перевода сообщения в статус отправки (защита от повторной отправки параллельным потоком)
     public void markMessageAsSending(int localMessageId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
@@ -1074,15 +888,8 @@ public class DBServiceSQLite implements DBService {
         ContentValues values = new ContentValues();
         values.put("is_sent", 0); // Возвращаем в "Часики"
         db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
-
     }
 
-    /**
-     * Моментально возвращает общее количество сообщений, сохраненных в таблице messages.
-     * Используется фоновой службой MailLisPushService для отслеживания появления новых входящих писем.
-     *
-     * @return общее число строк в таблице messages или 0 в случае пустоты или сбоя
-     */
     public int getTotalMessagesCount() {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         int totalCount = 0;
@@ -1104,12 +911,6 @@ public class DBServiceSQLite implements DBService {
         return totalCount;
     }
 
-    /**
-     * Извлекает из SQLite самое последнее прилетевшее входящее сообщение (is_mine = 0).
-     * Используется фоновой службой MailLisPushService для формирования текста всплывающего Push-уведомления.
-     *
-     * @return объект Message с заполненными данными отправителя и текста, либо null, если входящих сообщений еще нет
-     */
     public MessageDto getLastIncomingMessage() {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         MessageDto lastMessageDto = null;
@@ -1158,9 +959,6 @@ public class DBServiceSQLite implements DBService {
         return lastMessageDto;
     }
 
-    /**
-     * Обновляет тип сообщения и путь к локальному медиафайлу в SQLite.
-     */
     public void updateMessageTypeAndPath(int messageId, String type, String path) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         try {
@@ -1173,16 +971,6 @@ public class DBServiceSQLite implements DBService {
         }
     }
 
-    /**
-     * Создает локальную карточку нового группового чата (для Создателя группы)
-     * Записывает данные строго в новую изолированную таблицу 'group_chats'.
-     * Автоматически синхронизирует локальный ID с полем remote_group_id.
-     *
-     * @param groupName         текстовое название создаваемой группы
-     * @param generatedGroupKey сгенерированный 32-байтный симметричный секретный AES-ключ группы
-     * @param creatorEmail      email текущего пользователя (создателя группы)
-     * @return уникальный локальный ID созданной группы, либо -1 при ошибке
-     */
     public long createGroupChat(String groupName, byte[] generatedGroupKey, String creatorEmail) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long localId = -1;
@@ -1225,24 +1013,28 @@ public class DBServiceSQLite implements DBService {
     }
 
     /**
-     * Проверяет, является ли указанный идентификатор чата групповой комнатой.
-     * Ищет строго в новой независимой таблице 'group_chats'.
+     * Проверяет, является ли указанный идентификатор групповой комнатой.
+     * Ищет совпадения как по локальному ID, так и по глобальному remote_group_id.
      * Защищено от багов приведения типов данных (Type Mismatch) на Android 14+.
      *
-     * @param chatId локальный числовой идентификатор чата или группы
+     * @param chatId числовой идентификатор чата, полученный из Intent или messages
      * @return true, если чат групповой; false, если чат одиночный (Тет-а-Тет)
      */
     public boolean isGroupChat(long chatId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         boolean isGroup = false;
 
-        // ОПТИМИЗАЦИЯ: Пишем чистый SQL-запрос. Нам достаточно проверить факт наличия
-        // строки (SELECT 1), а оператор CAST(? AS INTEGER) гарантирует защиту от Type Mismatch.
-        String sql = "SELECT 1 FROM group_chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
+        // ИСПРАВЛЕНИЕ: Проверяем ОДНОВРЕМЕННО колонку id (для создателя)
+        // и колонку remote_group_id (для получателей приглашения)!
+        String sql = "SELECT 1 FROM group_chats " +
+                "WHERE id = CAST(? AS INTEGER) OR remote_group_id = CAST(? AS INTEGER) " +
+                "LIMIT 1";
 
-        // Использование try-with-resources гарантирует автоматическое закрытие Cursor
-        try (Cursor cursor = db.rawQuery(sql, new String[]{String.valueOf(chatId)})) {
-            // Если база данных вернула хотя бы одну строку — это 100% групповой чат
+        // Передаем значение chatId дважды — для каждого из условий OR
+        String[] selectionArgs = new String[]{String.valueOf(chatId), String.valueOf(chatId)};
+
+        try (Cursor cursor = db.rawQuery(sql, selectionArgs)) {
+            // Если SQLite нашел строку хотя бы по одному из ID — это 100% групповой чат
             if (cursor != null && cursor.moveToFirst()) {
                 isGroup = true;
             }
@@ -1254,16 +1046,6 @@ public class DBServiceSQLite implements DBService {
         return isGroup;
     }
 
-    /**
-     * Безопасно сохраняет или обновляет информацию о групповом чате, созданном другим пользователем,
-     * записывая данные строго в новую изолированную таблицу group_chats.
-     * Защищено от дублирования комнат при повторном сканировании писем по IMAP.
-     *
-     * @param remoteChatId      уникальный глобальный ID чата, сгенерированный создателем группы
-     * @param incomingGroupName текстовое название группы, пришедшее из инвайта
-     * @param decryptedGroupKey расшифрованный 32-байтный секретный AES-ключ этой группы (или null, если на этапе Pre-Invite)
-     * @param creatorEmail      email создателя группы (тот, кто прислал инвайт)
-     */
     public void saveReceivedGroupChat(long remoteChatId, String incomingGroupName, byte[] decryptedGroupKey, String creatorEmail) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
 
@@ -1299,10 +1081,6 @@ public class DBServiceSQLite implements DBService {
         }
     }
 
-    /**
-     * Сохраняет или обновляет публичный ключ Tink для конкретного Email.
-     * Работает как глобальный изолированный кэш ключей мессенджера.
-     */
     public void savePublicKey(String email, byte[] publicKeyBytes) {
         if (email == null || publicKeyBytes == null) return;
         SQLiteDatabase db = dbHelper.getWritableDatabase();
@@ -1319,10 +1097,6 @@ public class DBServiceSQLite implements DBService {
         }
     }
 
-    /**
-     * Извлекает публичный ключ Tink из глобального кэша для любого Email.
-     * Подходит как для одиночных чатов, так и для веерной рассылки в группах.
-     */
     public byte[] getPublicKeyByEmail(String email) {
         if (email == null) return null;
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -1338,68 +1112,7 @@ public class DBServiceSQLite implements DBService {
         return key;
     }
 
-    /**
-     * Создает новую групповую комнату локально (для Создателя группы).
-     */
-    public long createGroupChat(String groupName, String myEmail, byte[] generatedGroupKey) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        long localId = -1;
-        try {
-            ContentValues values = new ContentValues();
-            values.put("group_name", groupName.trim());
-            values.put("creator_email", myEmail.trim().toLowerCase());
-            values.put("group_secret_key", generatedGroupKey);
 
-            // Вставляем запись и получаем локальный ID
-            localId = db.insert("group_chats", null, values);
-
-            // Для создателя remote_group_id изначально равен локальному ID
-            if (localId != -1) {
-                ContentValues updateValues = new ContentValues();
-                updateValues.put("remote_group_id", localId);
-                db.update("group_chats", updateValues, "id = ?", new String[]{String.valueOf(localId)});
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return localId;
-    }
-
-    /**
-     * Безопасно сохраняет групповой чат на стороне Получателя инвайта.
-     * Исключает дублирование благодаря UNIQUE ограничению на remote_group_id.
-     */
-    public void saveReceivedGroupChat(long remoteGroupId, String groupName, String creatorEmail, byte[] decryptedGroupKey) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        try {
-            ContentValues values = new ContentValues();
-            values.put("remote_group_id", remoteGroupId);
-            values.put("group_name", groupName.trim());
-            values.put("creator_email", creatorEmail.trim().toLowerCase());
-            if (decryptedGroupKey != null) {
-                values.put("group_secret_key", decryptedGroupKey);
-            }
-
-            db.insertWithOnConflict(
-                    "group_chats",
-                    null,
-                    values,
-                    SQLiteDatabase.CONFLICT_REPLACE
-            );
-            android.util.Log.i("MailLis_DB", "Импортирована группа в отдельную таблицу group_chats. Remote ID: " + remoteGroupId);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    /**
-     * Безопасно добавляет нового участника в групповой чат.
-     * Полностью адаптирован под актуальную колонку 'group_id'.
-     * Защищен от дублирования записей внутри одной и той же группы.
-     *
-     * @param localGroupId локальный числовой ID группы из таблицы group_chats
-     * @param userEmail    email-адрес добавляемого участника
-     */
     public void addGroupMember(long localGroupId, String userEmail) {
         if (userEmail == null || userEmail.isEmpty()) {
             return;
@@ -1437,14 +1150,6 @@ public class DBServiceSQLite implements DBService {
         }
     }
 
-    /**
-     * Возвращает список Email-адресов всех участников конкретной группы (исключая свой собственный).
-     * Полностью адаптирован под новую структуру таблицы group_members (колонка group_id).
-     *
-     * @param localGroupId локальный числовой ID группы из таблицы group_chats
-     * @param myEmail      email текущего пользователя приложения (чтобы исключить себя из рассылки)
-     * @return список email-адресов участников группы
-     */
     public List<String> getGroupMembers(long localGroupId, String myEmail) {
         List<String> members = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -1473,9 +1178,6 @@ public class DBServiceSQLite implements DBService {
         return members;
     }
 
-    /**
-     * Извлекает секретный AES-ключ группы по её локальному ID.
-     */
     public byte[] getGroupSecretKey(long localGroupId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         byte[] key = null;
@@ -1490,30 +1192,6 @@ public class DBServiceSQLite implements DBService {
         return key;
     }
 
-    /**
-     * Возвращает название группы по её локальному ID.
-     */
-    public String getGroupNameById(long localGroupId) {
-        SQLiteDatabase db = dbHelper.getReadableDatabase();
-        String name = "Групповой чат";
-        String sql = "SELECT group_name FROM group_chats WHERE id = CAST(? AS INTEGER)";
-        try (Cursor cursor = db.rawQuery(sql, new String[]{String.valueOf(localGroupId)})) {
-            if (cursor != null && cursor.moveToFirst()) {
-                name = cursor.getString(0);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return name;
-    }
-
-    /**
-     * Безвозвратно удаляет публичный ключ Tink собеседника из глобального кэша базы данных.
-     * Вызывается сразу после успешного удаления одиночного или группового чата для очистки крипто-следов.
-     *
-     * @param email почтовый адрес пользователя, чей ключ необходимо стереть
-     * @return true, если строка с ключом была успешно найдена и удалена; false в противном случае
-     */
     public boolean deletePublicKeyByEmail(String email) {
         if (email == null || email.isEmpty()) {
             return false;
@@ -1545,13 +1223,6 @@ public class DBServiceSQLite implements DBService {
         return isDeleted;
     }
 
-    /**
-     * Полностью и безвозвратно удаляет групповой чат, список его участников и историю переписки.
-     * Использует прямые SQL-запросы для исключения багов приведения типов на Android 14+.
-     *
-     * @param localGroupId локальный числовой ID группы из таблицы group_chats
-     * @return true, если транзакция удаления завершилась успешно; false в случае сбоя
-     */
     public boolean deleteGroupChatAndMessages(long localGroupId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         boolean success = false;
@@ -1589,13 +1260,6 @@ public class DBServiceSQLite implements DBService {
         return success;
     }
 
-    /**
-     * Находит и возвращает Email собеседника (получателя) по уникальному ID одиночного чата.
-     * Ищет строго в таблице 'chats' с защитой от багов приведения типов на Android 14+.
-     *
-     * @param chatId уникальный локальный числовой идентификатор чата из таблицы chats
-     * @return email адрес собеседника или пустая строка (EMPTI_STRING), если чат не найден
-     */
     public String getRecipientEmailByChatId(long chatId) {
         String recipientEmail = ""; // Используйте вашу константу EMPTI_STRING, если она объявлена
         SQLiteDatabase db = dbHelper.getReadableDatabase();

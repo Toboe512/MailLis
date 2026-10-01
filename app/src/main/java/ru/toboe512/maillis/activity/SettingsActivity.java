@@ -1,5 +1,6 @@
 package ru.toboe512.maillis.activity;
 
+import static android.widget.Toast.LENGTH_LONG;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
@@ -94,7 +95,7 @@ public class SettingsActivity extends AppCompatActivity {
 
             // Валидация полей перед запуском сети
             if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() || smtpHost.isEmpty()) {
-                Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", Toast.LENGTH_LONG).show();
+                Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", LENGTH_LONG).show();
                 return;
             }
 
@@ -196,10 +197,10 @@ public class SettingsActivity extends AppCompatActivity {
 
             runOnUiThread(() -> {
                 if (finalImap && finalSmtp) {
-                    Toast.makeText(SettingsActivity.this, "✨ Соединение успешно установлено! Все сервера работают.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(SettingsActivity.this, "✨ Соединение успешно установлено! Все сервера работают.", LENGTH_LONG).show();
                 } else {
                     // Показываем детальный текст ошибки, если где-то споткнулись
-                    Toast.makeText(SettingsActivity.this, "❌ Ошибка авторизации:\n" + finalError, Toast.LENGTH_LONG).show();
+                    Toast.makeText(SettingsActivity.this, "❌ Ошибка авторизации:\n" + finalError, LENGTH_LONG).show();
                 }
             });
         }).start();
@@ -228,7 +229,7 @@ public class SettingsActivity extends AppCompatActivity {
 
         // Валидация полей перед запуском сети
         if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() || smtpHost.isEmpty() || imapPort.isEmpty() || smtpPort.isEmpty()) {
-            Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", Toast.LENGTH_LONG).show();
+            Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", LENGTH_LONG).show();
             return;
         }
 

@@ -1,5 +1,9 @@
 package ru.toboe512.maillis.service;
 
+import static android.app.Notification.DEFAULT_ALL;
+import static android.app.PendingIntent.FLAG_IMMUTABLE;
+import static androidx.core.app.NotificationCompat.PRIORITY_HIGH;
+import static androidx.core.app.NotificationCompat.PRIORITY_LOW;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.UPDATE_INTERVAL_MS;
 
@@ -70,7 +74,7 @@ public class MailLisPushService extends Service {
                 this,
                 0,
                 notificationIntent,
-                PendingIntent.FLAG_IMMUTABLE
+                FLAG_IMMUTABLE
         );
 
         Notification serviceNotification = new NotificationCompat.Builder(this, SERVICE_CHANNEL_ID)
@@ -78,7 +82,7 @@ public class MailLisPushService extends Service {
                 .setContentText("Ожидание новых зашифрованных сообщений...")
                 .setSmallIcon(android.R.drawable.ic_menu_send)
                 .setContentIntent(pendingIntent)
-                .setPriority(NotificationCompat.PRIORITY_LOW) // Низкий приоритет, чтобы плашка висела тихо
+                .setPriority(PRIORITY_LOW) // Низкий приоритет, чтобы плашка висела тихо
                 .setOngoing(true) // Пользователь не сможет случайно смахнуть её
                 .build();
 
@@ -171,8 +175,8 @@ public class MailLisPushService extends Service {
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setAutoCancel(true) // Уведомление автоматически исчезнет из шторки после клика по нему
                 .setContentIntent(pendingIntent)
-                .setPriority(NotificationCompat.PRIORITY_HIGH) // Принудительно заставляет пуш "выплыть" поверх всех окон
-                .setDefaults(Notification.DEFAULT_ALL) // Включает системный звук, вибрацию и светодиод смартфона
+                .setPriority(PRIORITY_HIGH) // Принудительно заставляет пуш "выплыть" поверх всех окон
+                .setDefaults(DEFAULT_ALL) // Включает системный звук, вибрацию и светодиод смартфона
                 .build();
 
         NotificationManager notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
