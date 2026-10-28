@@ -24,6 +24,8 @@ public interface EmailClient {
     String sendEmailOverNetworkSync(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs);
 
     void sendImageOverNetwork(long chatId, String recipientEmail, byte[] rawImageBytes, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);
+
+    void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs);
     /**
      * Безопасно рассылает секретный AES-ключ группы участнику.
      * Ключ шифруется индивидуальным публичным Tink-ключом получателя.

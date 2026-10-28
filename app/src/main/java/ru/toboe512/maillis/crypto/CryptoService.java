@@ -18,5 +18,4 @@ public interface CryptoService {
 
     String getMyPublicKeyBas64() throws IOException, GeneralSecurityException;
 
-
 }

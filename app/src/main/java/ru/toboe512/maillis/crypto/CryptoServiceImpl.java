@@ -163,13 +163,17 @@ public class CryptoServiceImpl implements CryptoService {
     }
 
     public static byte[] encryptGroupText(String plainText, byte[] groupKey) throws Exception {
+        return encryptGroupBytes(plainText.getBytes(UTF_8), groupKey);
+    }
+
+    public static byte[] encryptGroupBytes(byte[] payload, byte[] groupKey) throws Exception {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         byte[] iv = new byte[12];
         new SecureRandom().nextBytes(iv);
         SecretKeySpec keySpec = new SecretKeySpec(groupKey, "AES");
         GCMParameterSpec spec = new GCMParameterSpec(128, iv);
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, spec);
-        byte[] encrypted = cipher.doFinal(plainText.getBytes(UTF_8));
+        byte[] encrypted = cipher.doFinal(payload);
 
         byte[] result = new byte[iv.length + encrypted.length];
         System.arraycopy(iv, 0, result, 0, iv.length);
@@ -177,9 +181,9 @@ public class CryptoServiceImpl implements CryptoService {
         return result;
     }
 
-    public static String decryptGroupText(byte[] encryptedWithIv, byte[] groupKey) throws Exception {
+    public static byte[] decryptGroupByte(byte[] encryptedWithIv, byte[] groupKey) throws Exception {
         if (encryptedWithIv == null || groupKey == null) {
-            return EMPTI_STRING;
+            return null;
         }
         byte[] iv = new byte[12];
 
@@ -198,6 +202,15 @@ public class CryptoServiceImpl implements CryptoService {
         GCMParameterSpec spec = new GCMParameterSpec(128, iv); // 128-битный тег аутентификации
         cipher.init(Cipher.DECRYPT_MODE, keySpec, spec);
 
-        return new String(cipher.doFinal(payload), UTF_8);
+        return cipher.doFinal(payload);
+    }
+
+    public static String decryptGroupText(byte[] encryptedWithIv, byte[] groupKey) throws Exception {
+        if (encryptedWithIv == null || groupKey == null) {
+            return EMPTI_STRING;
+        }
+        byte[] payload = CryptoServiceImpl.decryptGroupByte(encryptedWithIv, groupKey);
+
+        return new String(payload, UTF_8);
     }
 }

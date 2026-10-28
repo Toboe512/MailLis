@@ -7,6 +7,7 @@ import static jakarta.mail.Flags.Flag.DELETED;
 import static jakarta.mail.Folder.READ_WRITE;
 import static jakarta.mail.Message.RecipientType.TO;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.INBOX;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
@@ -159,7 +160,12 @@ public class EmailClientImpl implements EmailClient {
                         continue;
                     }
                     if (subject.contains(GROUP_MESSAGE_MAIL)) {
-                        result = maillisGroupMessageCase(msg, inbox);
+                        result = maillisGroupMessageCase(msg);
+                        deleteMessage(msg, inbox);
+                        continue;
+                    }
+                    if (subject.contains(GROUP_IMAGE_MAIL)) {
+                        result = maillisGroupImageCase(msg, context.getCacheDir());
                         deleteMessage(msg, inbox);
                         continue;
                     }
@@ -239,10 +245,10 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisGroupMessageCase(Message msg, Folder inbox) throws Exception {
+    private boolean maillisGroupMessageCase(Message msg) throws Exception {
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         // Парсим ID родительского чата из темы письма
-        String[] parts = msg.getSubject().split(" ");
+        String[] parts = msg.getSubject().split(SPACE_STRING);
         long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
 
         if (groupChatId <= 0 || !dbService.isGroupChat(groupChatId)) {
@@ -255,12 +261,63 @@ public class EmailClientImpl implements EmailClient {
 
         // Дешифруем общим симметричным ключом группы
         String decryptedText = CryptoServiceImpl.decryptGroupText(encryptedBytes, groupKey);
-        long currentTimestamp = msg.getSentDate() != null ? msg.getSentDate().getTime() : System.currentTimeMillis();
+        long currentTimestamp = msg.getSentDate() != null
+                ? msg.getSentDate().getTime()
+                : System.currentTimeMillis();
         String messageId = extractMsgId(msg);
 
         // Сохраняем в messages, привязывая к ID группы
         dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_MESSAGE_MAIL,
                 decryptedText, currentTimestamp, messageId, TEXT_MSG, EMPTI_STRING);
+
+        return true;
+    }
+
+    private boolean maillisGroupImageCase(Message msg, File cacheDir) throws Exception {
+        String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+        // Парсим ID родительского чата из темы письма
+        String[] parts = msg.getSubject().split(SPACE_STRING);
+        long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
+
+        if (groupChatId <= 0 || !dbService.isGroupChat(groupChatId)) {
+            return false;
+        }
+
+        byte[] groupKey = dbService.getGroupSecretKey(groupChatId);
+
+        // 1. Извлекаем Multipart контент из письма
+        MimeMultipart multipart = (MimeMultipart) msg.getContent();
+        MimeBodyPart part = (MimeBodyPart) multipart.getBodyPart(0);
+
+        String rawBase64 = part.getContent().toString();
+        // ОПТИМИЗАЦИЯ СЕТЕВОГО ТЕКСТА: Жестко вырезаем все скрытые переносы строк (\r, \n)
+        // и пробелы, которые Mail.ru вставил во вложение для транспортировки!
+        String cleanBase64EncryptedImage = rawBase64
+                .replaceAll("\\r", EMPTI_STRING)
+                .replaceAll("\\n", EMPTI_STRING)
+                .trim();
+        byte[] encryptedBytes = Base64.decode(cleanBase64EncryptedImage, NO_WRAP);
+
+        // Дешифруем общим симметричным ключом группы
+        byte[] decryptedBytes = CryptoServiceImpl.decryptGroupByte(encryptedBytes, groupKey);
+
+        // 4. СОХРАНЯЕМ ФАЙЛ В ИЗОЛИРОВАННЫЙ КЭШ ТЕЛЕФОНА
+        String fileName = "p2p_img_" + System.currentTimeMillis() + ".jpg";
+        File file = new File(cacheDir, fileName);
+
+        try (FileOutputStream fos = new FileOutputStream(file)) {
+            fos.write(decryptedBytes);
+        }
+
+        // 5. ЗАПИСЫВАЕМ В SQLite
+        long currentTimestamp = msg.getSentDate() != null
+                ? msg.getSentDate().getTime()
+                : System.currentTimeMillis();
+        String messageId = extractMsgId(msg);
+
+        // Сохраняем в messages, привязывая к ID группы
+        dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_IMAGE_MAIL,
+                EMPTI_STRING, currentTimestamp, messageId, IMAGE_MSG, file.getAbsolutePath());
 
         return true;
     }
@@ -375,7 +432,7 @@ public class EmailClientImpl implements EmailClient {
 
         boolean result;
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru");
+        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
 
         if (senderEmail.equals(myEmail)) {
             return false;
@@ -422,7 +479,7 @@ public class EmailClientImpl implements EmailClient {
     private boolean maillisChatImageCase(Message msg, File cacheDir, SharedPreferences prefs) throws MessagingException, IOException, GeneralSecurityException {
 
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru");
+        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
 
         if (senderEmail.equals(myEmail)) {
             return false;
@@ -816,7 +873,7 @@ public class EmailClientImpl implements EmailClient {
     @Override
     public String sendEmailOverNetworkSync(long chatId, String recipientEmail, String subject, String messageText,
                                            int localMessageId, SharedPreferences prefs) {
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru");
+        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
         String generatedServerUid;
         try {
             // ИСПОЛЬЗУЕМ ВЫДЕЛЕННЫЙ МЕТОД: Получаем готовую SMTP сессию
@@ -876,15 +933,7 @@ public class EmailClientImpl implements EmailClient {
                 message.setSubject(CHAT_IMAGE_MAIL); // Специальный служебный заголовок
 
                 long currentTimestamp = System.currentTimeMillis();
-                String localFileName = "encrypted_photo_" + currentTimestamp + ".lis";
-                // Помещаем зашифрованную Base64 строку в тело вложения
-                var imagePart = new MimeBodyPart();
-                imagePart.setText(base64EncryptedImage);
-                imagePart.setFileName(localFileName);
-
-                // Создаем Multipart контейнер
-                var multipart = new MimeMultipart();
-                multipart.addBodyPart(imagePart);
+                var multipart = getMimeMultipart(currentTimestamp, base64EncryptedImage);
 
                 message.setContent(multipart);
                 message.saveChanges();
@@ -905,6 +954,72 @@ public class EmailClientImpl implements EmailClient {
             }
         });
     }
+    public void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs) {
+        networkExecutor.execute(() -> {
+            try {
+                dbService.markMessageAsSending(localMessageId);
+                String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
+
+
+                byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
+
+                // Шифруем текст сообщения общим AES-ключом группы
+                byte[] encryptedGroupBytes = CryptoServiceImpl.encryptGroupBytes(rawImageBytes, groupSecretKey);
+                String base64EncryptedImage = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
+
+                // Получаем всех участников этой группы из SQLite
+                List<String> recipients = dbService.getGroupMembers(chatId, myEmail);
+                Session session = createSmtpSession(prefs);
+
+                String generatedServerUid = EMPTI_STRING;
+                // ВЕЕРНАЯ РАССЫЛКА: Шлем копию письма каждому участнику отдельно
+                for (String recipientEmail : recipients) {
+                    try {
+                        var message = new MimeMessage(session);
+                        message.setFrom(new InternetAddress(myEmail));
+                        message.setRecipients(TO, InternetAddress.parse(recipientEmail));
+
+                        // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
+                        message.setSubject(GROUP_IMAGE_MAIL + SPACE_STRING + chatId);
+                        long currentTimestamp = System.currentTimeMillis();
+                        var multipart = getMimeMultipart(currentTimestamp, base64EncryptedImage);
+
+                        message.setContent(multipart);
+                        message.saveChanges();
+
+                        Transport.send(message);
+
+                        generatedServerUid = message.getMessageID();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        Log.e("MailLis_GroupNet", "Не удалось доставить пакет для " + recipientEmail);
+                    }
+                }
+
+                // Помечаем в локальной базе как отправлено (хотя бы сервером)
+                dbService.markMessageAsSent(localMessageId, generatedServerUid);
+
+            } catch (Exception e) {
+                dbService.resetMessageStatusToUnsent(localMessageId);
+                e.printStackTrace();
+            }
+        });
+    }
+
+    @NonNull
+    private static MimeMultipart getMimeMultipart(long currentTimestamp, String base64EncryptedImage) throws MessagingException {
+        String localFileName = "encrypted_photo_" + currentTimestamp + ".lis";
+        // Помещаем зашифрованную Base64 строку в тело вложения
+        var imagePart = new MimeBodyPart();
+        imagePart.setText(base64EncryptedImage);
+        imagePart.setFileName(localFileName);
+
+        // Создаем Multipart контейнер
+        var multipart = new MimeMultipart();
+        multipart.addBodyPart(imagePart);
+        return multipart;
+    }
+
 
     public void sendGroupMessageOverNetwork(long chatId, String cipherTextBase64, int localMessageId, SharedPreferences prefs) {
         networkExecutor.execute(() -> {

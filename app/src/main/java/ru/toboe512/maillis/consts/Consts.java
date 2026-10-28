@@ -12,6 +12,8 @@ public class Consts {
 
     public static final String GROUP_MESSAGE_MAIL = "[MailLis-Group-Message]";
 
+    public static final String GROUP_IMAGE_MAIL = "[MailLis-Group-Image]";
+
     public static final String GROUP_INVITE_MAIL = "[MailLis-Group-Invite]";
     public static final String GROUP_PRE_INVITE_MAIL = "[MailLis-Group-PreInvite]";
     public static final String GROUP_PRE_INVITE_RESPONSE_MAIL = "[MailLis-Group-PreInvite-Response]";

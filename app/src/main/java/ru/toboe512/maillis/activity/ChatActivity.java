@@ -6,6 +6,7 @@ import static java.util.stream.Collectors.toList;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
@@ -407,7 +408,8 @@ public class ChatActivity extends AppCompatActivity {
                         .stream()
                         .filter((m) -> m.getSubject().contains(CHAT_MESSAGE) ||
                                 m.getSubject().contains(CHAT_IMAGE_MAIL) ||
-                                m.getSubject().contains(GROUP_MESSAGE_MAIL)
+                                m.getSubject().contains(GROUP_MESSAGE_MAIL) ||
+                                m.getSubject().contains(GROUP_IMAGE_MAIL)
                         )
                         .collect(toList());
 
@@ -516,25 +518,28 @@ public class ChatActivity extends AppCompatActivity {
                 updateUiFromDatabase();
 
                 // 4. ПЕРЕДАЕМ В СЕТЕВОЙ СЛОЙ НА ШИФРОВАНИЕ И ОТПРАВКУ ПО SMTP
-                // Используем метод, который мы спроектировали на прошлом шаге
-                emailClient.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
-                    @Override
-                    public void onSynchronized(MessageDto updatedMessageDto) {
-                        // Успех! Сетевой слой сам вызвал markMessageAsSent, нам нужно только перерисовать галочку
-                        updateUiFromDatabase();
+                if (isGroup) {
+                    emailClient.sendGroupImageOverNetwork(chatId, rawImageBytes, generatedId, prefs);
+                } else {
+                    emailClient.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
+                        @Override
+                        public void onSynchronized(MessageDto updatedMessageDto) {
+                            // Успех! Сетевой слой сам вызвал markMessageAsSent, нам нужно только перерисовать галочку
+                            updateUiFromDatabase();
 
-                        // Пинаем MainActivity, чтобы обновилось превью чата
+                            // Пинаем MainActivity, чтобы обновилось превью чата
 //                        Intent updateChatsIntent = new Intent("ru.toboe512.maillis.UPDATE_CHATS");
 //                        updateChatsIntent.setPackage(getPackageName());
 //                        sendBroadcast(updateChatsIntent);
-                    }
+                        }
 
-                    @Override
-                    public void onError(Exception e) {
-                        runOnUiThread(() -> Toast.makeText(ChatActivity.this, "Ошибка отправки медиафайла: " + e.getMessage(), Toast.LENGTH_SHORT).show());
-                        updateUiFromDatabase();
-                    }
-                });
+                        @Override
+                        public void onError(Exception e) {
+                            runOnUiThread(() -> Toast.makeText(ChatActivity.this, "Ошибка отправки медиафайла: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                            updateUiFromDatabase();
+                        }
+                    });
+                }
 
             } catch (Exception e) {
                 Log.e("MailLis_Media", "Ошибка подготовки фотографии к отправке", e);
