@@ -2,13 +2,18 @@ package ru.toboe512.maillis.activity;
 
 import static android.widget.Toast.LENGTH_LONG;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
+import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_PASSWORD;
+import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_PORT;
+import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_SERVER;
+import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_PORT;
+import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_SERVER;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.MenuItem;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Toast;
@@ -28,14 +33,6 @@ import jakarta.mail.Transport;
 import ru.toboe512.maillis.R;
 
 public class SettingsActivity extends AppCompatActivity {
-
-    // Ключи для сохранения каждого поля
-    private static final String KEY_IMAP_SERVER = "imap_server";
-    private static final String KEY_IMAP_PORT = "imap_port";
-    private static final String KEY_SMTP_SERVER = "smtp_server";
-    private static final String KEY_SMTP_PORT = "smtp_port";
-    private static final String KEY_EMAIL_LOGIN = "email_login";
-    private static final String KEY_EMAIL_PASSWORD = "email_password";
 
     private EditText editTextImapServer;
     private EditText editTextImapPort;

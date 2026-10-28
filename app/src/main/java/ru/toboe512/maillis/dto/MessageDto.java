@@ -19,7 +19,11 @@ public class MessageDto {
     private String messageType; // "TEXT" или "IMAGE"
     private String filePath;    // Путь к картинке во внутреннем кэше
 
-    public MessageDto(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType) {
+
+    private boolean isGroup;
+
+    public MessageDto(int id, String senderEmail, String subject, String text, long timestamp,
+                      boolean isMine, String serverUid, int status, String messageType) {
         this.id = id;
         this.senderEmail = senderEmail;
         this.subject = subject;
@@ -31,7 +35,8 @@ public class MessageDto {
         this.messageType = messageType;
     }
 
-    public MessageDto(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine, String serverUid, int status, String messageType, String filePath) {
+    public MessageDto(int id, String senderEmail, String subject, String text, long timestamp, boolean isMine,
+                      String serverUid, int status, String messageType, String filePath, boolean isGroup) {
         this.id = id;
         this.senderEmail = senderEmail;
         this.subject = subject;
@@ -42,6 +47,11 @@ public class MessageDto {
         this.status = status;
         this.messageType = messageType;
         this.filePath = filePath;
+        this.isGroup = isGroup;
+    }
+
+    public boolean isGroup() {
+        return isGroup;
     }
 
     public String getMessageType() {

@@ -1,5 +1,9 @@
 package ru.toboe512.maillis.activity;
 
+import static android.widget.Toast.LENGTH_SHORT;
+import static android.widget.Toast.makeText;
+import static ru.toboe512.maillis.config.Config.IS_GROUP_CHATS_ENABLED;
+import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.content.Intent;
@@ -79,7 +83,7 @@ public class CreateChatActivity extends AppCompatActivity {
 
         // Диагностика: если база пуста, вежливо сообщаем об этом
         if (contactList.isEmpty()) {
-            Toast.makeText(this, "Список контактов пока пуст. Добавьте кого-нибудь через '+'.", Toast.LENGTH_LONG).show();
+            makeText(this, "Список контактов пока пуст. Добавьте кого-нибудь через '+'.", Toast.LENGTH_LONG).show();
         }
 
         recyclerView.setAdapter(adapter);
@@ -100,7 +104,7 @@ public class CreateChatActivity extends AppCompatActivity {
 
             // Проверяем, ввел ли пользователь имя чата
             if (groupName.isEmpty()) {
-                Toast.makeText(CreateChatActivity.this, "Введите название группы!", Toast.LENGTH_SHORT).show();
+                makeText(CreateChatActivity.this, "Введите название группы!", LENGTH_SHORT).show();
                 return;
             }
 
@@ -113,7 +117,7 @@ public class CreateChatActivity extends AppCompatActivity {
             }
 
             if (selectedEmails.isEmpty()) {
-                Toast.makeText(CreateChatActivity.this, "Выберите хотя бы одного участника!", Toast.LENGTH_SHORT).show();
+                makeText(CreateChatActivity.this, "Выберите хотя бы одного участника!", LENGTH_SHORT).show();
                 return;
             }
             // Загружаем наш собственный логин из SharedPreferences
@@ -127,13 +131,19 @@ public class CreateChatActivity extends AppCompatActivity {
                 emailClient.sendHandshakeRequest(senderEmail, CreateChatActivity.this, newChatId, prefs);
 
                 if (newChatId != -1) {
-                    Toast.makeText(CreateChatActivity.this, "Чат успешно создан!", Toast.LENGTH_SHORT).show();
+                    makeText(CreateChatActivity.this, "Чат успешно создан!", LENGTH_SHORT).show();
                     finish();
                 } else {
-                    Toast.makeText(CreateChatActivity.this, "Ошибка создания чата", Toast.LENGTH_SHORT).show();
+                    makeText(CreateChatActivity.this, "Ошибка создания чата", LENGTH_SHORT).show();
                 }
                 return;
             }
+
+            if (!IS_GROUP_CHATS_ENABLED) {
+                makeText(this, "Групповые чаты находятся на этапе закрытого тестирования.", LENGTH_SHORT).show();
+                return;
+            }
+
             // РЕЖИМ 2: ГРУППОВОЙ ЧАТ (Выбрано несколько человек ИЛИ заполнено имя группы)
             final String finalGroupName = groupName;
 
@@ -143,7 +153,7 @@ public class CreateChatActivity extends AppCompatActivity {
                     // А. Генерируем уникальный 32-байтный секретный ключ AES-256 для этой группы
                     byte[] groupSecretKey = CryptoServiceImpl.generateGroupSymmetricKey();
 
-                    String myEmail = prefs.getString("email_login", "my@mail.ru").trim();
+                    String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru").trim();
                     // Б. Создаем групповую комнату в SQLite (is_group = 1, пишем BLOB ключа)
                     long newChatId = dbService.createGroupChat(finalGroupName, groupSecretKey, myEmail);
 
@@ -158,16 +168,16 @@ public class CreateChatActivity extends AppCompatActivity {
 
                         // Возвращаемся в UI поток для закрытия экрана
                         runOnUiThread(() -> {
-                            Toast.makeText(CreateChatActivity.this, "Группа \"" + finalGroupName + "\" создана!", Toast.LENGTH_SHORT).show();
+                            makeText(CreateChatActivity.this, "Группа \"" + finalGroupName + "\" создана!", LENGTH_SHORT).show();
                             //sendUpdateBroadcast();
                             finish();
                         });
                     } else {
-                        runOnUiThread(() -> Toast.makeText(CreateChatActivity.this, "Ошибка записи группы в БД", Toast.LENGTH_SHORT).show());
+                        runOnUiThread(() -> makeText(CreateChatActivity.this, "Ошибка записи группы в БД", LENGTH_SHORT).show());
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
-                    runOnUiThread(() -> Toast.makeText(CreateChatActivity.this, "Сбой криптографии: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                    runOnUiThread(() -> makeText(CreateChatActivity.this, "Сбой криптографии: " + e.getMessage(), LENGTH_SHORT).show());
                 }
             }).start();
         });

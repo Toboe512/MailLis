@@ -40,8 +40,12 @@ public class ChatDiffCallback extends DiffUtil.Callback {
 
         boolean oldChaNoNull = oldChat != null;
         boolean newChaNoNull = newChat != null;
-        String oldChatTitle = oldChaNoNull && oldChat.getTitle() != null ? oldChat.getTitle() : "";
-        String oldChatLastMessage = oldChaNoNull && oldChat.getLastMessage() != null ? oldChat.getLastMessage() : "";
+        String oldChatTitle = oldChaNoNull && oldChat.getTitle() != null
+                ? oldChat.getTitle() : "";
+        String oldChatLastMessage = oldChaNoNull && oldChat.getLastMessage() != null
+                ? oldChat.getLastMessage() : "";
+
+
 
         // Сравниваем все поля, которые влияют на отображение карточки чата на экране
         return oldChaNoNull &&

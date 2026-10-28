@@ -2,27 +2,41 @@ package ru.toboe512.maillis.consts;
 
 public class Consts {
 
+    // Заголовки сообщений
+    public static final String KEY_REQUEST = "[MailLis-Key-Request]";
+    public static final String KEY_RESPONSE = "[MailLis-Key-Response]";
+    public static final String CHAT_MESSAGE = "[MailLis-Chat-Message]";
+    public static final String READ_RECEIPT = "[MailLis-Read-Receipt]";
+
+    public static final String CHAT_IMAGE_MAIL = "[MailLis-Image-Message]";
+
+    public static final String GROUP_MESSAGE_MAIL = "[MailLis-Group-Message]";
+
+    public static final String GROUP_INVITE_MAIL = "[MailLis-Group-Invite]";
+    public static final String GROUP_PRE_INVITE_MAIL = "[MailLis-Group-PreInvite]";
+    public static final String GROUP_PRE_INVITE_RESPONSE_MAIL = "[MailLis-Group-PreInvite-Response]";
+    //public static final String READ_RECEIPT = "[MAILLIS-READ-RECEIPT]";
+
     // Имя файла настроек на диске телефона
     public static final String PREFS_NAME = "MailLis_Prefs";
-    // Заголовки сообщений
-    public static final String MAILLIS_KEY_REQUEST = "[MailLis-Key-Request]";
-    public static final String MAILLIS_KEY_RESPONSE = "[MailLis-Key-Response]";
-    public static final String MAILLIS_CHAT_MESSAGE = "[MailLis-Chat-Message]";
-    public static final String MAILLIS_READ_RECEIPT = "[MailLis-Read-Receipt]";
 
-    public static final String MAILLIS_CHAT_IMAGE = "[MailLis-Image-Message]";
-
-    public static final String MAILLIS_GROUP_MESSAGE  = "[MailLis-Group-Message]";
-
-    public static final String MAILLIS_GROUP_INVITE = "[MailLis-Group-Invite]";
-    public static final String MAILLIS_GROUP_PRE_INVITE = "[MailLis-Group-PreInvite]";
-    public static final String MAILLIS_GROUP_PRE_INVITE_RESPONSE = "[MailLis-Group-PreInvite-Response]";
+    // Ключи для сохранения полей настроек
+    public static final String KEY_IMAP_SERVER = "imap_server";
+    public static final String KEY_IMAP_PORT = "imap_port";
+    public static final String KEY_SMTP_SERVER = "smtp_server";
+    public static final String KEY_SMTP_PORT = "smtp_port";
+    public static final String KEY_EMAIL_LOGIN = "email_login";
+    public static final String KEY_EMAIL_PASSWORD = "email_password";
 
     // Типы сообщений
     public static final String TEXT_MSG = "TEXT";
     public static final String IMAGE_MSG = "IMAGE";
 
-    public static final int UPDATE_INTERVAL_MS = 5000; // Интервал опроса сервера в миллисекундах
+    //Метка входящих сообщений
+    public static final String INBOX = "INBOX";
+
+    // Интервал опроса сервера в миллисекундах
+    public static final int UPDATE_INTERVAL_MS = 5000;
 
     // Разное
     public static final String EMPTI_STRING = "";

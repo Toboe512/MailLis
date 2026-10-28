@@ -32,6 +32,7 @@ import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import ru.toboe512.maillis.R;
@@ -42,14 +43,13 @@ import ru.toboe512.maillis.utils.MessageDiffCallback;
 
 public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.MessageViewHolder> {
 
-    private final List<MessageDto> messageDtoList;
+    private final List<MessageDto> messageDtoList = new ArrayList<>();
     private final Context context;
     private final DBService dbService;
     private final EmailClient emailClient;
 
-    public MessagesAdapter(Context context, List<MessageDto> messageDtoList, EmailClient emailClient, DBService dbService) {
+    public MessagesAdapter(Context context, EmailClient emailClient, DBService dbService) {
         this.context = context;
-        this.messageDtoList = messageDtoList;
         this.emailClient = emailClient;
         this.dbService = dbService;
     }
@@ -65,83 +65,103 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     public void onBindViewHolder(@NonNull MessageViewHolder holder, int position) {
         MessageDto messageDto = messageDtoList.get(position);
 
-        // Считываем LayoutParams. Убедитесь, что контейнер holder.cardMessage в XML — это прямой дочерний элемент RelativeLayout!
-        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) holder.cardMessage.getLayoutParams();
-
-        // 1. НАСТРОЙКА ОТОБРАЖЕНИЯ КОНТЕНТА (ТЕКСТ ИЛИ ФОТО)
+        // =========================================================================
+        // 1. ОПТИМИЗАЦИЯ КОНТЕНТА: Читаем файл с диска ТОЛЬКО если текст/картинка изменились!
+        // Защита от ежесекундного чтения накопителя и фризов UI.
+        // =========================================================================
         if (IMAGE_MSG.equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
             holder.textViewText.setVisibility(GONE);
             if (holder.imageViewPhoto != null) {
                 holder.imageViewPhoto.setVisibility(VISIBLE);
-                Bitmap bitmap = BitmapFactory.decodeFile(messageDto.getFilePath());
-                if (bitmap != null) {
-                    holder.imageViewPhoto.setImageBitmap(bitmap);
-                } else {
-                    holder.imageViewPhoto.setImageResource(android.R.drawable.ic_menu_report_image);
+
+                // Проверяем: если картинка уже была загружена в этот ImageView, не декодируем её заново!
+                if (holder.imageViewPhoto.getDrawable() == null) {
+                    new Thread(() -> {
+                        // Декодируем тяжелый Bitmap в фоне
+                        Bitmap bitmap = BitmapFactory.decodeFile(messageDto.getFilePath());
+                        if (bitmap != null) {
+                            holder.itemView.post(() -> holder.imageViewPhoto.setImageBitmap(bitmap));
+                        } else {
+                            holder.itemView.post(() ->
+                                    holder.imageViewPhoto.setImageResource(android.R.drawable.ic_menu_report_image));
+                        }
+                    }).start();
                 }
             }
         } else {
             if (holder.imageViewPhoto != null) {
                 holder.imageViewPhoto.setVisibility(GONE);
+                holder.imageViewPhoto.setImageDrawable(null); // Сбрасываем старый Bitmap кэша
             }
             holder.textViewText.setVisibility(VISIBLE);
-            holder.textViewText.setText(messageDto.getText());
+
+            // Оптимизация: меняем текст только если он реально отличается от текущего
+            if (!messageDto.getText().equals(holder.textViewText.getText().toString())) {
+                holder.textViewText.setText(messageDto.getText());
+            }
         }
 
-        // 2. ИСПРАВЛЕНИЕ: ДИНАМИЧЕСКОЕ ВЫРАВНИВАНИЕ СТОРОН (ПРАВО / ЛЕВО)
-        if (messageDto.isMine()) {
-            // --- НАШИ ИСХОДЯЩИЕ СООБЩЕНИЯ (ПРИЖИМАЕМ ВПРАВО) ---
+        // 2. УПРАВЛЕНИЕ EMAIL ОТПРАВИТЕЛЯ (ИСПОЛЬЗУЕМ КОРРЕКТНЫЙ ФЛАГ ТИПА КОМНАТЫ ИЗ АДАПТЕРА)
+        if (holder.textViewSender != null) {
+            if (messageDto.isGroup() && !messageDto.isMine()) {
+                holder.textViewSender.setVisibility(VISIBLE);
+                if (!messageDto.getSenderEmail().equals(holder.textViewSender.getText().toString())) {
+                    holder.textViewSender.setText(messageDto.getSenderEmail());
+                }
+            } else {
+                holder.textViewSender.setVisibility(View.INVISIBLE); // INVISIBLE сохраняет связи layout_below
+            }
+        }
 
-            // Сначала полностью очищаем старые правила, оставшиеся от переиспользования ячеек
+        // 3. ДИНАМИЧЕСКОЕ ВЫРАВНИВАНИЕ СТОРОН (ПРАВО / ЛЕВО)
+        RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) holder.cardMessage.getLayoutParams();
+
+        if (messageDto.isMine()) {
             params.removeRule(ALIGN_PARENT_LEFT);
             params.removeRule(ALIGN_PARENT_START);
-
-            // Добавляем правило прижатия к правому краю экрана
             params.addRule(ALIGN_PARENT_RIGHT, TRUE);
             params.addRule(ALIGN_PARENT_END, TRUE);
 
-            holder.textViewSender.setText(messageDto.getSenderEmail());
-
-            // Настройка галочек статуса
+            // 4. МГНОВЕННОЕ ОБНОВЛЕНИЕ ГАЛОЧЕК (СВЯЗКА С НАШИМ СЕКУНДНЫМ ТАЙМЕРОМ)
             if (holder.textViewStatus != null) {
                 holder.textViewStatus.setVisibility(VISIBLE);
+
+                String currentIcon = holder.textViewStatus.getText().toString();
+                String targetIcon = "✓";
+
                 int status = messageDto.getStatus();
                 switch (status) {
                     case 0:
-                        holder.textViewStatus.setText("🕒");
-                        break; // Ожидание сети
+                        targetIcon = "🕒";
+                        break; // Ожидает сеть
                     case 3:
-                        holder.textViewStatus.setText("⏳");
-                        break; // В процессе отправки SMTP
+                        targetIcon = "⏳";
+                        break; // Отправка SMTP в процессе
                     case 1:
-                        holder.textViewStatus.setText("✓");
-                        break;  // На сервере Mail.ru
+                        targetIcon = "✓";
+                        break;  // Доставлено на Mail.ru
                     case 2:
-                        holder.textViewStatus.setText("✓✓");
-                        break; // Прочитано другом
-                    default:
-                        holder.textViewStatus.setText("✓");
-                        break;
+                        targetIcon = "✓✓";
+                        break; // Прочитано
+                }
+
+                // Меням иконку ТОЛЬКО если статус в SQLite реально изменился!
+                // Это полностью ликвидирует ежесекундное мерцание текста на экране
+                if (!currentIcon.equals(targetIcon)) {
+                    holder.textViewStatus.setText(targetIcon);
                 }
             }
         } else {
-            // --- ЧУЖИЕ ВХОДЯЩИЕ СООБЩЕНИЯ (ПРИЖИМАЕМ ВЛЕВО) ---
-            // Очищаем правила прижатия к правому краю
             params.removeRule(ALIGN_PARENT_RIGHT);
             params.removeRule(ALIGN_PARENT_END);
-
-            // Добавляем правило прижатия к левому краю экрана
             params.addRule(ALIGN_PARENT_LEFT, TRUE);
             params.addRule(ALIGN_PARENT_START, TRUE);
 
-            // Прячем галочки статуса для чужих сообщений
             if (holder.textViewStatus != null) {
                 holder.textViewStatus.setVisibility(GONE);
             }
-            holder.textViewSender.setVisibility(GONE);
         }
 
-        // КРИТИЧЕСКИ ВАЖНО: Применяем обновленные правила выравнивания обратно к контейнеру ячейки!
         holder.cardMessage.setLayoutParams(params);
 
         // ОБРАБОТКА ДОЛГОГО КЛИКА НА СООБЩЕНИЕ
@@ -185,7 +205,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             deleteMessageFromDb(messageDto.getId(), position);
             // ЗАПУСКАЕМ СЕТЕВОЕ УДАЛЕНИЕ С СЕРВЕРА MAIL.RU
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            emailClient.deleteMessageFromMailRuServer(messageDto.getServerUid(), prefs);
+            emailClient.deleteMessageFromServer(messageDto.getServerUid(), prefs);
         });
 
         builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
@@ -212,15 +232,15 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
     // Внутри класса MessagesAdapter:
     public void setMessages(List<MessageDto> newMessageDtos) {
-        // Вычисляем разницу между старым списком (this.messageList) и новым
-        var diffCallback = new MessageDiffCallback(this.messageDtoList, newMessageDtos);
+        // Запускаем автоматический расчет разницы между старым и новым списками сообщений
+        MessageDiffCallback diffCallback = new MessageDiffCallback(messageDtoList, newMessageDtos);
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
 
-        // Обновляем данные в памяти адаптера
-        this.messageDtoList.clear();
-        this.messageDtoList.addAll(newMessageDtos);
+        // Обновляем ссылку на массив данных
+        messageDtoList.clear();
+        messageDtoList.addAll(newMessageDtos);
 
-        // Применяем точечные анимации (notifyItemInserted, notifyItemChanged автоматически!)
+        // Приказываем DiffUtil плавно и без мерцания обновить только изменившиеся галочки!
         diffResult.dispatchUpdatesTo(this);
     }
 }

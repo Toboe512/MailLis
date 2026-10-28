@@ -130,7 +130,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     protected void onResume() {
         super.onResume();
 
-        IntentFilter filter = new IntentFilter("ru.toboe512.maillis.UPDATE_CHATS");
+        var filter = new IntentFilter("ru.toboe512.maillis.UPDATE_CHATS");
         // Используем ContextCompat вместо стандартного registerReceiver.
         // Это полностью отключает проверку Lint и гарантирует защиту Android 14+ на уровне системы!
         ContextCompat.registerReceiver(

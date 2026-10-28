@@ -26,6 +26,7 @@ public interface DBService {
 
     /**
      * Нативное удаление контакта из SQLite по ее email
+     *
      * @param email почта
      * @return колличество удиённых контактов
      */
@@ -65,6 +66,11 @@ public interface DBService {
     int saveMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp);
 
     /**
+     * Жестко и без проверок сохраняет исходящее сообщение в контексте группового чата.
+     */
+    int saveGroupMessage(long groupId, String senderEmail, String subject, String messageText, long timestamp);
+
+    /**
      * Безопасно сохраняет сообщение (входящее или исходящее) в таблицу messages.
      * Автоматически определяет тип комнаты (одиночный чат или группа) и выставляет флаги.
      * Полностью очищен от обращения к удаленным колонкам таблицы chats.
@@ -77,7 +83,8 @@ public interface DBService {
      * @param timestamp время создания сообщения
      * @return сгенерированный базой данных уникальный локальный ID сообщения
      */
-    int saveGenericMessage(long chatId, String myEmail, String subject, String text, boolean isMine, long timestamp);
+    int saveGenericMessage(long chatId, String myEmail, String subject, String text, boolean isMine,
+                           long timestamp);
 
     /**
      * Безопасно сохраняет входящее сообщение (текст или медиа) в SQLite базу данных.
@@ -94,7 +101,26 @@ public interface DBService {
      * @param imgPath          абсолютный путь к расшифрованному файлу .jpg на диске телефона (или null)
      * @return true, если сообщение успешно записано в базу; false, если произошел сбой или дубликат
      */
-    boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText, long currentTimestamp, String serverUid, String type, String imgPath);
+    boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText,
+                                long currentTimestamp, String serverUid, String type, String imgPath);
+
+    /**
+     * Безопасно сохраняет входящее групповое сообщение (текст или медиафайл) в SQLite.
+     * Жестко прописывает флаг группового контекста (is_group_message = 1).
+     * Защищено от дублирования писем при повторном IMAP-сканировании через CONFLICT_IGNORE.
+     *
+     * @param chatId           глобальный ID группы (remote_group_id), пришедший из темы письма
+     * @param senderEmail      email участника группы, который отправил это сообщение
+     * @param subject          тема письма (служебный тег, например [MailLis-Group-Message])
+     * @param messageText      чистый текст сообщения (или заглушка "[Изображение]" для фото)
+     * @param currentTimestamp время отправки письма, зафиксированное почтовым сервером
+     * @param serverUid        уникальный Message-ID письма для предотвращения дубликатов
+     * @param type             тип контента: "TEXT" или "IMAGE"
+     * @param imgPath          абсолютный путь к расшифрованному файлу .jpg на диске (или null)
+     * @return true, если сообщение успешно записано; false, если это дубликат или произошла ошибка
+     */
+    boolean saveIncomingGroupMessage(long chatId, String senderEmail, String subject, String messageText,
+                                     long currentTimestamp, String serverUid, String type, String imgPath);
 
     /**
      * Извлекает из SQLite самое последнее сообщение для конкретного чата или группы.
@@ -110,13 +136,15 @@ public interface DBService {
 
     /**
      * Пометка сообщения как успешно отправленного
+     *
      * @param localMessageId идентификатор сообщения
-     * @param serverUid серверный идентификатор
+     * @param serverUid      серверный идентификатор
      */
     void markMessageAsSent(int localMessageId, String serverUid);
 
     /**
      * Метод чтения активных чатов из SQLite
+     *
      * @return возвращает список превью
      */
     List<ChatPreview> loadChats();
@@ -181,6 +209,7 @@ public interface DBService {
 
     /**
      * Помечает сообщение как не отправленное
+     *
      * @return список всех сообщений
      */
     List<MessageDto> getUnsentMessages();
@@ -189,6 +218,7 @@ public interface DBService {
 
     /**
      * Добавить пользователя в бан-лист
+     *
      * @param email почта пользователя
      * @return флаг успешности
      */
@@ -196,6 +226,7 @@ public interface DBService {
 
     /**
      * Удалить пользователя из бан-листа (разбанить)
+     *
      * @param email почта пользователя
      * @return флаг успешности
      */
@@ -203,6 +234,7 @@ public interface DBService {
 
     /**
      * Проверка, находится ли пользователь в бане
+     *
      * @param email почта пользователя
      * @return флаг бана
      */
@@ -218,6 +250,16 @@ public interface DBService {
      * @return true, если чат был успешно стерт из таблицы chats
      */
     boolean deleteChatAndMessages(long chatId);
+
+    /**
+     * Удаляет всех участников (мемберов) группы из таблицы group_members.
+     * Автоматически находит локальный ID группы по переданному глобальному remote_group_id.
+     * Защищено от багов приведения типов данных (Type Mismatch) на Android 14+.
+     *
+     * @param remoteGroupId глобальный ID группы, используемый в сетевом слое и активности
+     * @return true, если участники были успешно удалены; false, если группа не найдена или произошел сбой
+     */
+    boolean deleteGroupMembersByRemoteId(long remoteGroupId);
 
     /**
      * Переводит статус сообщения в состояние "Прочитано" (две галочки).
@@ -284,13 +326,13 @@ public interface DBService {
 
     /**
      * Возвращает список Email-адресов всех участников конкретной группы (исключая свой собственный).
-     * Полностью адаптирован под новую структуру таблицы group_members (колонка group_id).
+     * ИСПРАВЛЕНО: Корректно находит участников как по локальному id, так и по глобальному remote_group_id группы.
      *
-     * @param localGroupId локальный числовой ID группы из таблицы group_chats
-     * @param myEmail      email текущего пользователя приложения (чтобы исключить себя из рассылки)
+     * @param groupId числовой идентификатор чата (id или remote_group_id), пришедший из интерфейса
+     * @param myEmail email текущего пользователя приложения (чтобы исключить себя из списка)
      * @return список email-адресов участников группы
      */
-    List<String> getGroupMembers(long localGroupId, String myEmail);
+    List<String> getGroupMembers(long groupId, String myEmail);
 
     /**
      * Проверяет, является ли указанный идентификатор чата групповой комнатой.
@@ -333,10 +375,21 @@ public interface DBService {
 
     /**
      * Полностью и безвозвратно удаляет групповой чат, список его участников и историю переписки.
-     * Использует прямые SQL-запросы для исключения багов приведения типов на Android 14+.
+     * ИСПРАВЛЕНО: Корректно сопоставляет локальные автоинкременты и глобальные remote_group_id участников.
      *
-     * @param localGroupId локальный числовой ID группы из таблицы group_chats
-     * @return true, если транзакция удаления завершилась успешно; false в случае сбоя
+     * @param groupId числовой идентификатор чата (id или remote_group_id), переданный из интерфейса
+     * @return true, если транзакция удаления успешно выполнена; false в случае критического сбоя
      */
-    boolean deleteGroupChatAndMessages(long localGroupId);
+    boolean deleteGroupChatAndMessages(long groupId);
+
+    /**
+     * Возвращает список Email-адресов всех участников конкретной группы (исключая свой собственный).
+     * Гарантированно работает как на устройстве Создателя, так и у приглашенных Участников.
+     * Использует реляционный подзапрос для сопоставления локальных и глобальных ID групп.
+     *
+     * @param groupId числовой идентификатор чата из активности (локальный id или глобальный remote_group_id)
+     * @param myEmail email текущего пользователя приложения (чтобы исключить себя из списка рассылки)
+     * @return список email-адресов участников группы в нижнем регистре
+     */
+    List<String> getGroupMembersEmails(long groupId, String myEmail);
 }

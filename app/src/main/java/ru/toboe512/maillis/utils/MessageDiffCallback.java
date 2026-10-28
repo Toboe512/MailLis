@@ -43,8 +43,14 @@ public class MessageDiffCallback extends DiffUtil.Callback {
         }
 
         // Если текст, время или UID сервера изменились — элемент будет точечно перерисован
-        boolean changText = oldMsg.getText() == null || oldMsg.getText().equals(newMsg.getText());
-        boolean changeServerUid = oldMsg.getServerUid() == null || oldMsg.getServerUid().equals(newMsg.getServerUid());
-        return changText && oldMsg.getTimestamp() == newMsg.getTimestamp() && changeServerUid;
+        boolean changText = oldMsg.getText() == null ||
+                oldMsg.getText().equals(newMsg.getText());
+        boolean changeServerUid = oldMsg.getServerUid() == null ||
+                oldMsg.getServerUid().equals(newMsg.getServerUid());
+
+        return oldMsg.getStatus() == newMsg.getStatus() &&
+                changText &&
+                oldMsg.getTimestamp() == newMsg.getTimestamp() &&
+                changeServerUid;
     }
 }

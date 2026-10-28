@@ -17,7 +17,7 @@ public interface EmailClient {
 
     String sendHandshakeResponse(String targetEmail, long chatId, SharedPreferences prefs);
 
-    void deleteMessageFromMailRuServer(final String serverUid, android.content.SharedPreferences prefs);
+    void deleteMessageFromServer(final String serverUid, android.content.SharedPreferences prefs);
 
     void retryUnsentMessages(SharedPreferences prefs);
 
@@ -28,7 +28,7 @@ public interface EmailClient {
      * Безопасно рассылает секретный AES-ключ группы участнику.
      * Ключ шифруется индивидуальным публичным Tink-ключом получателя.
      */
-    void sendGroupMessageOverNetwork(long chatId, String text, String cipherTextBase64, int localMessageId, SharedPreferences prefs);
+    void sendGroupMessageOverNetwork(long chatId, String cipherTextBase64, int localMessageId, SharedPreferences prefs);
 
     void sendGroupPreInviteResponse(String creatorEmail, long chatId, SharedPreferences prefs);
 

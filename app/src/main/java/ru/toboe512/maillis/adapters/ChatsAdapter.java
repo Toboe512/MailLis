@@ -1,9 +1,16 @@
 package ru.toboe512.maillis.adapters;
 
 
+import static android.content.Context.MODE_PRIVATE;
+import static android.widget.Toast.LENGTH_SHORT;
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
+import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
+
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -27,7 +34,6 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
 
     private final List<ChatPreview> chatList;
     private final Context context;
-
     private final DBService dbService; // Помощник для удаления из SQLite
 
     public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService) {
@@ -46,7 +52,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     @Override
     public void onBindViewHolder(@NonNull ChatViewHolder holder, int position) {
         ChatPreview chat = chatList.get(position);
-        String chatTitle = chat.getTitle() != null ? chat.getTitle() : "";
+        String chatTitle = chat.getTitle() != null ? chat.getTitle() : EMPTI_STRING;
         holder.textViewName.setText(chatTitle);
         holder.textViewLastMessage.setText(chat.getLastMessage() != null ? chat.getLastMessage() : "Нет сообщений");
         holder.textViewType.setText(chat.isGroup() ? "Группа" : "Личный");
@@ -86,12 +92,10 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
 
     // Отображение диалогового окна с подтверждением
     private void showDeleteChatDialog(ChatPreview chat, int position) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        var builder = new AlertDialog.Builder(context);
         builder.setTitle("Удалить чат");
         builder.setMessage("Вы уверены, что хотите удалить чат '" + chat.getTitle() + "' и всю историю переписки?");
-
         builder.setPositiveButton("Удалить", (dialog, which) -> deleteChatFromDatabase(chat.getId(), position));
-
         builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
 
         AlertDialog dialog = builder.create();
@@ -102,29 +106,31 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     private void deleteChatFromDatabase(int chatId, int position) {
         // Удаляем сам чат. Связанные сообщения в SQLite удалятся автоматически благодаря ON DELETE CASCADE
         boolean isDeleted;
-
         List<String> members = new ArrayList<>();
-
         ChatPreview chatPreview = chatList.get(position);
 
         if (chatPreview == null) {
             return;
         }
         if (chatPreview.isGroup()) {
+            // Загружаем наш собственный логин из SharedPreferences
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+            String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru").trim();
             //Вытаскиваем email участников, чтобы зачистить их ключи из public_keys
-           // members = dbService.getGroupMembers(chatId, myEmail);
+            members = dbService.getGroupMembers(chatId, myEmail);
+            //  dbService.deleteGroupMembersByRemoteId(chatId);
             isDeleted = dbService.deleteGroupChatAndMessages(chatId);
         } else {
             // Удаляем данные из SQLite
             members.add(dbService.getRecipientEmailByChatId(chatId));
             isDeleted = dbService.deleteChatAndMessages(chatId);
         }
-        if (isDeleted) {
-            // 3. Если группа стерта, убираем из кэша публичные ключи участников
-            for (String memberEmail : members) {
-                dbService.deletePublicKeyByEmail(memberEmail);
-            }
-        }
+//        if (isDeleted) {
+//            // 3. Если группа стерта, убираем из кэша публичные ключи участников
+//            for (String memberEmail : members) {
+//                dbService.deletePublicKeyByEmail(memberEmail);
+//            }
+//        }
 
         if (isDeleted) {
             // Удаляем объект из массива памяти устройства
@@ -134,10 +140,10 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             notifyItemRemoved(position);
             notifyItemRangeChanged(position, chatList.size());
 
-            Toast.makeText(context, "Чат успешно удален", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Чат успешно удален", LENGTH_SHORT).show();
         } else {
             // Ошибка может быть, только если мы удаляем фейковые тестовые чаты, которых нет в физической БД
-            Toast.makeText(context, "Локальный чат скрыт из списка", Toast.LENGTH_SHORT).show();
+            Toast.makeText(context, "Локальный чат скрыт из списка", LENGTH_SHORT).show();
             chatList.remove(position);
             notifyItemRemoved(position);
         }

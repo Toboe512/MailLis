@@ -2,12 +2,13 @@ package ru.toboe512.maillis.activity;
 
 
 import static android.graphics.Bitmap.CompressFormat.JPEG;
-import static androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED;
 import static java.util.stream.Collectors.toList;
+import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
+import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
-import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_IMAGE;
-import static ru.toboe512.maillis.consts.Consts.MAILLIS_CHAT_MESSAGE;
+import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
 import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.content.BroadcastReceiver;
@@ -19,6 +20,8 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 import android.view.MenuItem;
@@ -30,8 +33,8 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -41,7 +44,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
-import java.util.ArrayList;
 import java.util.List;
 
 import ru.toboe512.maillis.R;
@@ -57,23 +59,34 @@ public class ChatActivity extends AppCompatActivity {
 
     private RecyclerView recyclerView;
     private MessagesAdapter messagesAdapter;
-    private List<MessageDto> messageDtoList = new ArrayList<>();
     private EditText editTextMessage;
     // Переменные для работы с базой данных
     private DBService dbService;
     private int chatId = 1; // ID текущего чата по умолчанию (для тестов)
     private boolean isGroup; // НАШ НОВЫЙ СИСТЕМНЫЙ ФЛАГ ТИПА КОМНАТЫ
-
-    //клиент
     private EmailClient emailClient;
     private String recipientEmail = EMPTI_STRING;
     private String myEmail = EMPTI_STRING; // Наш реальный Email из настроек
-
-    // 1. Объявляем переменную приемника на уровне класса ChatActivity
+    // Объявляем переменную приемника на уровне класса ChatActivity
     private BroadcastReceiver messageUpdateReceiver;
-
     // Объявляем лаунчер как поле класса ChatActivity
     private ActivityResultLauncher<Intent> photoPickerLauncher;
+
+    // ОБЪЯВЛЯЕМ КОМПОНЕНТЫ ТАЙМЕРА СТРОГО НА УРОВНЕ КЛАССА АКТИВНОСТИ
+    private static final long TIMER_INTERVAL_MS = 5000; // Интервал обновления — ровно 1 секунда
+    private final Handler timerHandler = new Handler(Looper.getMainLooper());
+    // Создаем явный, стабильный объект Runnable через лямбду Java 8
+    private final Runnable timerRunnable = new Runnable() {
+        @Override
+        public void run() {
+            // А. Запускаем наше фоновое считывание статусов сообщений из SQLite
+            updateUiFromDatabase();
+
+            // Б. КРИТИЧЕСКИЙ ФИКС: Явно указываем timerRunnable для циклического перезапуска!
+            // Теперь планировщик никогда не потеряет ссылку в памяти и цикл будет бесконечным.
+            timerHandler.postDelayed(this, TIMER_INTERVAL_MS);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,7 +95,7 @@ public class ChatActivity extends AppCompatActivity {
 
         // Загружаем наш собственный логин из SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        myEmail = prefs.getString("email_login", "my@mail.ru").trim();
+        myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru").trim();
 
         // Стрелочка назад
         ActionBar actionBar = getSupportActionBar();
@@ -108,8 +121,7 @@ public class ChatActivity extends AppCompatActivity {
         dbService = DBServiceSQLite.getInstance(this);
         emailClient = EmailClientImpl.getInstance(dbService, this);
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
-        messageDtoList = new ArrayList<>();
-        messagesAdapter = new MessagesAdapter(this, messageDtoList, emailClient, dbService);
+        messagesAdapter = new MessagesAdapter(this, emailClient, dbService);
 
         var layoutManager = new LinearLayoutManager(this);
         layoutManager.setStackFromEnd(true); // Чат строится снизу вверх, как в Telegram
@@ -131,11 +143,20 @@ public class ChatActivity extends AppCompatActivity {
             if (text.isEmpty()) {
                 return;
             }
+
             long currentTimestamp = System.currentTimeMillis();
+            // ПРОВЕРКА: Определяем архитектурный тип текущей комнаты чата
+            boolean isGroup = dbService.isGroupChat(chatId);
 
             // 1. Сохраняем сообщение локально в SQLite базу данных
             // Метод saveMessage сам выставит статус "is_sent = 0" (часики) и "is_mine = 1"
-            int generatedId = dbService.saveMessage(chatId, myEmail, MAILLIS_CHAT_MESSAGE, text, currentTimestamp);
+            int generatedId;
+            if (isGroup) {
+                generatedId = dbService.saveGroupMessage(chatId, myEmail, GROUP_MESSAGE_MAIL, text, currentTimestamp);
+            } else {
+                generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
+            }
+
 
             // 2. Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
             // Сообщение мгновенно появится на экране со значком "Часики" и больше не будет двоиться.
@@ -143,9 +164,6 @@ public class ChatActivity extends AppCompatActivity {
 
             // Чистим поле ввода сообщения
             editTextMessage.getText().clear();
-
-            // ПРОВЕРКА: Определяем архитектурный тип текущей комнаты чата
-            boolean isGroup = dbService.isGroupChat(chatId);
 
             if (isGroup) {
                 // РЕЖИМ А: ОТПРАВКА В ГРУППОВОЙ ЧАТ (Симметричный AES-GCM)
@@ -159,7 +177,7 @@ public class ChatActivity extends AppCompatActivity {
                         String base64GroupText = Base64.encodeToString(encryptedGroupBytes, Base64.NO_WRAP);
 
                         // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
-                        emailClient.sendGroupMessageOverNetwork(chatId, text, base64GroupText, generatedId, prefs);
+                        emailClient.sendGroupMessageOverNetwork(chatId, base64GroupText, generatedId, prefs);
 
                         // Сразу обновляем экран (сообщение перейдет в статус отправки)
                         updateUiFromDatabase();
@@ -192,7 +210,7 @@ public class ChatActivity extends AppCompatActivity {
             }
 
             // 3. Отправляем одиночное сообщение по сети через SMTP
-            emailClient.sendEmailOverNetwork(chatId, recipientEmail, MAILLIS_CHAT_MESSAGE, sendTxt,
+            emailClient.sendEmailOverNetwork(chatId, recipientEmail, CHAT_MESSAGE, sendTxt,
                     generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
 
                         @Override
@@ -260,7 +278,6 @@ public class ChatActivity extends AppCompatActivity {
             return true;
         }
 
-
         return super.onOptionsItemSelected(item);
     }
 
@@ -268,27 +285,42 @@ public class ChatActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         // 1. Сразу загружаем историю из локальной SQLite
-        IntentFilter filter = new IntentFilter("ru.toboe512.maillis.UPDATE_CHATS");
+        var filter = new IntentFilter("ru.toboe512.maillis.UPDATE_CHATS");
 
-        // Используем ContextCompat вместо стандартного registerReceiver.
-        // Это полностью отключает проверку Lint и гарантирует защиту Android 14+ на уровне системы!
-        ContextCompat.registerReceiver(
-                this,
-                messageUpdateReceiver,
-                filter,
-                ContextCompat.RECEIVER_NOT_EXPORTED // Указываем, что интент строго внутренний
-        );
+//        // Используем ContextCompat вместо стандартного registerReceiver.
+//        // Это полностью отключает проверку Lint и гарантирует защиту Android 14+ на уровне системы!
+//        ContextCompat.registerReceiver(
+//                this,
+//                messageUpdateReceiver,
+//                filter,
+//                ContextCompat.RECEIVER_NOT_EXPORTED // Указываем, что интент строго внутренний
+//        );
 
         // Первичное обновление истории при заходе на экран (наш старый код)
         updateUiFromDatabase();
+
+        // ЗАПУСКАЕМ БЕСКОНЕЧНЫЙ ЦИКЛ при входе пользователя в чат
+        // Сначала на всякий случай очищаем очередь, чтобы избежать случайного размножения таймеров
+        timerHandler.removeCallbacks(timerRunnable);
+
+        // Запускаем первый мгновенный импульс
+        timerHandler.post(timerRunnable);
+        Log.d("MailLis_Timer", "🚀 Секундный цикл UI успешно запущен на главном потоке!");
     }
 
     @Override
     protected void onPause() {
         super.onPause();
 
-        if (messageUpdateReceiver != null) {
-            unregisterReceiver(messageUpdateReceiver);
+//        if (messageUpdateReceiver != null) {
+//            unregisterReceiver(messageUpdateReceiver);
+//        }
+
+        // ОСТАНАВЛИВАЕМ ЦИКЛ при выходе с экрана чата
+        // Это критически важно, чтобы приложение не высаживало батарею смартфона в фоне!
+        if (timerHandler != null) {
+            timerHandler.removeCallbacks(timerRunnable);
+            Log.w("MailLis_Timer", "🛑 Секундный цикл UI остановлен.");
         }
     }
 
@@ -301,9 +333,10 @@ public class ChatActivity extends AppCompatActivity {
 
     // --- ДИАЛОГ 1: БЛОКИРОВКА ПОЛЬЗОВАТЕЛЯ ---
     private void showBlockUserDialog() {
-        new androidx.appcompat.app.AlertDialog.Builder(this)
+        new AlertDialog.Builder(this)
                 .setTitle("Блокировка")
-                .setMessage("Вы уверены, что хотите заблокировать " + recipientEmail + "? Письма от него будут автоматически уничтожаться.")
+                .setMessage("Вы уверены, что хотите заблокировать " + recipientEmail +
+                        "? Письма от него будут автоматически уничтожаться.")
                 .setCancelable(true)
                 .setPositiveButton("Заблокировать", (dialog, which) -> {
                     new Thread(() -> {
@@ -332,24 +365,19 @@ public class ChatActivity extends AppCompatActivity {
                 .setPositiveButton("Удалить", (dialog, which) -> {
                     new Thread(() -> {
 
-                        List<String> members = new ArrayList<>();
-
                         boolean isDeleted;
                         if (isGroup) {
-                            //Вытаскиваем email участников, чтобы зачистить их ключи из public_keys
-                            members = dbService.getGroupMembers(chatId, myEmail);
                             isDeleted = dbService.deleteGroupChatAndMessages(chatId);
                         } else {
-                            // Удаляем данные из SQLite
                             isDeleted = dbService.deleteChatAndMessages(chatId);
-                            members.add(dbService.getRecipientEmailByChatId(chatId));
                         }
-                        if (isDeleted) {
-                            // 3. Если группа стерта, убираем из кэша публичные ключи участников
-                            for (String memberEmail : members) {
-                                dbService.deletePublicKeyByEmail(memberEmail);
-                            }
-                        }
+                        //TODO Придумать как удалять публичный ключ из БД
+//                        if (isDeleted) {
+//                            // 3. Если группа стерта, убираем из кэша публичные ключи участников
+//                            for (String memberEmail : members) {
+//                                dbService.deletePublicKeyByEmail(memberEmail);
+//                            }
+//                        }
                         runOnUiThread(() -> {
                             if (isDeleted) {
                                 Toast.makeText(this, "Чат успешно удален", Toast.LENGTH_SHORT).show();
@@ -373,9 +401,14 @@ public class ChatActivity extends AppCompatActivity {
         new Thread(() -> {
             try {
                 // Вытаскиваем актуальный список сообщений из SQLite
-                final List<MessageDto> freshMessageDtos = dbService.getAllMessages(chatId, isGroup)
+                final List<MessageDto> freshMessageAllDtos = dbService.getAllMessages(chatId, isGroup);
+
+                final List<MessageDto> freshMessageDtos = freshMessageAllDtos
                         .stream()
-                        .filter((m) -> m.getSubject().contains(MAILLIS_CHAT_MESSAGE) || m.getSubject().contains(MAILLIS_CHAT_IMAGE))
+                        .filter((m) -> m.getSubject().contains(CHAT_MESSAGE) ||
+                                m.getSubject().contains(CHAT_IMAGE_MAIL) ||
+                                m.getSubject().contains(GROUP_MESSAGE_MAIL)
+                        )
                         .collect(toList());
 
                 if (freshMessageDtos.isEmpty()) {
@@ -384,22 +417,12 @@ public class ChatActivity extends AppCompatActivity {
                 // 2. ВОЗВРАЩАЕМСЯ НА ГЛАВНЫЙ ПОТОК ANDROID для перерисовки экрана!
                 runOnUiThread(() -> {
                     if (messagesAdapter != null) {
-
-                        // Передаем список в наш адаптер с поддержкой DiffUtil
+                        // Передаем список в адаптер
                         messagesAdapter.setMessages(freshMessageDtos);
-
-                        // ХАК ДЛЯ ГАРАНТИРОВАННОГО ОБНОВЛЕНИЯ: Принудительно заставляем
-                        // RecyclerView обновить отображение последнего элемента (наших галочек)
-                        if (!freshMessageDtos.isEmpty()) {
-                            int lastPosition = freshMessageDtos.size() - 1;
-                            messagesAdapter.notifyItemChanged(lastPosition); // Жестко перерисовать статус!
-
-                            // Плавно доскролливаем вниз к нашему сообщению
-                            recyclerView.scrollToPosition(lastPosition);
-                        }
-
-                        Log.d("MailLis_UI_Fix", "Интерфейс чата принудительно перерисован. Сообщений: " + freshMessageDtos.size());
                     }
+                    Log.d("MailLis_UI_Fix", "Интерфейс чата принудительно перерисован. Сообщений: "
+                            + freshMessageDtos.size());
+
                 });
 
             } catch (Exception e) {
@@ -485,7 +508,7 @@ public class ChatActivity extends AppCompatActivity {
 
                 // 3. ЗАПИСЫВАЕМ СТРОКУ В SQLITE БАЗУ ДАННЫХ
                 // Передаем тип "IMAGE" и путь к нашему файлу. Статус изначально 0 (часики)
-                int generatedId = dbService.saveGenericMessage(chatId, myEmail, MAILLIS_CHAT_IMAGE, MAILLIS_CHAT_IMAGE, true, currentTimestamp);
+                int generatedId = dbService.saveGenericMessage(chatId, myEmail, CHAT_IMAGE_MAIL, CHAT_IMAGE_MAIL, true, currentTimestamp);
                 // Принудительно обновляем тип и путь в базе данных
                 dbService.updateMessageTypeAndPath(generatedId, IMAGE_MSG, localFile.getAbsolutePath());
 
