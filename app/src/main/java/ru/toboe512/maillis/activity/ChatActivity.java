@@ -270,7 +270,43 @@ public class ChatActivity extends AppCompatActivity {
             photoPickerLauncher.launch(intentImage);
         });
 
+        // Инициализируем нашу кастомную кнопку меню
+        ImageButton buttonChatMenu = findViewById(R.id.buttonChatMenu);
 
+        if (buttonChatMenu != null) {
+            buttonChatMenu.setOnClickListener(v -> {
+                // Создаем встроенное всплывающее меню, привязанное к кнопке "три точки"
+                androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(ChatActivity.this, v);
+
+                // Добавляем пункты меню программно (чтобы не плодить лишние XML файлы)
+                popup.getMenu().add(0, 1, 0, "🛑 ️Заблокировать");
+                popup.getMenu().add(1, 2, 1, "🗑️ Удалить чат");
+                // Здесь вы можете добавить любые другие пункты, например:
+                // popup.getMenu().add(0, 2, 1, "👤 Информация");
+
+                // Настраиваем клики по пунктам меню
+                popup.setOnMenuItemClickListener(item -> {
+                    if (item.getItemId() == 1) {
+                        // ВЫЗЫВАЕМ ВАШУ ОТЛАЖЕННУЮ ЛОГИКУ УДАЛЕНИЯ ВСЕГО ЧАТА
+                        showBlockUserDialog();
+                        return true;
+                    }
+                    return false;
+                });
+
+                popup.setOnMenuItemClickListener(item -> {
+                    if (item.getItemId() == 2) {
+                        // ВЫЗЫВАЕМ ВАШУ ОТЛАЖЕННУЮ ЛОГИКУ УДАЛЕНИЯ ВСЕГО ЧАТА
+                        showDeleteChatDialog();
+                        return true;
+                    }
+                    return false;
+                });
+
+                // Показываем меню на экране
+                popup.show();
+            });
+        }
 
         // 1. Инициализируем кнопки управления в тулбаре ChatActivity
         View layoutNormalToolbar = findViewById(R.id.layoutNormalToolbar); // Обычный заголовок чата

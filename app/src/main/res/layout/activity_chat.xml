@@ -35,6 +35,16 @@
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
                 android:textStyle="bold" />
+            <!-- ДОБАВЛЯЕМ: Кастомная кнопка меню (Три точки справа) -->
+            <ImageButton
+                android:id="@+id/buttonChatMenu"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentRight="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_more_vert"
+                android:contentDescription="Меню чата" />
         </RelativeLayout>
 
         <!-- 2. КОНТЕКСТНЫЙ ТУЛБАР УДАЛЕНИЯ (Скрыт по умолчанию) -->
