@@ -27,8 +27,10 @@ import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageButton;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -94,18 +96,24 @@ public class ChatActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // ИСПРАВЛЕНИЕ: Полностью выключаем системный ActionBar для этого экрана
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().hide();
+        }
+
         setContentView(R.layout.activity_chat);
 
         // Загружаем наш собственный логин из SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
 
-        // Стрелочка назад
-        ActionBar actionBar = getSupportActionBar();
-        if (actionBar != null) {
-            actionBar.setDisplayHomeAsUpEnabled(true);
-            actionBar.setTitle("Чат");
-        }
+//        // Стрелочка назад
+//        ActionBar actionBar = getSupportActionBar();
+//        if (actionBar != null) {
+//            actionBar.setDisplayHomeAsUpEnabled(true);
+//            actionBar.setTitle("Чат");
+//        }
 
         // Получаем ID чата и имя из интента (передано с главного экрана)
         Intent intent = getIntent();
@@ -113,18 +121,18 @@ public class ChatActivity extends AppCompatActivity {
             chatId = intent.getIntExtra("CHAT_ID", 1);
             String chatTitle = intent.getStringExtra("CHAT_TITLE");
             isGroup = getIntent().getBooleanExtra("IS_GROUP", false); // По умолчанию false (тет-а-тет)
-            if (chatTitle != null && actionBar != null) {
-                actionBar.setTitle(chatTitle);
-            }
+//            if (chatTitle != null && actionBar != null) {
+//                actionBar.setTitle(chatTitle);
+//            }
         }
-
-        editTextMessage = findViewById(R.id.editTextMessage);
-        recyclerView = findViewById(R.id.recyclerViewMessages);
 
         dbService = DBServiceSQLite.getInstance(this);
         emailClient = EmailClientImpl.getInstance(dbService, this);
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
         messagesAdapter = new MessagesAdapter(this, emailClient, dbService);
+
+        editTextMessage = findViewById(R.id.editTextMessage);
+        recyclerView = findViewById(R.id.recyclerViewMessages);
 
         var layoutManager = new LinearLayoutManager(this);
         layoutManager.setStackFromEnd(true); // Чат строится снизу вверх, как в Telegram
@@ -136,6 +144,8 @@ public class ChatActivity extends AppCompatActivity {
 
         // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
         updateUiFromDatabase();
+
+
 
         ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
 
@@ -259,6 +269,82 @@ public class ChatActivity extends AppCompatActivity {
             intentImage.setType("image/*");
             photoPickerLauncher.launch(intentImage);
         });
+
+
+
+        // 1. Инициализируем кнопки управления в тулбаре ChatActivity
+        View layoutNormalToolbar = findViewById(R.id.layoutNormalToolbar); // Обычный заголовок чата
+        View layoutEditToolbar = findViewById(R.id.layoutEditToolbar);     // Контекстный тулбар удаления
+        TextView textViewSelectedCount = findViewById(R.id.textViewSelectedCount);
+        ImageButton buttonDeleteSelected = findViewById(R.id.buttonDeleteSelected);
+        ImageButton buttonCancelSelection = findViewById(R.id.buttonCancelSelection);
+
+        // 2. Вешаем слушатель множественного выбора на адаптер
+        messagesAdapter.setMultiChoiceListener(new MessagesAdapter.MultiChoiceListener() {
+            @Override
+            public void onMultiChoiceStateChanged(boolean isActive, int selectedCount) {
+                if (isActive) {
+                    // Переключаем тулбары: прячем обычный, показываем контекстный
+                    if (layoutNormalToolbar != null) layoutNormalToolbar.setVisibility(View.GONE);
+                    if (layoutEditToolbar != null) layoutEditToolbar.setVisibility(View.VISIBLE);
+
+                    if (textViewSelectedCount != null) {
+                        textViewSelectedCount.setText("Выбрано: " + selectedCount);
+                    }
+                } else {
+                    // Возвращаем всё назад, если выбор пуст
+                    if (layoutNormalToolbar != null) layoutNormalToolbar.setVisibility(View.VISIBLE);
+                    if (layoutEditToolbar != null) layoutEditToolbar.setVisibility(View.GONE);
+                }
+            }
+        });
+
+        // Кнопка отмены (крестик)
+        if (buttonCancelSelection != null) {
+            buttonCancelSelection.setOnClickListener(v -> messagesAdapter.clearSelection());
+        }
+
+        // 3. ОБРАБОТКА ЖЕСТКОГО УДАЛЕНИЯ ПАЧКИ ПИСЕМ 🗑️
+        if (buttonDeleteSelected != null) {
+            buttonDeleteSelected.setOnClickListener(v -> {
+                List<MessageDto> toDelete = messagesAdapter.getSelectedMessages();
+                if (toDelete.isEmpty()) return;
+
+                // Показываем нативное диалоговое окно подтверждения
+                new androidx.appcompat.app.AlertDialog.Builder(ChatActivity.this)
+                        .setTitle("Удаление сообщений")
+                        .setMessage("Вы уверены, что хотите удалить эти сообщения (" + toDelete.size() + " шт.) со своего устройства?")
+                        .setPositiveButton("Удалить", (dialog, which) -> {
+
+                            // Уходим в рабочий поток SQLite, чтобы не фризить UI пачкой удалений
+                            new Thread(() -> {
+                                for (MessageDto msg : toDelete) {
+                                    // Вызываем ваш стандартный метод удаления строки по ID сообщения
+                                    dbService.deleteMessage(msg.getId());
+                                }
+
+                                // Возвращаемся на главный поток, сбрасываем режим выбора и перечитываем базу
+                                runOnUiThread(() -> {
+                                    messagesAdapter.clearSelection();
+                                    updateUiFromDatabase(); // Наш DiffUtil плавно сотрет их с экрана!
+                                    Toast.makeText(ChatActivity.this, "Сообщения успешно удалены", Toast.LENGTH_SHORT).show();
+                                });
+                            }).start();
+                        })
+                        .setNegativeButton("Отмена", null)
+                        .show();
+            });
+        }
+    }
+
+    @Override
+    public void onBackPressed() {
+        // Если в адаптере включен режим выбора — сначала просто сбрасываем его
+        if (messagesAdapter != null && !messagesAdapter.getSelectedMessages().isEmpty()) {
+            messagesAdapter.clearSelection();
+        } else {
+            super.onBackPressed(); // Иначе стандартно закрываем активность
+        }
     }
 
 

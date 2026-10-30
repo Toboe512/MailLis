@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://android.com"
     xmlns:app2="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://android.com"
     android:layout_width="match_parent"
@@ -11,13 +10,79 @@
     android:fitsSystemWindows="true"
     tools:ignore="HardcodedText,Autofill">
 
-    <!-- Верхняя панель со стрелкой назад -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbarChat"
+    <!-- ВЕРХНЯЯ ПАНЕЛЬ (ТУЛБАР) -->
+    <FrameLayout
+        android:id="@+id/toolbarContainer"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:background="#2196F3"
-        app:titleTextColor="#FFFFFF" />
+        android:background="?attr/colorPrimary"
+        android:elevation="4dp">
+
+        <!-- 1. ОБЫЧНЫЙ ТУЛБАР (Виден всегда) -->
+        <RelativeLayout
+            android:id="@+id/layoutNormalToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="visible">
+
+            <TextView
+                android:id="@+id/textViewChatTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:text="Имя чата"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+
+        <!-- 2. КОНТЕКСТНЫЙ ТУЛБАР УДАЛЕНИЯ (Скрыт по умолчанию) -->
+        <RelativeLayout
+            android:id="@+id/layoutEditToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:background="#0088CC"
+            android:visibility="gone"> <!-- Скрыт изначально -->
+
+            <!-- Кнопка "Отмена" (Крестик слева) -->
+            <ImageButton
+                android:id="@+id/buttonCancelSelection"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_alignParentLeft="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close"
+                android:contentDescription="Отмена" />
+
+            <!-- Счетчик выбранных сообщений -->
+            <TextView
+                android:id="@+id/textViewSelectedCount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_toRightOf="@id/buttonCancelSelection"
+                android:layout_centerVertical="true"
+                android:layout_marginLeft="16dp"
+                android:text="Выбрано: 0"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- Кнопка "Удалить" (Корзина справа) -->
+            <ImageButton
+                android:id="@+id/buttonDeleteSelected"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_alignParentRight="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_delete"
+                android:contentDescription="Удалить выбранное" />
+        </RelativeLayout>
+    </FrameLayout>
 
 
     <!-- Список сообщений чата с фиксированным отступом сверху -->

@@ -19,7 +19,7 @@ public class MessageDto {
     private String messageType; // "TEXT" или "IMAGE"
     private String filePath;    // Путь к картинке во внутреннем кэше
 
-
+    private boolean isSelectedForDelete = false; // Флаг выделения сообщения
     private boolean isGroup;
 
     public MessageDto(int id, String senderEmail, String subject, String text, long timestamp,
@@ -92,5 +92,13 @@ public class MessageDto {
 
     public boolean isMine() {
         return isMine;
+    }
+
+    public boolean isSelectedForDelete() {
+        return isSelectedForDelete;
+    }
+
+    public void setSelectedForDelete(boolean selectedForDelete) {
+        isSelectedForDelete = selectedForDelete;
     }
 }

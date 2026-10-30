@@ -33,7 +33,9 @@ import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.client.EmailClient;
@@ -43,10 +45,23 @@ import ru.toboe512.maillis.utils.MessageDiffCallback;
 
 public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.MessageViewHolder> {
 
+    // 1. ИНТЕРФЕЙС СЛУШАТЕЛЯ (ОБЯЗАТЕЛЬНО должен быть объявлен СТРОГО здесь, внутри класса)
+    public interface MultiChoiceListener {
+        void onMultiChoiceStateChanged(boolean isActive, int selectedCount);
+    }
+
     private final List<MessageDto> messageDtoList = new ArrayList<>();
     private final Context context;
     private final DBService dbService;
     private final EmailClient emailClient;
+
+    // Поля на уровне класса вашего MessagesAdapter:
+    private boolean isMultiChoiceMode = false;
+    private final List<MessageDto> selectedMessages = new ArrayList<>();
+
+    // Используем Set<Integer>, он на уровне языка гарантирует 100% уникальность ID
+    private final Set<Integer> selectedMessageIds = new HashSet<>();
+    private MultiChoiceListener multiChoiceListener;
 
     public MessagesAdapter(Context context, EmailClient emailClient, DBService dbService) {
         this.context = context;
@@ -59,6 +74,10 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     public MessageViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
         View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_message, parent, false);
         return new MessageViewHolder(view);
+    }
+
+    public void setMultiChoiceListener(MultiChoiceListener listener) {
+        this.multiChoiceListener = listener;
     }
 
     @Override
@@ -164,11 +183,90 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
         holder.cardMessage.setLayoutParams(params);
 
-        // ОБРАБОТКА ДОЛГОГО КЛИКА НА СООБЩЕНИЕ
-        holder.itemView.setOnLongClickListener(v -> {
-            showDeleteMessageDialog(messageDto, position);
-            return true;
+//        // ОБРАБОТКА ДОЛГОГО КЛИКА НА СООБЩЕНИЕ
+//        holder.itemView.setOnLongClickListener(v -> {
+//            showDeleteMessageDialog(messageDto, position);
+//            return true;
+//        });
+
+        // =========================================================================
+        // ИСПРАВЛЕНИЕ 1: Проверяем выделение СТРОГО по наличию ID сообщения в нашем Set!
+        // Теперь даже если таймер обновит объекты, ячейка сохранит визуальное выделение.
+        // =========================================================================
+        if (selectedMessageIds.contains(messageDto.getId())) {
+            holder.itemView.setBackgroundColor(android.graphics.Color.parseColor("#220088CC")); // Синяя подсветка
+        } else {
+            holder.itemView.setBackgroundColor(android.graphics.Color.TRANSPARENT);
+        }
+
+        // Обработка обычного короткого клика
+        holder.itemView.setOnClickListener(v -> {
+            if (isMultiChoiceMode) {
+                toggleMessageSelectionById(messageDto.getId(), position);
+            }
         });
+
+        // Обработка долгого клика
+        holder.itemView.setOnLongClickListener(v -> {
+            if (!isMultiChoiceMode) {
+                isMultiChoiceMode = true;
+                toggleMessageSelectionById(messageDto.getId(), position);
+                return true;
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Переключает состояние выделения сообщения на основе его уникального числового ID в SQLite.
+     */
+    private void toggleMessageSelectionById(int messageId, int position) {
+        // Если ID уже есть в списке — значит пользователь кликнул второй раз, снимаем выделение!
+        if (selectedMessageIds.contains(messageId)) {
+            selectedMessageIds.remove(messageId);
+        } else {
+            // Если ID нет — добавляем в список удаления
+            selectedMessageIds.add(messageId);
+        }
+
+        // Мягко перерисовываем только кликнутую ячейку
+        notifyItemChanged(position);
+
+        // Если сняли выделение со всех элементов — полностью тушим режим мультивыбора
+        if (selectedMessageIds.isEmpty()) {
+            isMultiChoiceMode = false;
+        }
+
+        // Передаем точный и честный счетчик уникальных ID в ChatActivity
+        if (multiChoiceListener != null) {
+            multiChoiceListener.onMultiChoiceStateChanged(isMultiChoiceMode, selectedMessageIds.size());
+        }
+    }
+
+    /**
+     * Возвращает список всех выделенных объектов MessageDto для метода удаления ChatActivity.
+     */
+    public List<MessageDto> getSelectedMessages() {
+        List<MessageDto> selectedList = new ArrayList<>();
+        for (MessageDto msg : messageDtoList) {
+            // Если ID этого сообщения сохранен в нашем буфере — добавляем его в пачку на удаление
+            if (selectedMessageIds.contains(msg.getId())) {
+                selectedList.add(msg);
+            }
+        }
+        return selectedList;
+    }
+
+    /**
+     * Полностью сбрасывает режим множественного выбора при нажатии "Отмена" или "Назад".
+     */
+    public void clearSelection() {
+        isMultiChoiceMode = false;
+        selectedMessageIds.clear(); // Полностью зачищаем числовой буфер
+        notifyDataSetChanged();     // Перерисовываем экран, снимая синюю подсветку
+        if (multiChoiceListener != null) {
+            multiChoiceListener.onMultiChoiceStateChanged(false, 0);
+        }
     }
 
     @Override
