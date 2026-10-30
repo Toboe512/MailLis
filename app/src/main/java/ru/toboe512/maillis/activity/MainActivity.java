@@ -1,7 +1,5 @@
 package ru.toboe512.maillis.activity;
 
-import static androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED;
-
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -180,6 +178,13 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         // Ваши старые обработки (настройки и т.д.)
         if (id == R.id.action_settings) {
             startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+            return true;
+        }
+
+        // ПЕРЕХОД НА ЭКРАН НАСТРОЕК ПРОФИЛЯ
+        if (id == R.id.action_profile) {
+            Intent intent = new Intent(MainActivity.this, ProfileActivity.class);
+            startActivity(intent);
             return true;
         }
 

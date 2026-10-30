@@ -19,9 +19,6 @@ public class Consts {
     public static final String GROUP_PRE_INVITE_RESPONSE_MAIL = "[MailLis-Group-PreInvite-Response]";
     //public static final String READ_RECEIPT = "[MAILLIS-READ-RECEIPT]";
 
-    // Имя файла настроек на диске телефона
-    public static final String PREFS_NAME = "MailLis_Prefs";
-
     // Ключи для сохранения полей настроек
     public static final String KEY_IMAP_SERVER = "imap_server";
     public static final String KEY_IMAP_PORT = "imap_port";
@@ -36,9 +33,6 @@ public class Consts {
 
     //Метка входящих сообщений
     public static final String INBOX = "INBOX";
-
-    // Интервал опроса сервера в миллисекундах
-    public static final int UPDATE_INTERVAL_MS = 5000;
 
     // Разное
     public static final String EMPTI_STRING = "";

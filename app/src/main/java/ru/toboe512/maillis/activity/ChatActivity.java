@@ -4,6 +4,8 @@ package ru.toboe512.maillis.activity;
 import static android.graphics.Bitmap.CompressFormat.JPEG;
 import static android.widget.Toast.LENGTH_SHORT;
 import static java.util.stream.Collectors.toList;
+import static ru.toboe512.maillis.config.Config.KEY_SYNC_INTERVAL;
+import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
@@ -11,7 +13,6 @@ import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
-import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -37,7 +38,6 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -79,6 +79,8 @@ public class ChatActivity extends AppCompatActivity {
 
     // ОБЪЯВЛЯЕМ КОМПОНЕНТЫ ТАЙМЕРА СТРОГО НА УРОВНЕ КЛАССА АКТИВНОСТИ
     private static final long TIMER_INTERVAL_MS = 5000; // Интервал обновления — ровно 1 секунда
+
+    long actualIntervalMs;
     private final Handler timerHandler = new Handler(Looper.getMainLooper());
     // Создаем явный, стабильный объект Runnable через лямбду Java 8
     private final Runnable timerRunnable = new Runnable() {
@@ -89,7 +91,7 @@ public class ChatActivity extends AppCompatActivity {
 
             // Б. КРИТИЧЕСКИЙ ФИКС: Явно указываем timerRunnable для циклического перезапуска!
             // Теперь планировщик никогда не потеряет ссылку в памяти и цикл будет бесконечным.
-            timerHandler.postDelayed(this, TIMER_INTERVAL_MS);
+            timerHandler.postDelayed(this, actualIntervalMs);
         }
     };
 
@@ -107,6 +109,7 @@ public class ChatActivity extends AppCompatActivity {
         // Загружаем наш собственный логин из SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
+        actualIntervalMs = prefs.getLong(KEY_SYNC_INTERVAL, 20000);
 
 //        // Стрелочка назад
 //        ActionBar actionBar = getSupportActionBar();
@@ -144,8 +147,6 @@ public class ChatActivity extends AppCompatActivity {
 
         // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
         updateUiFromDatabase();
-
-
 
         ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
 
@@ -329,7 +330,8 @@ public class ChatActivity extends AppCompatActivity {
                     }
                 } else {
                     // Возвращаем всё назад, если выбор пуст
-                    if (layoutNormalToolbar != null) layoutNormalToolbar.setVisibility(View.VISIBLE);
+                    if (layoutNormalToolbar != null)
+                        layoutNormalToolbar.setVisibility(View.VISIBLE);
                     if (layoutEditToolbar != null) layoutEditToolbar.setVisibility(View.GONE);
                 }
             }
@@ -371,18 +373,22 @@ public class ChatActivity extends AppCompatActivity {
                         .show();
             });
         }
-    }
 
-    @Override
-    public void onBackPressed() {
-        // Если в адаптере включен режим выбора — сначала просто сбрасываем его
-        if (messagesAdapter != null && !messagesAdapter.getSelectedMessages().isEmpty()) {
-            messagesAdapter.clearSelection();
-        } else {
-            super.onBackPressed(); // Иначе стандартно закрываем активность
-        }
+        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                // Логика осталась прежней, но теперь она написана на актуальном API Android!
+                if (messagesAdapter != null && !messagesAdapter.getSelectedMessages().isEmpty()) {
+                    // Если включен режим множественного выбора — сбрасываем его
+                    messagesAdapter.clearSelection();
+                } else {
+                    // Иначе — выключаем этот колбэк и закрываем экран чата
+                    setEnabled(false);
+                    finish();
+                }
+            }
+        });
     }
-
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
@@ -628,8 +634,8 @@ public class ChatActivity extends AppCompatActivity {
                         public void onError(Exception e) {
                             runOnUiThread(() ->
                                     Toast.makeText(ChatActivity.this,
-                                    "Ошибка отправки медиафайла: " + e.getMessage(), LENGTH_SHORT)
-                                    .show());
+                                                    "Ошибка отправки медиафайла: " + e.getMessage(), LENGTH_SHORT)
+                                            .show());
                             updateUiFromDatabase();
                         }
                     });
@@ -643,7 +649,7 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     @Nullable
-    public byte[] getRawImageBytes(Uri imageUri) throws IOException {
+    private byte[] getRawImageBytes(Uri imageUri) throws IOException {
         // 1. СЖАТИЕ КАРТИНКИ (Оптимизация трафика)
         InputStream inputStream = getContentResolver().openInputStream(imageUri);
         Bitmap originalBitmap = BitmapFactory.decodeStream(inputStream);

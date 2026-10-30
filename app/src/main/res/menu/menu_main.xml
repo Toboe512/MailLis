@@ -15,7 +15,7 @@
         android:title="Контакты"
         app:showAsAction="never" />
 
-    <!-- ИСПРАВЛЕНИЕ: Добавляем Чёрный список в выпадающее меню -->
+    <!-- Добавляем Чёрный список в выпадающее меню -->
     <item
         android:id="@+id/action_ban_list"
         android:title="Чёрный список"
@@ -24,6 +24,13 @@
     <!-- Кнопка «Настройки» -->
     <item
         android:id="@+id/action_settings"
-        android:title="Настройки"
+        android:title="Настройки соединения"
         app:showAsAction="ifRoom" />
+
+    <!-- ПУНКТ МЕНЮ ПРОФИЛЯ -->
+    <item
+        android:id="@+id/action_profile"
+        android:icon="@drawable/ic_profile"
+        android:title="Профиль и Настройки"
+        app:showAsAction="ifRoom" /> <!-- ifRoom выведет красивую иконку прямо на тулбар -->
 </menu>

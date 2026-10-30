@@ -3,9 +3,9 @@ package ru.toboe512.maillis.adapters;
 
 import static android.content.Context.MODE_PRIVATE;
 import static android.widget.Toast.LENGTH_SHORT;
+import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
-import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.app.AlertDialog;
 import android.content.Context;
@@ -115,7 +115,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
         if (chatPreview.isGroup()) {
             // Загружаем наш собственный логин из SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru").trim();
+            String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
             //Вытаскиваем email участников, чтобы зачистить их ключи из public_keys
             members = dbService.getGroupMembers(chatId, myEmail);
             //  dbService.deleteGroupMembersByRemoteId(chatId);

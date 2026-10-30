@@ -3,8 +3,8 @@ package ru.toboe512.maillis.activity;
 import static android.widget.Toast.LENGTH_SHORT;
 import static android.widget.Toast.makeText;
 import static ru.toboe512.maillis.config.Config.IS_GROUP_CHATS_ENABLED;
+import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
-import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.content.Intent;
 import android.content.SharedPreferences;

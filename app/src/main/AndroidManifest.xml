@@ -59,6 +59,10 @@
             android:name=".activity.BanListActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+        <activity
+            android:name=".activity.ProfileActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"/>
         <service
             android:name=".service.MailLisPushService"
             android:enabled="true"

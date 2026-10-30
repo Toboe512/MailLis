@@ -1,6 +1,9 @@
 package ru.toboe512.maillis.activity;
 
+import static android.content.Context.MODE_PRIVATE;
 import static android.widget.Toast.LENGTH_LONG;
+import static android.widget.Toast.LENGTH_SHORT;
+import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_PASSWORD;
@@ -8,7 +11,6 @@ import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_PORT;
 import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_SERVER;
 import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_PORT;
 import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_SERVER;
-import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -96,7 +98,7 @@ public class SettingsActivity extends AppCompatActivity {
                 return;
             }
 
-            Toast.makeText(SettingsActivity.this, "Начинаем проверку конфигурации...", Toast.LENGTH_SHORT).show();
+            Toast.makeText(SettingsActivity.this, "Начинаем проверку конфигурации...", LENGTH_SHORT).show();
 
             // Запускаем сетевой тест на фоновом потоке
             testMailConnectionOverNetwork(imapHost, imapPort, smtpHost, smtpPort, user, pass);
@@ -205,7 +207,7 @@ public class SettingsActivity extends AppCompatActivity {
 
     // Метод сохранения данных в память устройства
     private void saveSettings() {
-        var sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        var sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         SharedPreferences.Editor editor = sharedPreferences.edit();
 
         // Записываем строковые значения из полей ввода
@@ -225,21 +227,23 @@ public class SettingsActivity extends AppCompatActivity {
         final String pass = editTextEmailPassword.getText().toString().trim();
 
         // Валидация полей перед запуском сети
-        if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() || smtpHost.isEmpty() || imapPort.isEmpty() || smtpPort.isEmpty()) {
-            Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", LENGTH_LONG).show();
+        if (user.isEmpty() || pass.isEmpty() || imapHost.isEmpty() ||
+                smtpHost.isEmpty() || imapPort.isEmpty() || smtpPort.isEmpty()) {
+            Toast.makeText(SettingsActivity.this, "Пожалуйста, заполните все поля!", LENGTH_LONG)
+                    .show();
             return;
         }
 
         // Применяем изменения асинхронно на фоновом потоке
         editor.apply();
 
-        Toast.makeText(this, "Настройки успешно сохранены!", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Настройки успешно сохранены!", LENGTH_SHORT).show();
         finish(); // Закрываем экран и возвращаемся на главный
     }
 
     // Метод загрузки данных из памяти при старте экрана
     private void loadSavedSettings() {
-        var sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        var sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
 
         // Второй аргумент — это значение по умолчанию, если в памяти еще ничего нет
         editTextImapServer.setText(sharedPreferences.getString(KEY_IMAP_SERVER, "imap.mail.ru"));

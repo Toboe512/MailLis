@@ -9,9 +9,8 @@ import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_START;
 import static android.widget.RelativeLayout.TRUE;
-
+import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
-import static ru.toboe512.maillis.consts.Consts.PREFS_NAME;
 
 import android.app.AlertDialog;
 import android.content.Context;
