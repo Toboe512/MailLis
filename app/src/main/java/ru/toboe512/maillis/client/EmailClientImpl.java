@@ -6,30 +6,31 @@ import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static jakarta.mail.Flags.Flag.DELETED;
 import static jakarta.mail.Folder.READ_WRITE;
 import static jakarta.mail.Message.RecipientType.TO;
+import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
+import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
-import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
-import static ru.toboe512.maillis.consts.Consts.INBOX;
-import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
-import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
-import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_PASSWORD;
-import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_PORT;
-import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_SERVER;
-import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.GROUP_INVITE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_PRE_INVITE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_PRE_INVITE_RESPONSE_MAIL;
+import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
+import static ru.toboe512.maillis.consts.Consts.INBOX;
+import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
+import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_PASSWORD;
+import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_PORT;
+import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_SERVER;
 import static ru.toboe512.maillis.consts.Consts.KEY_REQUEST;
 import static ru.toboe512.maillis.consts.Consts.KEY_RESPONSE;
+import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_PORT;
+import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_SERVER;
+import static ru.toboe512.maillis.consts.Consts.READ_RECEIPT;
 import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 import static ru.toboe512.maillis.consts.Consts.TEXT_MSG;
-import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_SERVER;
-import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_PORT;
-import static ru.toboe512.maillis.consts.Consts.READ_RECEIPT;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
@@ -38,8 +39,11 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.Objects;
@@ -805,56 +809,106 @@ public class EmailClientImpl implements EmailClient {
                     dbService.markMessageAsSending(msg.getId());
 
                     if (msg.isGroup()) {
-                        // КАНАЛ РЕТРАЯ А: ГРУППОВОЕ СООБЩЕНИЕ (Веерный SMTP + AES-GCM)
-                        byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
 
-                        if (groupSecretKey != null && groupSecretKey.length > 0) {
-                            // Заново шифруем сырой текст сообщения ключом группы
-                            byte[] encryptedBytes = CryptoServiceImpl.encryptGroupText(msg.getText(), groupSecretKey);
-                            String base64GroupText = Base64.encodeToString(encryptedBytes, Base64.NO_WRAP);
+                        if (IMAGE_MSG.equals(msg.getMessageType())) {
+                            String filePath = msg.getFilePath();
 
-                            // Вызываем наш веерный SMTP метод
-                            sendGroupMessageOverNetwork(chatId, base64GroupText, msg.getId(), prefs);
-                            Log.d("MailLis_Retry", "Групповое сообщение " + msg.getId() +
-                                    " успешно отправлено в очередь ретрая.");
+                            // Проверяем физическое наличие картинки, если тип IMAGE
+                            if (filePath == null || !new File(filePath).exists()) {
+                                Log.e("MailLis_Retry_Media", "Файл картинки удален с диска. Ретрай невозможен для ID: " + msg.getId());
+                                dbService.resetMessageStatusToUnsent(msg.getId());
+                                continue;
+                            }
+
+                            byte[] rawImageBytes = getRawImageBytes(filePath);
+
+                            sendGroupImageOverNetwork(chatId, rawImageBytes, msg.getId(), prefs);
                         } else {
-                            dbService.resetMessageStatusToUnsent(msg.getId());
+
+                            // КАНАЛ РЕТРАЯ А: ГРУППОВОЕ СООБЩЕНИЕ (Веерный SMTP + AES-GCM)
+                            byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
+
+                            if (groupSecretKey != null && groupSecretKey.length > 0) {
+                                // Заново шифруем сырой текст сообщения ключом группы
+                                byte[] encryptedBytes = CryptoServiceImpl.encryptGroupText(msg.getText(), groupSecretKey);
+                                String base64GroupText = Base64.encodeToString(encryptedBytes, NO_WRAP);
+
+                                // Вызываем наш веерный SMTP метод
+                                sendGroupMessageOverNetwork(chatId, base64GroupText, msg.getId(), prefs);
+                                Log.d("MailLis_Retry", "Групповое сообщение " + msg.getId() +
+                                        " успешно отправлено в очередь ретрая.");
+                            } else {
+                                dbService.resetMessageStatusToUnsent(msg.getId());
+                            }
                         }
                         continue;
                     }
+                    if (IMAGE_MSG.equals(msg.getMessageType())) {
+                        String filePath = msg.getFilePath();
 
-                    String recipientEmail = dbService.getRecipientEmailByChatId(chatId);
-                    if (recipientEmail == null || recipientEmail.isEmpty()) {
-                        continue;
-                    }
-                    String sendTxt = msg.getText();
-                    try {
-                        byte[] sharedSecret = dbService.getPublicKey(chatId);
-                        sendTxt = sharedSecret != null ? cryptoService.encrypt(sendTxt, sharedSecret) : sendTxt;
-                    } catch (GeneralSecurityException | IOException e) {
-                        Log.e("MailLis_Retry", "Ошибка шифрования при повторно отправке");
-                        throw new RuntimeException(e); //TODO добавить свой эквепшн
-                    }
-                    // Переотправляем письмо по SMTP
-                    sendEmailOverNetwork(chatId, recipientEmail, msg.getSubject(), sendTxt, msg.getId(), prefs,
-                            new OnMessagesSynchronizedListener() {
-                        @Override
-                        public void onSynchronized(MessageDto updatedMessageDto) {
-                            // Сеть прошла успешно! Переводим часики (0) в одну галочку (1)
-                            Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() + " успешно переотправлено после восстановления сети. UID: "
-                                    + updatedMessageDto.getServerUid());
-                        }
-
-                        @Override
-                        public void onError(Exception e) {
-                            // Ошибка сети или авторизации — сработает наша логика ретрая,
-                            // сообщение останется со статусом is_sent = 0 в SQLite
-                            Log.e("MailLis_Retry", "Сбой переотправки сообщения, отложено в очередь ретрая: "
-                                    + e.getMessage());
+                        // Проверяем физическое наличие картинки, если тип IMAGE
+                        if (filePath == null || !new File(filePath).exists()) {
+                            Log.e("MailLis_Retry_Media", "Файл картинки удален с диска. Ретрай невозможен для ID: " + msg.getId());
                             dbService.resetMessageStatusToUnsent(msg.getId());
+                            continue;
                         }
-                    });
 
+                        byte[] rawImageBytes = getRawImageBytes(filePath);
+
+                        String recipientEmail = dbService.getRecipientEmailByChatId(chatId);
+
+                        sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
+                            @Override
+                            public void onSynchronized(MessageDto updatedMessages) {
+                                // Сеть прошла успешно! Переводим часики (0) в одну галочку (1)
+                                Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() +
+                                        " успешно переотправлено после восстановления сети. UID: " +
+                                        msg.getServerUid());
+                            }
+
+                            @Override
+                            public void onError(Exception e) {
+                                // Ошибка сети или авторизации — сработает наша логика ретрая,
+                                // сообщение останется со статусом is_sent = 0 в SQLite
+                                Log.e("MailLis_Retry", "Сбой переотправки сообщения, отложено в очередь ретрая: "
+                                        + e.getMessage());
+                                dbService.resetMessageStatusToUnsent(msg.getId());
+                            }
+                        });
+                    } else {
+                        String recipientEmail = dbService.getRecipientEmailByChatId(chatId);
+                        if (recipientEmail == null || recipientEmail.isEmpty()) {
+                            continue;
+                        }
+                        String sendTxt = msg.getText();
+                        try {
+                            byte[] sharedSecret = dbService.getPublicKey(chatId);
+                            sendTxt = sharedSecret != null ? cryptoService.encrypt(sendTxt, sharedSecret) : sendTxt;
+                        } catch (GeneralSecurityException | IOException e) {
+                            Log.e("MailLis_Retry", "Ошибка шифрования при повторно отправке");
+                            throw new RuntimeException(e); //TODO добавить свой эквепшн
+                        }
+                        // Переотправляем письмо по SMTP
+                        sendEmailOverNetwork(chatId, recipientEmail, msg.getSubject(), sendTxt, msg.getId(), prefs,
+                                new OnMessagesSynchronizedListener() {
+                                    @Override
+                                    public void onSynchronized(MessageDto updatedMessageDto) {
+                                        // Сеть прошла успешно! Переводим часики (0) в одну галочку (1)
+                                        Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() +
+                                                " успешно переотправлено после восстановления сети. UID: " +
+                                                updatedMessageDto.getServerUid());
+                                    }
+
+                                    @Override
+                                    public void onError(Exception e) {
+                                        // Ошибка сети или авторизации — сработает наша логика ретрая,
+                                        // сообщение останется со статусом is_sent = 0 в SQLite
+                                        Log.e("MailLis_Retry", "Сбой переотправки сообщения, отложено в очередь ретрая: "
+                                                + e.getMessage());
+                                        dbService.resetMessageStatusToUnsent(msg.getId());
+                                    }
+                                });
+                    }
 
                 } catch (Exception e) {
                     // Если сеть оборвалась во время ретрая, возвращаем статус обратно в 0,
@@ -868,6 +922,22 @@ public class EmailClientImpl implements EmailClient {
             }
 
         });
+    }
+
+    @NonNull
+    private static byte[] getRawImageBytes(String filePath) throws IOException {
+        //  Используем FileInputStream вместо Files.readAllBytes
+        File file = new File(filePath);
+        byte[] rawImageBytes = new byte[(int) file.length()];
+        try (FileInputStream fis = new FileInputStream(file)) {
+            int offset = 0;
+            int numRead;
+            while (offset < rawImageBytes.length &&
+                    (numRead = fis.read(rawImageBytes, offset, rawImageBytes.length - offset)) >= 0) {
+                offset += numRead;
+            }
+        }
+        return rawImageBytes;
     }
 
     @Override
@@ -954,6 +1024,7 @@ public class EmailClientImpl implements EmailClient {
             }
         });
     }
+
     public void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs) {
         networkExecutor.execute(() -> {
             try {
@@ -974,26 +1045,21 @@ public class EmailClientImpl implements EmailClient {
                 String generatedServerUid = EMPTI_STRING;
                 // ВЕЕРНАЯ РАССЫЛКА: Шлем копию письма каждому участнику отдельно
                 for (String recipientEmail : recipients) {
-                    try {
-                        var message = new MimeMessage(session);
-                        message.setFrom(new InternetAddress(myEmail));
-                        message.setRecipients(TO, InternetAddress.parse(recipientEmail));
+                    var message = new MimeMessage(session);
+                    message.setFrom(new InternetAddress(myEmail));
+                    message.setRecipients(TO, InternetAddress.parse(recipientEmail));
 
-                        // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
-                        message.setSubject(GROUP_IMAGE_MAIL + SPACE_STRING + chatId);
-                        long currentTimestamp = System.currentTimeMillis();
-                        var multipart = getMimeMultipart(currentTimestamp, base64EncryptedImage);
+                    // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
+                    message.setSubject(GROUP_IMAGE_MAIL + SPACE_STRING + chatId);
+                    long currentTimestamp = System.currentTimeMillis();
+                    var multipart = getMimeMultipart(currentTimestamp, base64EncryptedImage);
 
-                        message.setContent(multipart);
-                        message.saveChanges();
+                    message.setContent(multipart);
+                    message.saveChanges();
 
-                        Transport.send(message);
+                    Transport.send(message);
 
-                        generatedServerUid = message.getMessageID();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        Log.e("MailLis_GroupNet", "Не удалось доставить пакет для " + recipientEmail);
-                    }
+                    generatedServerUid = message.getMessageID();
                 }
 
                 // Помечаем в локальной базе как отправлено (хотя бы сервером)
@@ -1034,29 +1100,25 @@ public class EmailClientImpl implements EmailClient {
                 String generatedServerUid = EMPTI_STRING;
                 // ВЕЕРНАЯ РАССЫЛКА: Шлем копию письма каждому участнику отдельно
                 for (String recipientEmail : recipients) {
-                    try {
-                        var message = new MimeMessage(session);
-                        message.setFrom(new InternetAddress(myEmail));
-                        message.setRecipients(TO, InternetAddress.parse(recipientEmail));
+                    var message = new MimeMessage(session);
+                    message.setFrom(new InternetAddress(myEmail));
+                    message.setRecipients(TO, InternetAddress.parse(recipientEmail));
 
-                        // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
-                        message.setSubject(GROUP_MESSAGE_MAIL + SPACE_STRING + chatId);
-                        message.setText(cipherTextBase64);
-                        message.saveChanges();
+                    // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
+                    message.setSubject(GROUP_MESSAGE_MAIL + SPACE_STRING + chatId);
+                    message.setText(cipherTextBase64);
+                    message.saveChanges();
 
-                        Transport.send(message);
+                    Transport.send(message);
 
-                        generatedServerUid = message.getMessageID();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        Log.e("MailLis_GroupNet", "Не удалось доставить пакет для " + recipientEmail);
-                    }
+                    generatedServerUid = message.getMessageID();
                 }
 
                 // Помечаем в локальной базе как отправлено (хотя бы сервером)
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
 
             } catch (Exception e) {
+                Log.e("MailLis_GroupNet", "Не удалось доставить пакет");
                 dbService.resetMessageStatusToUnsent(localMessageId);
                 e.printStackTrace();
             }

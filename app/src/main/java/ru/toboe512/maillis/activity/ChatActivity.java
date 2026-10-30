@@ -2,6 +2,7 @@ package ru.toboe512.maillis.activity;
 
 
 import static android.graphics.Bitmap.CompressFormat.JPEG;
+import static android.widget.Toast.LENGTH_SHORT;
 import static java.util.stream.Collectors.toList;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
@@ -33,6 +34,7 @@ import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
@@ -96,7 +98,7 @@ public class ChatActivity extends AppCompatActivity {
 
         // Загружаем наш собственный логин из SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-        myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru").trim();
+        myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
 
         // Стрелочка назад
         ActionBar actionBar = getSupportActionBar();
@@ -184,7 +186,7 @@ public class ChatActivity extends AppCompatActivity {
                         updateUiFromDatabase();
                     } else {
                         Log.e("MailLis_Group", "Ошибка: Ключ группы еще не получен или поврежден!");
-                        Toast.makeText(ChatActivity.this, "Ошибка: Ключ шифрования группы отсутствует.", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ChatActivity.this, "Ошибка: Ключ шифрования группы отсутствует.", LENGTH_SHORT).show();
                     }
                 } catch (Exception e) {
                     Log.e("MailLis_Group_Err", "Ошибка шифрования группового сообщения", e);
@@ -223,7 +225,7 @@ public class ChatActivity extends AppCompatActivity {
                         @Override
                         public void onError(Exception e) {
                             // Сеть полностью отключилась или моргнула
-                            Toast.makeText(ChatActivity.this, "Сеть недоступна. Сообщение отложено.", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(ChatActivity.this, "Сеть недоступна. Сообщение отложено.", LENGTH_SHORT).show();
 
                             // Перечитываем SQLite, чтобы у сообщения гарантированно горел значок "Часики" (is_sent = 0)
                             updateUiFromDatabase();
@@ -348,7 +350,7 @@ public class ChatActivity extends AppCompatActivity {
                         dbService.deleteChatAndMessages(chatId);
 
                         runOnUiThread(() -> {
-                            Toast.makeText(this, "Пользователь добавлен в чёрный список", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(this, "Пользователь добавлен в чёрный список", LENGTH_SHORT).show();
                             finish(); // Закрываем экран чата и возвращаемся на главный экран
                         });
                     }).start();
@@ -381,10 +383,10 @@ public class ChatActivity extends AppCompatActivity {
 //                        }
                         runOnUiThread(() -> {
                             if (isDeleted) {
-                                Toast.makeText(this, "Чат успешно удален", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(this, "Чат успешно удален", LENGTH_SHORT).show();
                                 finish(); // Закрываем экран и возвращаемся в список чатов
                             } else {
-                                Toast.makeText(this, "Не удалось удалить чат", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(this, "Не удалось удалить чат", LENGTH_SHORT).show();
                             }
                         });
                     }).start();
@@ -466,41 +468,13 @@ public class ChatActivity extends AppCompatActivity {
     private void processAndSendPickedImage(Uri imageUri, SharedPreferences prefs) {
         new Thread(() -> {
             try {
-                long currentTimestamp = System.currentTimeMillis();
 
-                // 1. СЖАТИЕ КАРТИНКИ (Оптимизация трафика)
-                InputStream inputStream = getContentResolver().openInputStream(imageUri);
-                Bitmap originalBitmap = BitmapFactory.decodeStream(inputStream);
-                if (inputStream != null) {
-                    inputStream.close();
-                }
-
-                if (originalBitmap == null) {
+                byte[] rawImageBytes = getRawImageBytes(imageUri);
+                if (rawImageBytes == null) {
                     return;
                 }
 
-                // Изменяем размер до разумного HD-предела (макс 1280px по большей стороне)
-                int maxSize = 1280;
-                int width = originalBitmap.getWidth();
-                int height = originalBitmap.getHeight();
-                if (width > maxSize || height > maxSize) {
-                    float bitmapRatio = (float) width / (float) height;
-                    if (bitmapRatio > 1) {
-                        width = maxSize;
-                        height = (int) (width / bitmapRatio);
-                    } else {
-                        height = maxSize;
-                        width = (int) (height * bitmapRatio);
-                    }
-                    originalBitmap = Bitmap.createScaledBitmap(originalBitmap, width, height, true);
-                }
-
-                // Конвертируем Bitmap в сжатый массив байт JPEG (качество 80%)
-                var baos = new ByteArrayOutputStream();
-                originalBitmap.compress(JPEG, 80, baos);
-                byte[] rawImageBytes = baos.toByteArray();
-                baos.close();
-
+                long currentTimestamp = System.currentTimeMillis();
                 // 2. СОХРАНЯЕМ ЛОКАЛЬНУЮ КОПИЮ НА ДИСКЕ ТЕЛЕФОНА (ДЛЯ НАШЕГО ЭКРАНА ЧАТА)
                 String localFileName = "sent_img_" + currentTimestamp + ".jpg";
                 File localFile = new File(getCacheDir(), localFileName);
@@ -526,16 +500,14 @@ public class ChatActivity extends AppCompatActivity {
                         public void onSynchronized(MessageDto updatedMessageDto) {
                             // Успех! Сетевой слой сам вызвал markMessageAsSent, нам нужно только перерисовать галочку
                             updateUiFromDatabase();
-
-                            // Пинаем MainActivity, чтобы обновилось превью чата
-//                        Intent updateChatsIntent = new Intent("ru.toboe512.maillis.UPDATE_CHATS");
-//                        updateChatsIntent.setPackage(getPackageName());
-//                        sendBroadcast(updateChatsIntent);
                         }
 
                         @Override
                         public void onError(Exception e) {
-                            runOnUiThread(() -> Toast.makeText(ChatActivity.this, "Ошибка отправки медиафайла: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                            runOnUiThread(() ->
+                                    Toast.makeText(ChatActivity.this,
+                                    "Ошибка отправки медиафайла: " + e.getMessage(), LENGTH_SHORT)
+                                    .show());
                             updateUiFromDatabase();
                         }
                     });
@@ -546,5 +518,42 @@ public class ChatActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
         }).start();
+    }
+
+    @Nullable
+    public byte[] getRawImageBytes(Uri imageUri) throws IOException {
+        // 1. СЖАТИЕ КАРТИНКИ (Оптимизация трафика)
+        InputStream inputStream = getContentResolver().openInputStream(imageUri);
+        Bitmap originalBitmap = BitmapFactory.decodeStream(inputStream);
+        if (inputStream != null) {
+            inputStream.close();
+        }
+
+        if (originalBitmap == null) {
+            return null;
+        }
+
+        // Изменяем размер до разумного HD-предела (макс 1280px по большей стороне)
+        int maxSize = 1280;
+        int width = originalBitmap.getWidth();
+        int height = originalBitmap.getHeight();
+        if (width > maxSize || height > maxSize) {
+            float bitmapRatio = (float) width / (float) height;
+            if (bitmapRatio > 1) {
+                width = maxSize;
+                height = (int) (width / bitmapRatio);
+            } else {
+                height = maxSize;
+                width = (int) (height * bitmapRatio);
+            }
+            originalBitmap = Bitmap.createScaledBitmap(originalBitmap, width, height, true);
+        }
+
+        // Конвертируем Bitmap в сжатый массив байт JPEG (качество 80%)
+        var baos = new ByteArrayOutputStream();
+        originalBitmap.compress(JPEG, 80, baos);
+        byte[] rawImageBytes = baos.toByteArray();
+        baos.close();
+        return rawImageBytes;
     }
 }
