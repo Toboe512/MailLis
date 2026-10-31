@@ -66,7 +66,7 @@ public class ContactsActivity extends AppCompatActivity {
                             .setMessage("Вы действительно хотите удалить контакт " + contact.getEmail() + "?")
                             .setPositiveButton("Удалить", (dialog, which) -> {
                                 new Thread(() -> {
-                                    boolean isDeleted = dbService.deleteContact(contact.getEmail()) > 0;
+                                    boolean isDeleted = dbService.deleteContact(contact.getEmail());
                                     runOnUiThread(() -> {
                                         if (isDeleted) {
                                             contactList.remove(position);

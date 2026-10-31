@@ -19,6 +19,7 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.File;
@@ -132,7 +133,7 @@ public class ProfileActivity extends AppCompatActivity {
 
         buttonClearCache.setOnClickListener(v -> {
             // Конструируем стандартное нативное диалоговое окно Android
-            new androidx.appcompat.app.AlertDialog.Builder(ProfileActivity.this)
+            new AlertDialog.Builder(ProfileActivity.this)
                     .setTitle("Очистка кэша изображений")
                     .setMessage("Вы уверены, что хотите очистить кэш? \n\n⚠️ " +
                             "Внимание: все загруженные и расшифрованные изображения в чатах будут удалены с устройства БЕЗВОЗВРАТНО.")
@@ -148,7 +149,7 @@ public class ProfileActivity extends AppCompatActivity {
 
                             // Возвращаемся на главный поток для перерисовки графики и вывода уведомления
                             runOnUiThread(() -> {
-                                Toast.makeText(ProfileActivity.this, "Кэш мессенджера успешно очищен!", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(ProfileActivity.this, "Кэш мессенджера успешно очищен!", LENGTH_SHORT).show();
                                 // Пересчитываем размер памяти на экране заново
                                 updateCacheSizeUi();
                             });

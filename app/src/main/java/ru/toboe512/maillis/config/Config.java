@@ -9,9 +9,6 @@ package ru.toboe512.maillis.config;
  */
 
 public class Config {
-    // FEATURE TOGGLE: Групповые P2P чаты.
-    // false — скрыто для релиза, true — включено для разработчика при отладке
-    public static final boolean IS_GROUP_CHATS_ENABLED = true;
 
     // Имя файла настроек на диске телефона
     public static final String PREFS_NAME = "MailLis_Prefs";

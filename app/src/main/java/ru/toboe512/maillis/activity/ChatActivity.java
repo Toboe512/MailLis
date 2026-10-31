@@ -10,9 +10,11 @@ import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
+import static ru.toboe512.maillis.consts.Consts.GROUP_LEAVE;
 import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
+import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -38,6 +40,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -111,12 +114,12 @@ public class ChatActivity extends AppCompatActivity {
         myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
         actualIntervalMs = prefs.getLong(KEY_SYNC_INTERVAL, 20000);
 
-//        // Стрелочка назад
-//        ActionBar actionBar = getSupportActionBar();
-//        if (actionBar != null) {
-//            actionBar.setDisplayHomeAsUpEnabled(true);
-//            actionBar.setTitle("Чат");
-//        }
+        // Стрелочка назад
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayHomeAsUpEnabled(true);
+            actionBar.setTitle("Чат");
+        }
 
         // Получаем ID чата и имя из интента (передано с главного экрана)
         Intent intent = getIntent();
@@ -124,9 +127,9 @@ public class ChatActivity extends AppCompatActivity {
             chatId = intent.getIntExtra("CHAT_ID", 1);
             String chatTitle = intent.getStringExtra("CHAT_TITLE");
             isGroup = getIntent().getBooleanExtra("IS_GROUP", false); // По умолчанию false (тет-а-тет)
-//            if (chatTitle != null && actionBar != null) {
-//                actionBar.setTitle(chatTitle);
-//            }
+            if (chatTitle != null && actionBar != null) {
+                actionBar.setTitle(chatTitle);
+            }
         }
 
         dbService = DBServiceSQLite.getInstance(this);
@@ -166,7 +169,7 @@ public class ChatActivity extends AppCompatActivity {
             // Метод saveMessage сам выставит статус "is_sent = 0" (часики) и "is_mine = 1"
             int generatedId;
             if (isGroup) {
-                generatedId = dbService.saveGroupMessage(chatId, myEmail, GROUP_MESSAGE_MAIL, text, currentTimestamp);
+                generatedId = dbService.saveGroupMessage(chatId, myEmail, GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, text, currentTimestamp);
             } else {
                 generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
             }
@@ -191,7 +194,7 @@ public class ChatActivity extends AppCompatActivity {
                         String base64GroupText = Base64.encodeToString(encryptedGroupBytes, Base64.NO_WRAP);
 
                         // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
-                        emailClient.sendGroupMessageOverNetwork(chatId, base64GroupText, generatedId, prefs);
+                        emailClient.sendGroupMessageOverNetwork(chatId, GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs);
 
                         // Сразу обновляем экран (сообщение перейдет в статус отправки)
                         updateUiFromDatabase();
@@ -388,6 +391,17 @@ public class ChatActivity extends AppCompatActivity {
                 }
             }
         });
+
+        // Инициализируем нашу кастомную стрелочку назад
+        ImageButton buttonChatBack = findViewById(R.id.buttonChatBack);
+
+        if (buttonChatBack != null) {
+            buttonChatBack.setOnClickListener(v -> {
+                // Вызываем OnBackPressedDispatcher, который мы настроили ранее.
+                // Это плавно закроет чат, предварительно сбросив режим удаления (если он был включен).
+                getOnBackPressedDispatcher().onBackPressed();
+            });
+        }
     }
 
     @Override
@@ -498,6 +512,12 @@ public class ChatActivity extends AppCompatActivity {
 
                         boolean isDeleted;
                         if (isGroup) {
+                            SharedPreferences prefs = this.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                            long currentTimestamp = System.currentTimeMillis();
+                            int generatedId = dbService.saveGroupMessage(chatId, myEmail,
+                                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
+                            emailClient.sendGroupMessageOverNetwork(chatId,
+                                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs);
                             isDeleted = dbService.deleteGroupChatAndMessages(chatId);
                         } else {
                             isDeleted = dbService.deleteChatAndMessages(chatId);

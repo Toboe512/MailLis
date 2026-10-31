@@ -18,6 +18,18 @@ public class ChatDbHelper extends SQLiteOpenHelper {
         setWriteAheadLoggingEnabled(true);
     }
 
+    @Override
+    public void onConfigure(SQLiteDatabase db) {
+        super.onConfigure(db);
+        // 1. ВКЛЮЧАЕМ МНОГОПОТОЧНЫЙ РЕЖИМ WAL (Параллельное чтение и запись)
+        db.enableWriteAheadLogging();
+
+        // 2. Включаем поддержку внешних ключей для каскадного удаления мемберов
+        if (!db.isReadOnly()) {
+            db.execSQL("PRAGMA foreign_keys = ON;");
+        }
+    }
+
     // Вызывается один раз при самом первом создании базы данных на телефоне
     @Override
     public void onCreate(SQLiteDatabase db) {

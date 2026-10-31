@@ -2,7 +2,6 @@ package ru.toboe512.maillis.activity;
 
 import static android.widget.Toast.LENGTH_SHORT;
 import static android.widget.Toast.makeText;
-import static ru.toboe512.maillis.config.Config.IS_GROUP_CHATS_ENABLED;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
 
@@ -136,11 +135,6 @@ public class CreateChatActivity extends AppCompatActivity {
                 } else {
                     makeText(CreateChatActivity.this, "Ошибка создания чата", LENGTH_SHORT).show();
                 }
-                return;
-            }
-
-            if (!IS_GROUP_CHATS_ENABLED) {
-                makeText(this, "Групповые чаты находятся на этапе закрытого тестирования.", LENGTH_SHORT).show();
                 return;
             }
 

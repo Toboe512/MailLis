@@ -25,17 +25,31 @@
             android:layout_height="match_parent"
             android:padding="16dp"
             android:visibility="visible">
+            <!-- ДОБАВЛЯЕМ: Стрелочка назад (слева) -->
+            <ImageButton
+                android:id="@+id/buttonChatBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentLeft="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_arrow_back"
+                android:contentDescription="Назад" />
 
             <TextView
                 android:id="@+id/textViewChatTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_centerInParent="true"
+                android:layout_toRightOf="@id/buttonChatBack"
+                android:layout_centerVertical="true"
+                android:layout_marginLeft="12dp"
                 android:text="Имя чата"
                 android:textColor="#FFFFFF"
                 android:textSize="18sp"
-                android:textStyle="bold" />
-            <!-- ДОБАВЛЯЕМ: Кастомная кнопка меню (Три точки справа) -->
+                android:textStyle="bold"
+                android:ellipsize="end"
+                android:singleLine="true" />
+            <!-- Наша кнопка меню "Три точки" (остается на самом правом краю) -->
             <ImageButton
                 android:id="@+id/buttonChatMenu"
                 android:layout_width="40dp"

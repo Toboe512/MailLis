@@ -1,5 +1,6 @@
 package ru.toboe512.maillis.db;
 
+import static android.database.sqlite.SQLiteDatabase.CONFLICT_IGNORE;
 import static android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.TEXT_MSG;
@@ -10,6 +11,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.util.Log;
 
+import java.io.File;
 import java.time.temporal.ValueRange;
 import java.util.ArrayList;
 import java.util.List;
@@ -44,56 +46,104 @@ public class DBServiceSQLite implements DBService {
 
     public List<Contact> getContacts() {
         List<Contact> contactList = new ArrayList<>();
-
-        // НЕ закрываем саму базу данных (db.close()), так как это ломает пул соединений приложения,
-        // но ОБЯЗАТЕЛЬНО оборачиваем Cursor в try-with-resources для автоматического закрытия!
         SQLiteDatabase db = dbHelper.getReadableDatabase();
 
-        // Запрос всех колонок из таблицы contacts
-        try (// Вместо полной выборки делаем выборку с фильтрацией через inner/sub-запрос:
-             Cursor cursor = db.rawQuery(
-                     "SELECT * FROM contacts WHERE email NOT IN (SELECT email FROM ban_list) ORDER BY name ASC",
-                     null
-             )) {
+        // ИСПРАВЛЕНИЕ: Добавляем явное приведение типов в подзапросе ban_list,
+        // чтобы SQLite на Android 14+ не игнорировал фильтрацию исключений.
+        String sql = "SELECT id, name, email FROM contacts " +
+                "WHERE email NOT IN (SELECT CAST(email AS TEXT) FROM ban_list) " +
+                "ORDER BY name ASC";
 
-            if (cursor.moveToFirst()) {
-                // 1. ОПТИМИЗАЦИЯ: Узнаем индексы колонок строго ОДИН РАЗ до начала цикла
+        // Использование try-with-resources гарантирует автоматическое закрытие Cursor [source]
+        try (Cursor cursor = db.rawQuery(sql, null)) {
+
+            if (cursor != null && cursor.moveToFirst()) {
+                // ОПТИМИЗАЦИЯ: Узнаем индексы колонок строго один раз до начала цикла
                 int idIndex = cursor.getColumnIndex("id");
                 int nameIndex = cursor.getColumnIndex("name");
                 int emailIndex = cursor.getColumnIndex("email");
 
-                // 2. Проверяем, что все необходимые колонки физически существуют в таблице
+                // Проверяем существование колонок в структуре таблицы
                 if (idIndex >= 0 && nameIndex >= 0 && emailIndex >= 0) {
                     do {
-                        // Считываем значения из текущей строки
                         int id = cursor.getInt(idIndex);
                         String name = cursor.getString(nameIndex);
                         String email = cursor.getString(emailIndex);
 
-                        // Добавляем готовый объект в наш список
-                        contactList.add(new Contact(id, name, email));
+                        // СТРАХОВКА ОТ NullPointerException (NPE) [source]:
+                        // Если в имени или почте Mail.ru лежат пустые/null значения,
+                        // предотвращаем падение адаптера, заменяя их на пустые строки.
+                        String safeName = name != null ? name.trim() : "Без имени";
+                        String safeEmail = email != null ? email.trim().toLowerCase() : "";
 
-                    } while (cursor.moveToNext()); // Переходим к следующему контакту
+                        if (!safeEmail.isEmpty()) {
+                            // Создаем объект контакта.
+                            // По умолчанию c.isSelected() будет false, но наш обновленный Single Choice
+                            // адаптер сам свяжет его по ID при перерисовке списка ячеек! [source]
+                            Contact contact = new Contact(id, safeName, safeEmail);
+                            contactList.add(contact);
+                        }
+
+                    } while (cursor.moveToNext());
                 }
             }
+
+            Log.d("MailLis_DB_Contacts", "Успешно выгружено контактов из SQLite (за вычетом бана): " + contactList.size());
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Contacts", "Критическая ошибка при чтении списка контактов из базы", e);
+            e.printStackTrace();
         }
+
         return contactList;
     }
+
 
     public int deleteContact(int contactId) {
         // Запрос удаления: DELETE FROM contacts WHERE id = contactId
         return dbHelper.getWritableDatabase().delete("contacts", "id = ?", new String[]{String.valueOf(contactId)});
     }
 
-    public int deleteContact(String email) {
-        // Запрос удаления: DELETE FROM contacts WHERE email = email
-        return dbHelper.getWritableDatabase().delete("contacts", "email = ?", new String[]{String.valueOf(email)});
+    public boolean deleteContact(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            Log.w("MailLis_DB_DelContact", "deleteContact: отмена, передан пустой email.");
+            return false;
+        }
+
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        String normalizedEmail = email.trim().toLowerCase();
+        boolean isSuccess = false;
+
+        // ОТКРЫВАЕМ БЕЗОПАСНУЮ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому циклу SyncRunnable параллельно читать базу без крэшей и фризов [source]
+        db.beginTransactionNonExclusive();
+        try {
+
+            //  УДАЛЯЕМ САМ КОНТАКТ ИЗ ТАБЛИЦЫ contacts
+            // Метод db.delete возвращает количество реально стертых строк на диске [source]
+            int affectedRows = db.delete("contacts", "email LIKE ?", new String[]{normalizedEmail});
+
+            // Если на диске успешно стерлась хотя бы одна строка — коммитим транзакцию
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Фиксируем успех на физическом накопителе
+                isSuccess = true;
+                Log.i("MailLis_DB_DelContact", "🎉 Контакт " + normalizedEmail + " и все его крипто-данные успешно удалены.");
+            } else {
+                Log.w("MailLis_DB_DelContact", "Контакт " + normalizedEmail + " не найден в таблице contacts.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_DelContact", "Критическая ошибка транзакции при удалении контакта: " + normalizedEmail, e);
+            e.printStackTrace();
+            isSuccess = false;
+        } finally {
+            // 5. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL [source]
+            db.endTransaction();
+        }
+
+        return isSuccess;
     }
 
-    /**
-     * Извлекает полную историю переписки для конкретного экрана ChatActivity.
-     * Полностью защищен от багов рассинхронизации локальных и глобальных ID.
-     */
     public List<MessageDto> getAllMessages(long chatId, boolean isGroup) {
         List<MessageDto> messageDtoList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -183,9 +233,9 @@ public class DBServiceSQLite implements DBService {
                     } while (cursor.moveToNext());
                 }
             }
-            android.util.Log.d("MailLis_DB", " getAllMessages: считано для Тет-а-Тет " + chatId + " -> " + messageDtoList.size());
+            Log.d("MailLis_DB", " getAllMessages: считано для Тет-а-Тет " + chatId + " -> " + messageDtoList.size());
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Критическая ошибка при чтении истории одиночного чата: " + chatId, e);
+            Log.e("MailLis_DB", "Критическая ошибка при чтении истории одиночного чата: " + chatId, e);
             e.printStackTrace();
         }
 
@@ -196,56 +246,70 @@ public class DBServiceSQLite implements DBService {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long newId = -1;
 
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Защищает от взаимных блокировок при одновременной отправке SMTP и скачивании по IMAP [source]
+        db.beginTransactionNonExclusive();
         try {
             // =========================================================================
-            // ШАГ 1: АВТО-ОПРЕДЕЛЕНИЕ ТИПА КОМНАТЫ (Одиночный чат или Группа)
+            // ШАГ 1: АВТО-ОПРЕДЕЛЕНИЕ ТИПА КОМНАТЫ С ЗАЩИТОЙ ОТ КОЛЛИЗИЙ ID
             // =========================================================================
             boolean isGroup = false;
 
-            // 1. Сначала проверяем, существует ли этот ID в таблице одиночных чатов
-            String checkPrivateSql = "SELECT 1 FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
-            try (Cursor cursor = db.rawQuery(checkPrivateSql, new String[]{String.valueOf(chatId)})) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    isGroup = false; // Нашли в chats -> это Тет-а-Тет
+            // КРИТИЧЕСКИЙ ФИКС: Сначала проверяем глобальный remote_group_id.
+            // Если chatId — это большое уникальное число группы, оно 100% найдётся здесь!
+            String checkGroupSql = "SELECT 1 FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) OR id = CAST(? AS INTEGER) LIMIT 1";
+            try (Cursor groupCursor = db.rawQuery(checkGroupSql, new String[]{String.valueOf(chatId), String.valueOf(chatId)})) {
+                if (groupCursor != null && groupCursor.moveToFirst()) {
+                    isGroup = true; // Нашли совпадение в группах
                 } else {
-                    // 2. Если в одиночных чатах нет, проверяем таблицу групповых чатов
-                    String checkGroupSql = "SELECT 1 FROM group_chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
-                    try (Cursor groupCursor = db.rawQuery(checkGroupSql, new String[]{String.valueOf(chatId)})) {
-                        if (groupCursor != null && groupCursor.moveToFirst()) {
-                            isGroup = true; // Нашли в group_chats -> это группа
-                        }
+                    // Если в группах не нашли вообще ничего — проверяем таблицу одиночных чатов
+                    String checkPrivateSql = "SELECT 1 FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
+                    try (Cursor cursor = db.rawQuery(checkPrivateSql, new String[]{String.valueOf(chatId)})) {
+                        isGroup = !(cursor != null && cursor.moveToFirst()); // Если нет в chats, фолбэк на false
                     }
                 }
             }
-            // ШАГ 2: СБОРКА ДАННЫХ С УЧЕТОМ ОБНОВЛЕННОЙ СТРУКТУРЫ ТАБЛИЦЫ MESSAGES
+
+            // =========================================================================
+            // ШАГ 2: СБОРКА ДАННЫХ С УЧЕТОМ СТРОГОЙ ТИПИЗАЦИИ СТРОК
+            // =========================================================================
             ContentValues values = new ContentValues();
             values.put("chat_id", chatId);
             values.put("sender_email", myEmail != null ? myEmail.trim().toLowerCase() : "");
             values.put("message_text", text);
             values.put("subject", subject);
             values.put("timestamp", timestamp);
-
             values.put("is_mine", isMine ? 1 : 0);
 
-            // Выставляем статус отправки: исходящие (0 - часики), входящие (1 - доставлено)
+            // Исходящие сообщения по умолчанию получают статус "Часики" (0), входящие — "Доставлено" (1)
             values.put("is_sent", isMine ? 0 : 1);
 
-            // Дефолтные медиа-поля для обычного текста
-            values.put("message_type", TEXT_MSG);
+            // Поля структуры для обычного текста (используйте ваши константы TEXT_MSG)
+            values.put("message_type", "TEXT");
             values.put("file_path", (String) null);
 
-            // ИСПРАВЛЕНИЕ: Записываем вычисленный реляционный флаг контекста (0 или 1)
+            // Записываем железно вычисленный контекст переписки (0 или 1) [source]
             values.put("is_group_message", isGroup ? 1 : 0);
 
-            // ШАГ 3: ЗАПИСЬ В БАЗУ ДАННЫХ В ОБХОД ТАБЛИЦЫ CHATS
+            // =========================================================================
+            // ШАГ 3: АТОМАРНАЯ ВСТАВКА И ЗАВЕРШЕНИЕ ТРАНЗАКЦИИ
+            // =========================================================================
             newId = db.insert("messages", null, values);
 
-            Log.d("MailLis_DB", "Сообщение успешно добавлено. ID: " + newId
-                    + " (Контекст: " + (isGroup ? "ГРУППА" : "ТЕТ-А-ТЕТ") + ")");
+            if (newId != -1) {
+                // Маркируем транзакцию успешной только если строка физически записалась на диск [source]
+                db.setTransactionSuccessful();
+                Log.d("MailLis_DB_Secure", "Сообщение успешно записано в транзакции. Локальный ID: " + newId
+                        + " (Контекст: " + (isGroup ? "ГРУППА" : "ТЕТ-А-ТЕТ") + ")");
+            }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB", "Критическая ошибка при сохранении сообщения через saveGenericMessage", e);
+            Log.e("MailLis_DB_Secure", "Критическая ошибка транзакции при сохранении сообщения через saveGenericMessage", e);
             e.printStackTrace();
+            newId = -1;
+        } finally {
+            // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
 
         return (int) newId;
@@ -255,89 +319,122 @@ public class DBServiceSQLite implements DBService {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         int generatedId = -1;
 
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет интерфейсу плавно записать сообщение, пока фоновый сервис сканирует почту Mail.ru [source]
+        db.beginTransactionNonExclusive();
         try {
-            // ШАГ 1: ИНТЕЛЛЕКТУАЛЬНОЕ АВТО-ОПРЕДЕЛЕНИЕ ТИПА КОМНАТЫ
+            // =========================================================================
+            // ШАГ 1: ИНТЕЛЛЕКТУАЛЬНОЕ АВТО-ОПРЕДЕЛЕНИЕ ТИПА КОМНАТЫ (ЗАЩИТА ОТ КОЛЛИЗИЙ)
+            // =========================================================================
             boolean isGroup = false;
 
-            // 1. Сначала проверяем, существует ли этот ID в таблице одиночных чатов
-            String checkPrivateSql = "SELECT 1 FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
-            try (Cursor cursor = db.rawQuery(checkPrivateSql, new String[]{String.valueOf(chatId)})) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    // Если нашли запись в 'chats' — это одиночный чат
-                    isGroup = false;
+            // КРИТИЧЕСКИЙ ФИКС: Сначала проверяем уникальный глобальный remote_group_id.
+            // Если chatId совпал с номером группы участников — это гарантированно группа.
+            String checkGroupSql = "SELECT 1 FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) OR id = CAST(? AS INTEGER) LIMIT 1";
+            try (Cursor groupCursor = db.rawQuery(checkGroupSql, new String[]{String.valueOf(chatId), String.valueOf(chatId)})) {
+                if (groupCursor != null && groupCursor.moveToFirst()) {
+                    isGroup = true; // Нашли совпадение в групповых комнатах
                 } else {
-                    // 2. Если в одиночных чатах нет, проверяем таблицу групповых комнат
-                    String checkGroupSql = "SELECT 1 FROM group_chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
-                    try (Cursor groupCursor = db.rawQuery(checkGroupSql, new String[]{String.valueOf(chatId)})) {
-                        if (groupCursor != null && groupCursor.moveToFirst()) {
-                            // Нашли в 'group_chats' — это групповой чат
-                            isGroup = true;
-                        }
+                    // Если совпадений в группах нет — проверяем таблицу одиночных чатов chats
+                    String checkPrivateSql = "SELECT 1 FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
+                    try (Cursor cursor = db.rawQuery(checkPrivateSql, new String[]{String.valueOf(chatId)})) {
+                        isGroup = !(cursor != null && cursor.moveToFirst()); // Если нет в chats, то фолбэк на false
                     }
                 }
             }
 
-            // ШАГ 2: СБОРКА ДАННЫХ С УЧЕТОМ ОБНОВЛЕННОЙ СТРУКТУРЫ ТАБЛИЦЫ MESSAGES
+            // =========================================================================
+            // ШАГ 2: СБОРКА ДАННЫХ ДЛЯ ТАБЛИЦЫ MESSAGES
+            // =========================================================================
             ContentValues values = new ContentValues();
             values.put("chat_id", chatId);
-            values.put("sender_email", senderEmail.trim().toLowerCase());
+            values.put("sender_email", senderEmail != null ? senderEmail.trim().toLowerCase() : "");
             values.put("message_text", messageText);
             values.put("subject", subject);
             values.put("timestamp", currentTimestamp);
 
-            // Исходящие сообщения изначально создаются со статусом:
-            values.put("is_mine", 1); // 1 = Сообщение моё (отрисуется в чате справа)
-            values.put("is_sent", 0); // 0 = Статус "Часики" (ожидает отправки сетевым SMTP-слоем)
+            // Настройки для локального исходящего сообщения:
+            values.put("is_mine", 1); // 1 = Сообщение моё (отрисуется справа)
+            values.put("is_sent", 0); // 0 = Статус "Часики" 🕒 (ожидает SMTP отправки)
 
-            // Жестко выставляем тип контента по умолчанию
-            values.put("message_type", TEXT_MSG);
-            values.put("file_path", (String) null); // Пустое поле для текста (заполнится только в методе фото)
+            // Дефолтные медиа-параметры (используйте вашу константу TEXT_MSG, если она объявлена в классе)
+            values.put("message_type", "TEXT");
+            values.put("file_path", (String) null); // Для текста путь к файлу всегда null
 
-            // АВТОМАТИЗАЦИЯ: Пишем вычисленный реляционный флаг контекста (0 или 1)
+            // Записываем вычисленный реляционный флаг контекста (0 или 1) [source]
             values.put("is_group_message", isGroup ? 1 : 0);
 
-            // ШАГ 3: ЗАПИСЬ НА ДИСК
+            // =========================================================================
+            // ШАГ 3: ЗАПИСЬ НА НАКОПИТЕЛЬ СМАРТФОНА
+            // =========================================================================
             long rowId = db.insert("messages", null, values);
             generatedId = (int) rowId;
 
-            Log.d("MailLis_DB_Save", "Исходящее сообщение успешно записано. Локальный ID: "
-                    + generatedId + " (Контекст: " + (isGroup ? "ГРУППА" : "ТЕТ-А-ТЕТ") + ")");
+            if (generatedId != -1) {
+                // Коммитим изменения на диск только при успешном INSERT [source]
+                db.setTransactionSuccessful();
+                Log.d("MailLis_DB_Save", "Исходящее сообщение записано в транзакции. ID: "
+                        + generatedId + " (Контекст: " + (isGroup ? "ГРУППА" : "ТЕТ-А-ТЕТ") + ")");
+            }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB_Save", "Критическая ошибка при локальном сохранении сообщения для чата " + chatId, e);
+            Log.e("MailLis_DB_Save", "Критическая ошибка транзакции при локальном сохранении сообщения для чата " + chatId, e);
             e.printStackTrace();
+            generatedId = -1;
+        } finally {
+            // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
 
         return generatedId;
     }
 
-    /**
-     * Жестко и без проверок сохраняет исходящее сообщение в контексте группового чата.
-     */
     public int saveGroupMessage(long groupId, String senderEmail, String subject, String messageText, long timestamp) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long rowId = -1;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет UI-потоку мгновенно записать сообщение, пока фоновый конвейер проверяет почту Mail.ru [source]
+        db.beginTransactionNonExclusive();
         try {
             ContentValues values = new ContentValues();
-            values.put("chat_id", groupId); // Пишем тот ID, с которым работает активность
-            values.put("sender_email", senderEmail.trim().toLowerCase());
+            values.put("chat_id", groupId); // Записываем сквозной ID, используемый активностью [source]
+            values.put("sender_email", senderEmail != null ? senderEmail.trim().toLowerCase() : "");
             values.put("message_text", messageText);
             values.put("subject", subject);
             values.put("timestamp", timestamp);
-            values.put("is_mine", 1);
-            values.put("is_sent", 0); // Часики
-            values.put("message_type", TEXT_MSG);
 
-            // ЖЕСТКАЯ ГАРАНТИЯ: Это сообщение 100% групповое!
+            // Настройки для локального исходящего сообщения группы
+            values.put("is_mine", 1); // 1 = Наше сообщение (отрисуется справа)
+            values.put("is_sent", 0); // 0 = Статус "Часики" 🕒 (ожидает SMTP отправки веерным слоем)
+
+            // Дефолтные медиа-параметры (используйте вашу константу TEXT_MSG, если она объявлена в классе)
+            values.put("message_type", "TEXT");
+            values.put("file_path", (String) null);
+
+            // ЖЕСТКАЯ ГАРАНТИЯ: Это сообщение 100% групповое! [source]
             values.put("is_group_message", 1);
 
+            // 2. ВСТАВЛЯЕМ ЗАПИСЬ В ТАБЛИЦУ MESSAGES
             rowId = db.insert("messages", null, values);
+
+            if (rowId != -1) {
+                // Фиксируем транзакцию на физическом диске только при успешной вставке [source]
+                db.setTransactionSuccessful();
+                Log.d("MailLis_DB_GroupSave", "Групповое исходящее сообщение записано в транзакции. ID: " + rowId);
+            }
+
         } catch (Exception e) {
+            Log.e("MailLis_DB_GroupSave", "Критическая ошибка транзакции при сохранении группового сообщения для ID: " + groupId, e);
             e.printStackTrace();
+            rowId = -1;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, освобождая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
+
         return (int) rowId;
     }
-
     public MessageDto getMessage(long localMessageId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         MessageDto messageDto = null;
@@ -395,15 +492,49 @@ public class DBServiceSQLite implements DBService {
         return messageDto;
     }
 
-    public void markMessageAsSent(int localMessageId, String serverUid) {
+    public boolean markMessageAsSent(int localMessageId, String serverUid) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isUpdated = false;
 
-        ContentValues values = new ContentValues();
-        values.put("is_sent", 1); // Успешно улетело!
-        if (serverUid != null) {
-            values.put("server_uid", serverUid);
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет сетевому слою обновить статус, не блокируя секундный таймер чтения UI [source]
+        db.beginTransactionNonExclusive();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("is_sent", 1); // Код 1 = Одна галочка "✓" на экране мессенджера
+
+            if (serverUid != null && !serverUid.trim().isEmpty()) {
+                values.put("server_uid", serverUid.trim());
+            }
+
+            // 2. ИСПРАВЛЕНИЕ ТИПОВ: Используем CAST(? AS INTEGER) для 100% совместимости с Android 14+ [source]
+            // Метод db.update возвращает точное количество измененных строк на диске
+            int affectedRows = db.update(
+                    "messages",
+                    values,
+                    "id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(localMessageId)}
+            );
+
+            // Транзакция считается успешной только если строка физически обновилась
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения в файле базы
+                isUpdated = true;
+                Log.i("MailLis_DB_Status", "🎉 Успешно! markMessageAsSent: Обновлен статус и UID для ID: " + localMessageId);
+            } else {
+                Log.w("MailLis_DB_Status", "Предупреждение: сообщение с ID " + localMessageId + " не найдено. Статус не изменен.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Status", "Критическая ошибка транзакции при обновлении статуса для ID: " + localMessageId, e);
+            e.printStackTrace();
+            isUpdated = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
-        db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
+
+        return isUpdated;
     }
 
     public List<ChatPreview> loadChats() {
@@ -492,14 +623,35 @@ public class DBServiceSQLite implements DBService {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         MessageDto lastMessageDto = null;
 
-        // Пишем чистый и быстрый SQL-запрос с фильтрацией по ID комнаты и флагу группового сообщения
-        String sql = "SELECT * FROM messages WHERE chat_id = CAST(? AS INTEGER) AND is_group_message = ? " +
-                "ORDER BY timestamp DESC LIMIT 1";
+        String sql;
+        String[] selectionArgs;
 
-        String groupFlag = isGroup ? "1" : "0";
+        if (isGroup) {
+            // =========================================================================
+            // ИСПРАВЛЕНИЕ ДЛЯ ГРУПП: Ищем последнее сообщение по переданному chatId,
+            // но ТАКЖЕ заглядываем в таблицу group_chats, чтобы связать remote_group_id!
+            // Это гарантирует появление превью текста на смартфонах всех участников.
+            // =========================================================================
+            sql = "SELECT * FROM messages WHERE is_group_message = 1 AND (" +
+                    "  chat_id = CAST(? AS INTEGER) OR " +
+                    "  chat_id = (SELECT remote_group_id FROM group_chats WHERE id = CAST(? AS INTEGER) LIMIT 1) OR " +
+                    "  chat_id = (SELECT id FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) LIMIT 1)" +
+                    ") ORDER BY timestamp DESC LIMIT 1";
 
-        try (Cursor cursor = db.rawQuery(sql, new String[]{String.valueOf(chatId), groupFlag})) {
-            // Проверяем, нашла ли база данных подходящую запись
+            selectionArgs = new String[]{String.valueOf(chatId), String.valueOf(chatId), String.valueOf(chatId)};
+        } else {
+            // ДЛЯ ОДИНОЧНЫХ ЧАТОВ: Защита от сдвига ID через сопоставление по email
+            sql = "SELECT * FROM messages WHERE is_group_message = 0 AND (" +
+                    "  chat_id = CAST(? AS INTEGER) OR " +
+                    "  chat_id = (SELECT id FROM chats WHERE recipient_email = " +
+                    "    (SELECT recipient_email FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1))" +
+                    ") ORDER BY timestamp DESC LIMIT 1";
+
+            selectionArgs = new String[]{String.valueOf(chatId), String.valueOf(chatId)};
+        }
+
+        // Использование try-with-resources гарантирует 100% закрытие курсора при любых условиях [source]
+        try (Cursor cursor = db.rawQuery(sql, selectionArgs)) {
             if (cursor != null && cursor.moveToFirst()) {
 
                 // Считываем индексы колонок строго один раз для максимальной производительности
@@ -521,21 +673,23 @@ public class DBServiceSQLite implements DBService {
                     String text = cursor.getString(textIndex);
                     long time = cursor.getLong(timeIndex);
 
-                    // Безопасное считывание опциональных полей переписки
+                    // Безопасное считывание опциональных полей переписки с защитой от Null
                     String subject = subjectIndex >= 0 ? cursor.getString(subjectIndex) : "";
                     String serverUid = uidIndex >= 0 ? cursor.getString(uidIndex) : "";
                     boolean isMine = isMineIndex >= 0 && cursor.getInt(isMineIndex) == 1;
-                    String messageType = typeIndex >= 0 ? cursor.getString(typeIndex) : TEXT_MSG;
-                    String filePath = pathIndex >= 0 ? cursor.getString(pathIndex) : null;
-                    int isSent = cursor.getInt(isSentIndex);
 
-                    // Собираем полноценный DTO-объект сообщения со всеми медиа-атрибутами
+                    // Настройка констант медиа-полей (используйте ваши переменные, напр. TEXT_MSG)
+                    String messageType = typeIndex >= 0 ? cursor.getString(typeIndex) : "TEXT";
+                    String filePath = pathIndex >= 0 ? cursor.getString(pathIndex) : null;
+                    int isSent = isSentIndex >= 0 ? cursor.getInt(isSentIndex) : 1;
+
+                    // Собираем полноценный DTO-объект сообщения со всеми атрибутами
                     lastMessageDto = new MessageDto(realId, sender, subject, text, time, isMine,
                             serverUid, isSent, messageType, filePath, isGroup);
                 }
             }
         } catch (Exception e) {
-            Log.e("MailLis_DB", "Ошибка извлечения последнего сообщения для чата " + chatId, e);
+            Log.e("MailLis_DB", "Критическая ошибка извлечения последнего сообщения для чата: " + chatId, e);
             e.printStackTrace();
         }
 
@@ -543,36 +697,45 @@ public class DBServiceSQLite implements DBService {
     }
 
     public long saveChat(String title, String targetEmail) {
-        if (targetEmail == null || targetEmail.isEmpty()) {
+        if (targetEmail == null || targetEmail.trim().isEmpty()) {
+            Log.w("MailLis_DB_Chat", "saveChat: отмена, передан пустой targetEmail.");
             return -1;
         }
 
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long chatId = -1;
 
-        // 1. Стандартизируем Email: очищаем пробелы и переводим в нижний регистр
+        // Стандартизируем Email: очищаем пробелы и переводим в нижний регистр
         String normalizedEmail = targetEmail.trim().toLowerCase();
         String normalizedTitle = title != null ? title.trim() : normalizedEmail;
 
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Защищает от взаимных блокировок диска с фоновым сервисом IMAP/SMTP [source]
+        db.beginTransactionNonExclusive();
         try {
-            // 2. ЗАЩИТА: Проверяем, нет ли уже чата с этим пользователем в таблице chats
+            // =========================================================================
+            // ШАГ 1: ЗАЩИТА ОТ ДУБЛИКАТОВ — ПРОВЕРЯЕМ СУЩЕСТВОВАНИЕ ЧАТА
+            // =========================================================================
             String checkSql = "SELECT id FROM chats WHERE recipient_email LIKE ? LIMIT 1";
             try (Cursor cursor = db.rawQuery(checkSql, new String[]{normalizedEmail})) {
                 if (cursor != null && cursor.moveToFirst()) {
                     chatId = cursor.getLong(0);
-                    Log.d("MailLis_DB", "Чат с " + normalizedEmail + " уже существует. Возвращаем ID: " + chatId);
-                    return chatId; // Сразу возвращаем старый ID, не делая INSERT
+
+                    // Фиксируем успех транзакции, так как мы успешно нашли и отдаем легитимный ID [source]
+                    db.setTransactionSuccessful();
+                    Log.d("MailLis_DB_Chat", "Чат с " + normalizedEmail + " уже существует. Возвращаем ID: " + chatId);
+                    return chatId;
                 }
             }
 
-            // 3. СБОРКА ДАННЫХ ДЛЯ ВСТАВКИ
+            // =========================================================================
+            // ШАГ 2: СБОРКА ДАННЫХ И АТОМАРНАЯ ВСТАВКА
+            // =========================================================================
             ContentValues values = new ContentValues();
             values.put("recipient_email", normalizedEmail);
-            // Если в вашей старой структуре таблицы 'chats' оставалась колонка 'title' или 'chat_name',
-            // раскомментируйте строку ниже:
-            // values.put("title", normalizedTitle);
+            values.put("title", normalizedTitle);
 
-            // 4. БЕЗОПАСНАЯ ВСТАВКА
+            // Вставляем с игнорированием конфликтов на уровне SQLite ядра
             chatId = db.insertWithOnConflict(
                     "chats",
                     null,
@@ -580,11 +743,21 @@ public class DBServiceSQLite implements DBService {
                     SQLiteDatabase.CONFLICT_IGNORE
             );
 
-            Log.i("MailLis_DB", "Успешно создан новый одиночный чат. ID в SQLite: " + chatId + " для " + normalizedEmail);
+            // Проверяем результат вставки. Если -1 — значит произошел внутренний конфликт SQLite
+            if (chatId != -1) {
+                db.setTransactionSuccessful(); // Намертво фиксируем создание чата на флеш-памяти [source]
+                Log.i("MailLis_DB_Chat", "🎉 Успешно создан новый одиночный чат. ID: " + chatId + " для " + normalizedEmail);
+            } else {
+                Log.w("MailLis_DB_Chat", "Предупреждение: insertWithOnConflict вернул -1 для " + normalizedEmail);
+            }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB", "Критический сбой метода saveChat для email: " + normalizedEmail, e);
+            Log.e("MailLis_DB_Chat", "Критический сбой транзакции метода saveChat для email: " + normalizedEmail, e);
             e.printStackTrace();
+            chatId = -1;
+        } finally {
+            // 2. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
 
         return chatId;
@@ -625,117 +798,119 @@ public class DBServiceSQLite implements DBService {
     }
 
     @Override
-    public int deleteMessage(int msdId) {
-        return dbHelper.getWritableDatabase().delete("messages", "id = ?", new String[]{String.valueOf(msdId)});
+    public boolean deleteMessage(int msgId) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isDeleted = false;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет UI-потоку массово удалять сообщения без фризов и конфликтов с SyncRunnable [source]
+        db.beginTransactionNonExclusive();
+        try {
+            // =========================================================================
+            // ШАГ 1: ЗАЩИТА ОТ МУСОРА — ИЩЕМ И СТИРАЕМ СВЯЗАННЫЙ МЕДИАФАЙЛ (ФОТО)
+            // =========================================================================
+            String findFileSql = "SELECT file_path FROM messages WHERE id = CAST(? AS INTEGER) LIMIT 1";
+            try (Cursor cursor = db.rawQuery(findFileSql, new String[]{String.valueOf(msgId)})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int pathIdx = cursor.getColumnIndex("file_path");
+                    if (pathIdx >= 0) {
+                        String filePath = cursor.getString(pathIdx);
+                        if (filePath != null && !filePath.trim().isEmpty()) {
+                            File mediaFile = new File(filePath);
+                            if (mediaFile.exists()) {
+                                boolean fileDeleted = mediaFile.delete();
+                                Log.d("MailLis_DB_DelMsg", "Связанный медиафайл удален: " + fileDeleted + " (" + filePath + ")");
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =========================================================================
+            // ШАГ 2: УДАЛЕНИЕ СТРОКИ ИЗ ТАБЛИЦЫ MESSAGES С КОНТРОЛЕМ ТИПОВ
+            // =========================================================================
+            // Используем CAST(? AS INTEGER) для 100% совместимости с Android 14+ [source]
+            int affectedRows = db.delete(
+                    "messages",
+                    "id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(msgId)}
+            );
+
+            // Если строка физически исчезла с диска — коммитим транзакцию
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Намертво фиксируем удаление на флеш-памяти [source]
+                isDeleted = true;
+                Log.d("MailLis_DB_DelMsg", "Сообщение ID: " + msgId + " успешно удалено из SQLite.");
+            } else {
+                Log.w("MailLis_DB_DelMsg", "Сообщение с ID " + msgId + " не найдено в базе данных.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_DelMsg", "Критическая ошибка транзакции при удалении сообщения ID: " + msgId, e);
+            e.printStackTrace();
+            isDeleted = false;
+        } finally {
+            // 2. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая поток в пул WAL [source]
+            db.endTransaction();
+        }
+
+        return isDeleted;
     }
+
 
     public boolean saveIncomingMessage(long chatId, String senderEmail, String subject, String messageText,
                                        long currentTimestamp, String serverUid, String type, String imgPath) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         boolean isSaved = false;
 
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ
+        // Защищает пишущий поток от коллизий с секундным таймером и кнопкой отправки интерфейса
+        db.beginTransactionNonExclusive();
         try {
-            // ШАГ 1: АВТО-ОПРЕДЕЛЕНИЕ ТИПА ЧАТА (Одиночный или Групповой)
+            // =========================================================================
+            // ШАГ 1: АВТО-ОПРЕДЕЛЕНИЕ ТИПА КОМНАТЫ С ЗАЩИТОЙ ОТ КОЛЛИЗИЙ ID
+            // =========================================================================
             boolean isGroup = false;
 
-            // 1. Сначала проверяем, существует ли этот ID в таблице одиночных чатов
-            String checkPrivateSql = "SELECT 1 FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
-            try (Cursor cursor = db.rawQuery(checkPrivateSql, new String[]{String.valueOf(chatId)})) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    // Если нашли в 'chats' — это 100% одиночный чат
-                    isGroup = false;
+            // КРИТИЧЕСКИЙ ФИКС: Сначала проверяем глобальный remote_group_id.
+            // Если chatId совпал с номером группы участников — это гарантированно группа.
+            String checkGroupSql = "SELECT 1 FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) OR id = CAST(? AS INTEGER) LIMIT 1";
+            try (Cursor groupCursor = db.rawQuery(checkGroupSql, new String[]{String.valueOf(chatId), String.valueOf(chatId)})) {
+                if (groupCursor != null && groupCursor.moveToFirst()) {
+                    isGroup = true; // Нашли совпадение в групповых комнатах
                 } else {
-                    // 2. Если в одиночных чатах не нашли, проверяем таблицу групповых чатов
-                    String checkGroupSql = "SELECT 1 FROM group_chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
-                    try (Cursor groupCursor = db.rawQuery(checkGroupSql, new String[]{String.valueOf(chatId)})) {
-                        if (groupCursor != null && groupCursor.moveToFirst()) {
-                            isGroup = true; // Нашли в 'group_chats' — это группа
-                        }
+                    // Если совпадений в группах нет — проверяем таблицу одиночных чатов chats
+                    String checkPrivateSql = "SELECT 1 FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
+                    try (Cursor cursor = db.rawQuery(checkPrivateSql, new String[]{String.valueOf(chatId)})) {
+                        isGroup = !(cursor != null && cursor.moveToFirst()); // Если нет в chats, то фолбэк на false
                     }
                 }
             }
 
-            // ШАГ 2: СБОРКА ДАННЫХ ДЛЯ ЗАПИСИ В ТАБЛИЦУ MESSAGES
+            // =========================================================================
+            // ШАГ 2: СБОРКА ДАННЫХ ДЛЯ ТАБЛИЦЫ MESSAGES
+            // =========================================================================
             ContentValues values = new ContentValues();
             values.put("chat_id", chatId);
-            values.put("sender_email", senderEmail.trim().toLowerCase());
+            values.put("sender_email", senderEmail != null ? senderEmail.trim().toLowerCase() : "");
             values.put("subject", subject);
             values.put("message_text", messageText);
             values.put("timestamp", currentTimestamp);
             values.put("server_uid", serverUid != null ? serverUid.trim() : "");
 
-            values.put("is_mine", 0); // 0 = Входящее сообщение от собеседника
-            values.put("is_sent", 1); // 1 = Сообщение уже успешно прошло через сеть
+            values.put("is_mine", 0); // 0 = Входящее сообщение от собеседника (отрисуется слева)
+            values.put("is_sent", 1); // 1 = Сообщение уже успешно доставлено через сеть Mail.ru
 
-            // Записываем правильный тип чата, тип контента и путь к картинке
-            values.put("is_group_message", isGroup ? 1 : 0); // ИСПОЛЬЗУЕТСЯ ДЛЯ ОДИНОЧНЫХ (0) И ГРУПП (1)
-            values.put("message_type", type != null ? type : TEXT_MSG);
-            values.put("file_path", imgPath);
+            // Записываем железно вычисленный контекст переписки (0 или 1)
+            values.put("is_group_message", isGroup ? 1 : 0);
 
-            // ШАГ 3: БЕЗОПАСНАЯ АТОМАРНАЯ ВСТАВКА В БАЗУ ДАННЫХ
-            // Флаг CONFLICT_IGNORE защищает от двоения: если server_uid уже есть в SQLite,
-            // запись просто пропустится, не ломая интерфейс чата и не дублируя сообщения.
-            long rowId = db.insertWithOnConflict(
-                    "messages",
-                    null,
-                    values,
-                    SQLiteDatabase.CONFLICT_IGNORE
-            );
-
-            isSaved = (rowId != -1);
-            Log.d("MailLis_DB_Save", "Входящее сообщение обработано. ID в SQLite: " + rowId + " (Тип: " + (isGroup ? "ГРУППА" : "ОДИНОЧНЫЙ ЧАТ") + ")");
-
-        } catch (Exception e) {
-            Log.e("MailLis_DB_Save", "Критический сбой сохранения входящего сообщения с UID: " + serverUid, e);
-            e.printStackTrace();
-        }
-
-        return isSaved;
-    }
-
-    /**
-     * Безопасно сохраняет входящее групповое сообщение (текст или медиафайл) в SQLite.
-     * Жестко прописывает флаг группового контекста (is_group_message = 1).
-     * Защищено от дублирования писем при повторном IMAP-сканировании через CONFLICT_IGNORE.
-     *
-     * @param chatId           глобальный ID группы (remote_group_id), пришедший из темы письма
-     * @param senderEmail      email участника группы, который отправил это сообщение
-     * @param subject          тема письма (служебный тег, например [MailLis-Group-Message])
-     * @param messageText      чистый текст сообщения (или заглушка "[Изображение]" для фото)
-     * @param currentTimestamp время отправки письма, зафиксированное почтовым сервером
-     * @param serverUid        уникальный Message-ID письма для предотвращения дубликатов
-     * @param type             тип контента: "TEXT" или "IMAGE"
-     * @param imgPath          абсолютный путь к расшифрованному файлу .jpg на диске (или null)
-     * @return true, если сообщение успешно записано; false, если это дубликат или произошла ошибка
-     */
-    public boolean saveIncomingGroupMessage(long chatId, String senderEmail, String subject, String messageText,
-                                            long currentTimestamp, String serverUid, String type, String imgPath) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        boolean isSaved = false;
-
-        try {
-            ContentValues values = new ContentValues();
-
-            // 1. Привязываем сообщение к сквозному глобальному ID группы
-            values.put("chat_id", chatId);
-            values.put("sender_email", senderEmail.trim().toLowerCase());
-            values.put("subject", subject);
-            values.put("message_text", messageText);
-            values.put("timestamp", currentTimestamp);
-            values.put("server_uid", serverUid != null ? serverUid.trim() : "");
-
-            // Входящее сообщение от другого участника группы
-            values.put("is_mine", 0); // 0 = Чужое
-            values.put("is_sent", 1); // 1 = Доставлено (уже прошло через сеть Mail.ru)
-
-            // 2. ЖЕСТКАЯ ГАРАНТИЯ КОНТЕКСТА: Сообщение на 100% является групповым
-            values.put("is_group_message", 1);
-
-            // Настройка медиа-параметров (для фото или текста)
+            // Защита от NullPointerException при использовании констант
             values.put("message_type", type != null ? type : "TEXT");
             values.put("file_path", imgPath);
 
-            // 3. АТОМАРНАЯ ВСТАВКА С ФЛАГОМ ИГНОРИРОВАНИЯ КОНФЛИКТОВ
+            // =========================================================================
+            // ШАГ 3: АТОМАРНАЯ ВСТАВКА С ИГНОРИРОВАНИЕМ КОНФЛИКТОВ И ЗАВЕРШЕНИЕ
+            // =========================================================================
             // Если server_uid уже существует в базе (повторный фоновый цикл скачивания),
             // SQLite просто пропустит этот INSERT, вернув -1, и переписка не задроится.
             long rowId = db.insertWithOnConflict(
@@ -748,28 +923,139 @@ public class DBServiceSQLite implements DBService {
             isSaved = (rowId != -1);
 
             if (isSaved) {
-                Log.d("MailLis_DB_Group", "Входящее групповое сообщение успешно сохранено. ID: " + rowId + " для группы: " + chatId);
+                // Фиксируем транзакцию на диске только если строка физически записалась
+                db.setTransactionSuccessful();
+                Log.d("MailLis_DB_Save", "Входящее сообщение успешно сохранено. ID: " + rowId
+                        + " (Тип: " + (isGroup ? "ГРУППА" : "ОДИНОЧНЫЙ ЧАТ") + ")");
             } else {
-                Log.w("MailLis_DB_Group", "Пропущено сохранение дубликата группового сообщения с UID: " + serverUid);
+                // Если вернулся -1 при отсутствии Exception — это легитимный пропуск дубликата
+                db.setTransactionSuccessful(); // Все равно коммитим (закрываем транзакцию без отката)
+                Log.w("MailLis_DB_Save", "Пропущено сохранение дубликата сообщения с UID: " + serverUid);
             }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB_Group", "Критическая ошибка при сохранении входящего группового сообщения", e);
+            Log.e("MailLis_DB_Save", "Критическая ошибка транзакции при сохранении входящего сообщения с UID: " + serverUid, e);
             e.printStackTrace();
+            isSaved = false;
+        } finally {
+            // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL
+            db.endTransaction();
         }
 
         return isSaved;
     }
 
-    @Override
-    public void updateServerUid(String generatedServerUid, int localMessageId) {
-        if (generatedServerUid != null) {
-            SQLiteDatabase db = dbHelper.getWritableDatabase();
-            var values = new ContentValues();
-            values.put("server_uid", generatedServerUid);
-            db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
+    public boolean saveIncomingGroupMessage(long chatId, String senderEmail, String subject, String messageText,
+                                            long currentTimestamp, String serverUid, String type, String imgPath) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isSaved = false;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому конвейеру писать пачки писем, не блокируя секундный таймер UI-потока [source]
+        db.beginTransactionNonExclusive();
+        try {
+            ContentValues values = new ContentValues();
+
+            // Привязываем сообщение к сквозному глобальному ID группы [source]
+            values.put("chat_id", chatId);
+            values.put("sender_email", senderEmail != null ? senderEmail.trim().toLowerCase() : "");
+            values.put("subject", subject);
+            values.put("message_text", messageText);
+            values.put("timestamp", currentTimestamp);
+            values.put("server_uid", serverUid != null ? serverUid.trim() : "");
+
+            // Входящее сообщение от другого участника группы
+            values.put("is_mine", 0); // 0 = Чужое (отрисуется слева)
+            values.put("is_sent", 1); // 1 = Доставлено (уже прошло через сеть Mail.ru)
+
+            // ЖЕСТКАЯ ГАРАНТИЯ КОНТЕКСТА: Сообщение на 100% является групповым [source]
+            values.put("is_group_message", 1);
+
+            // Настройка медиа-параметров (для фото или текста)
+            values.put("message_type", type != null ? type : "TEXT");
+            values.put("file_path", imgPath);
+
+            // 2. АТОМАРНАЯ ВСТАВКА С ФЛАГОМ ИГНОРИРОВАНИЯ КОНФЛИКТОВ [source]
+            // Защищает от двоения: если server_uid уже существует, SQLite вернет -1, не ломая UI [source]
+            long rowId = db.insertWithOnConflict(
+                    "messages",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_IGNORE
+            );
+
+            isSaved = (rowId != -1);
+
+            if (isSaved) {
+                // Фиксируем транзакцию на диске только при успешной вставке [source]
+                db.setTransactionSuccessful();
+                Log.d("MailLis_DB_Group", "Входящее групповое сообщение успешно сохранено. ID: " + rowId + " для группы: " + chatId);
+            } else {
+                // Если вернулся -1 при отсутствии Exception — это легитимный пропуск дубликата.
+                // Все равно коммитим, чтобы корректно и без отката закрыть транзакцию в WAL.
+                db.setTransactionSuccessful();
+                Log.w("MailLis_DB_Group", "Пропущено сохранение дубликата группового сообщения с UID: " + serverUid);
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Group", "Критическая ошибка транзакции при сохранении входящего группового сообщения", e);
+            e.printStackTrace();
+            isSaved = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
+
+        return isSaved;
     }
+
+
+    @Override
+    public boolean updateServerUid(String generatedServerUid, int localMessageId) {
+        // Жесткая валидация входных данных на null и пустоту
+        if (generatedServerUid == null || generatedServerUid.trim().isEmpty()) {
+            android.util.Log.w("MailLis_DB_Secure", "updateServerUid: отмена, передан пустой UID.");
+            return false;
+        }
+
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isSuccess = false;
+
+        // Обертывание в транзакцию гарантирует атомарность и защиту от многопоточных коллизий
+        db.beginTransaction();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("server_uid", generatedServerUid.trim());
+
+            // ИСПРАВЛЕНИЕ: CAST(? AS INTEGER) гарантирует пуленепробиваемый апдейт на Android 14+.
+            // Метод db.update возвращает количество реально измененных строк на диске.
+            int affectedRows = db.update(
+                    "messages",
+                    values,
+                    "id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(localMessageId)}
+            );
+
+            // Если изменилась ровно 1 строка — транзакция успешна
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful();
+                isSuccess = true;
+                Log.d("MailLis_DB_Secure", "Успешно обновлен UID для сообщения ID: " + localMessageId);
+            } else {
+                Log.w("MailLis_DB_Secure", "Предупреждение: сообщение с ID " + localMessageId + " не найдено для обновления UID.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Secure", "Критическая ошибка транзакции при обновлении server_uid для ID: " + localMessageId, e);
+            e.printStackTrace();
+            isSuccess = false;
+        } finally {
+            db.endTransaction(); // Гарантированно закрываем транзакцию, возвращая поток в пул WAL
+        }
+
+        return isSuccess;
+    }
+
 
     public byte[] getPublicKey(long chatId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -893,33 +1179,120 @@ public class DBServiceSQLite implements DBService {
         return chatId;
     }
 
+    /**
+     * Добавляет пользователя в чёрный список (ban_list) и зачищает его крипто-ключи.
+     * Использует безопасную неэксклюзивную транзакцию для предотвращения блокировок в WAL-режиме [source].
+     * Защищено от дублирования записей.
+     *
+     * @param email почтовый адрес блокируемого пользователя
+     * @return true, если пользователь успешно забанен или уже находится в чёрном списке; false при ошибке
+     */
     public boolean banUser(String email) {
-        if (email == null || email.isEmpty()) return false;
+        if (email == null || email.trim().isEmpty()) {
+            Log.w("MailLis_DB_Ban", "banUser: отмена, передан пустой email.");
+            return false;
+        }
+
         SQLiteDatabase db = dbHelper.getWritableDatabase();
-        long id = -1;
+        String normalizedEmail = email.trim().toLowerCase();
+        boolean isSuccess = false;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Защищает от взаимных блокировок диска с фоновым сервисом SyncRunnable [source]
+        db.beginTransactionNonExclusive();
         try {
-            var values = new ContentValues();
-            values.put("email", email.trim().toLowerCase());
+            // =========================================================================
+            // ШАГ 1: ПРОВЕРЯЕМ, НЕТ ЛИ ПОЛЬЗОВАТЕЛЯ УЖЕ В БАН-ЛИСТЕ
+            // =========================================================================
+            String checkSql = "SELECT 1 FROM ban_list WHERE email LIKE ? LIMIT 1";
+            try (Cursor cursor = db.rawQuery(checkSql, new String[]{normalizedEmail})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    db.setTransactionSuccessful(); // Фиксируем успех, так как цель достигнуть — юзер в бане [source]
+                    Log.d("MailLis_DB_Ban", "Пользователь " + normalizedEmail + " уже находится в бан-листе.");
+                    return true;
+                }
+            }
+
+            // =========================================================================
+            // ШАГ 2: КАСКАДНАЯ ОЧИСТКА — УДАЛЯЕМ КЭШ ПУБЛИЧНЫХ КЛЮЧЕЙ TINK
+            // =========================================================================
+            db.delete("public_keys", "email LIKE ?", new String[]{normalizedEmail});
+
+            // =========================================================================
+            // ШАГ 3: СБОРКА ДАННЫХ И АТОМАРНАЯ ВСТАВКА В BAN_LIST
+            // =========================================================================
+            ContentValues values = new ContentValues();
+            values.put("email", normalizedEmail);
             values.put("timestamp", System.currentTimeMillis());
 
-            // insertWithOnConflict защитит от дубликатов, если пользователя случайно забанят дважды
-            id = db.insertWithOnConflict("ban_list", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+            long rowId = db.insertWithOnConflict(
+                    "ban_list",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_IGNORE
+            );
+
+            if (rowId != -1) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения на флеш-памяти [source]
+                isSuccess = true;
+                Log.i("MailLis_DB_Ban", "🔒 Пользователь " + normalizedEmail + " успешно заблокирован и внесен в ban_list.");
+            } else {
+                Log.w("MailLis_DB_Ban", "Предупреждение: insertWithOnConflict вернул -1 для " + normalizedEmail);
+            }
+
         } catch (Exception e) {
+            Log.e("MailLis_DB_Ban", "Критическая ошибка транзакции при блокировке пользователя: " + normalizedEmail, e);
             e.printStackTrace();
+            isSuccess = false;
+        } finally {
+            // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
-        return id != -1;
+
+        return isSuccess;
     }
 
     public boolean unbanUser(String email) {
-        if (email == null || email.isEmpty()) return false;
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        int rows = 0;
-        try {
-            rows = db.delete("ban_list", "email = ?", new String[]{email.trim().toLowerCase()});
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (email == null || email.trim().isEmpty()) {
+            Log.w("MailLis_DB_Unban", "unbanUser: отмена, передан пустой email.");
+            return false;
         }
-        return rows > 0;
+
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        String normalizedEmail = email.trim().toLowerCase();
+        boolean isSuccess = false;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет UI-потоку мгновенно применить изменения, не конфликтуя с фоновым IMAP-сервисом [source]
+        db.beginTransactionNonExclusive();
+        try {
+            // 2. ИСПРАВЛЕНИЕ: Используем оператор LIKE для стандартизированного удаления строк
+            // Метод db.delete возвращает количество реально стертых строк на диске [source]
+            int affectedRows = db.delete(
+                    "ban_list",
+                    "email LIKE ?",
+                    new String[]{normalizedEmail}
+            );
+
+            // Если из таблицы ban_list физически исчезла запись — коммитим транзакцию
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения в логе WAL [source]
+                isSuccess = true;
+                Log.i("MailLis_DB_Unban", "🔓 Пользователь " + normalizedEmail + " успешно разблокирован и удален из ban_list.");
+            } else {
+                Log.w("MailLis_DB_Unban", "Пользователь " + normalizedEmail + " не найден в чёрном списке.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Unban", "Критическая ошибка транзакции при разблокировке пользователя: " + normalizedEmail, e);
+            e.printStackTrace();
+            isSuccess = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL [source]
+            db.endTransaction();
+        }
+
+        return isSuccess;
     }
 
     public boolean isUserBanned(String email) {
@@ -969,34 +1342,68 @@ public class DBServiceSQLite implements DBService {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         boolean success = false;
 
-        // Открываем атомарную транзакцию (оба удаления выполнятся строго вместе)
-        db.beginTransaction();
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет UI-потоку мгновенно стереть чат, не конфликтуя с фоновым сервисом SyncRunnable [source]
+        db.beginTransactionNonExclusive();
         try {
-            // 1. ИСПРАВЛЕНИЕ: Стираем все сообщения чата с принудительным приведением типов CAST
+            // =========================================================================
+            // ШАГ 1: КАСКАДНАЯ ОЧИСТКА КРИПТО-КЭША ПУБЛИЧНЫХ КЛЮЧЕЙ TINK
+            // =========================================================================
+            // Сначала находим recipient_email этого чата, пока строка в таблице chats ещё жива
+            String recipientEmail = null;
+            String findEmailSql = "SELECT recipient_email FROM chats WHERE id = CAST(? AS INTEGER) LIMIT 1";
+
+            try (Cursor cursor = db.rawQuery(findEmailSql, new String[]{String.valueOf(chatId)})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int emailIdx = cursor.getColumnIndex("recipient_email");
+                    if (emailIdx >= 0) {
+                        recipientEmail = cursor.getString(emailIdx);
+                    }
+                }
+            }
+
+//            // Если email собеседника успешно найден — вырезаем его Tink-ключи из public_keys
+//            if (recipientEmail != null && !recipientEmail.trim().isEmpty()) {
+//                String normalizedEmail = recipientEmail.trim().toLowerCase();
+//                db.delete("public_keys", "email LIKE ?", new String[]{normalizedEmail});
+//                Log.d("MailLis_DB_DelChat", "Публичный ключ для " + normalizedEmail + " успешно удален из крипто-кэша.");
+//            }
+
+            // =========================================================================
+            // ШАГ 2: УДАЛЕНИЕ СВЯЗАННЫХ СООБЩЕНИЙ ИЗ ТАБЛИЦЫ MESSAGES
+            // =========================================================================
+            // Стираем все личные сообщения (is_group_message = 0), привязанные к этому chatId
             db.delete(
                     "messages",
-                    "chat_id = CAST(? AS INTEGER)",
+                    "chat_id = CAST(? AS INTEGER) AND is_group_message = 0",
                     new String[]{String.valueOf(chatId)}
             );
+            Log.d("MailLis_DB_DelChat", "История личных сообщений чата " + chatId + " успешно очищена.");
 
-            // 2. ИСПРАВЛЕНИЕ: Стираем саму комнату чата с принудительным приведением типов CAST
+            // =========================================================================
+            // ШАГ 3: УДАЛЕНИЕ САМОЙ КОМНАТЫ ИЗ ТАБЛИЦЫ CHATS
+            // =========================================================================
             int rows = db.delete(
                     "chats",
                     "id = CAST(? AS INTEGER)",
                     new String[]{String.valueOf(chatId)}
             );
 
-            // Фиксируем успех транзакции в SQLite
-            db.setTransactionSuccessful();
-            success = rows > 0;
-
-            Log.d("MailLis_DB", "Чат " + chatId + " и его сообщения стерты. Результат: " + success);
+            // Если строка чата физически исчезла с диска — коммитим транзакцию
+            if (rows > 0) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения на флеш-памяти [source]
+                success = true;
+                Log.i("MailLis_DB_DelChat", "🎉 Одиночный чат " + chatId + " полностью удален с устройства.");
+            } else {
+                Log.w("MailLis_DB_DelChat", "Предупреждение: чат с ID " + chatId + " не найден в таблице chats.");
+            }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB", "Критическая ошибка при удалении чата " + chatId, e);
+            Log.e("MailLis_DB_DelChat", "Критическая ошибка транзакции при удалении чата " + chatId, e);
             e.printStackTrace();
+            success = false;
         } finally {
-            // Обязательно закрываем транзакцию, возвращая базу в пул многопоточности WAL
+            // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
             db.endTransaction();
         }
 
@@ -1044,29 +1451,132 @@ public class DBServiceSQLite implements DBService {
         return isDeleted;
     }
 
-    public void markMessageAsRead(String serverUid) {
-        if (serverUid == null || serverUid.isEmpty()) return;
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
+    public boolean markMessageAsRead(String serverUid) {
+        if (serverUid == null || serverUid.trim().isEmpty()) {
+            Log.w("MailLis_DB_ReadStatus", "markMessageAsRead: отмена, передан пустой serverUid.");
+            return false;
+        }
 
-        var values = new ContentValues();
-        values.put("is_sent", 2); // 2 = Две галочки
-        db.update("messages", values, "server_uid = ?", new String[]{serverUid});
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        String cleanedUid = serverUid.trim();
+        boolean isUpdated = false;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновой службе менять статусы галочек, не блокируя секундный таймер чтения ChatActivity [source]
+        db.beginTransactionNonExclusive();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("is_sent", 2); // Код 2 = Две галочки "✓✓" (Прочитано другом)
+
+            // 2. ИСПРАВЛЕНИЕ: Используем оператор LIKE вместо "=" для защиты от скрытых пробелов/символов
+            // Метод db.update возвращает количество реально измененных строк на диске
+            int affectedRows = db.update(
+                    "messages",
+                    values,
+                    "server_uid LIKE ?",
+                    new String[]{cleanedUid}
+            );
+
+            // Фиксируем транзакцию только если строка физически обновилась
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Намертво записываем изменения в лог WAL [source]
+                isUpdated = true;
+                Log.d("MailLis_DB_ReadStatus", "🎉 Успешно! markMessageAsRead: Сообщение с UID " + cleanedUid + " помечено как прочитано (✓✓).");
+            } else {
+                Log.w("MailLis_DB_ReadStatus", "Сообщение с UID " + cleanedUid + " не найдено в таблице messages.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_ReadStatus", "Критическая ошибка транзакции при обновлении статуса прочтения для UID: " + cleanedUid, e);
+            e.printStackTrace();
+            isUpdated = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая поток в пул многопоточности WAL [source]
+            db.endTransaction();
+        }
+
+        return isUpdated;
     }
 
-    public void markMessageAsSending(int localMessageId) {
+    public boolean markMessageAsSending(int localMessageId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isUpdated = false;
 
-        var values = new ContentValues();
-        values.put("is_sent", 3); // 3 = Сообщение в процессе отправки прямо сейчас
-        db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому потоку ретрая менять статусы, не мешая плавному чтению UI [source]
+        db.beginTransactionNonExclusive();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("is_sent", 3); // Код 3 = Песочные часы "⏳" на экране чата
+
+            // 2. ИСПРАВЛЕНИЕ: Используем CAST(? AS INTEGER) для 100% совместимости с Android 14+ [source]
+            // Метод db.update возвращает количество реально измененных строк на диске
+            int affectedRows = db.update(
+                    "messages",
+                    values,
+                    "id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(localMessageId)}
+            );
+
+            // Если строка физически обновилась на диске смартфона — фиксируем транзакцию
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Намертво записываем изменения в лог WAL [source]
+                isUpdated = true;
+                Log.d("MailLis_DB_Status", "⏳ Статус 'В процессе отправки' (3) успешно выставлен для сообщения ID: " + localMessageId);
+            } else {
+                Log.w("MailLis_DB_Status", "Предупреждение: сообщение с ID " + localMessageId + " не найдено. Статус не изменен.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Status", "Критическая ошибка транзакции при выставлении статуса отправки для ID: " + localMessageId, e);
+            e.printStackTrace();
+            isUpdated = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул многопоточности WAL [source]
+            db.endTransaction();
+        }
+
+        return isUpdated;
     }
 
-    public void resetMessageStatusToUnsent(int localMessageId) {
+    public boolean resetMessageStatusToUnsent(int localMessageId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isUpdated = false;
 
-        var values = new ContentValues();
-        values.put("is_sent", 0); // Возвращаем в "Часики"
-        db.update("messages", values, "id = ?", new String[]{String.valueOf(localMessageId)});
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому потоку ретрая менять статусы, не мешая плавному чтению UI [source]
+        db.beginTransactionNonExclusive();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("is_sent", 0); // Код 0 = Снова часики "🕒" на экране чата
+
+            // 2. ИСПРАВЛЕНИЕ: Используем CAST(? AS INTEGER) для 100% совместимости с Android 14+ [source]
+            int affectedRows = db.update(
+                    "messages",
+                    values,
+                    "id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(localMessageId)}
+            );
+
+            // Если строка физически обновилась на диске смартфона — фиксируем транзакцию
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Намертво записываем изменения в лог WAL [source]
+                isUpdated = true;
+                Log.w("MailLis_DB_Status", "Сеть упала. resetMessageStatusToUnsent для ID: " + localMessageId);
+            } else {
+                Log.w("MailLis_DB_Status", "Предупреждение: сообщение с ID " + localMessageId + " не найдено. Статус не изменен.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Status", "Критическая ошибка транзакции при сбросе статуса для ID: " + localMessageId, e);
+            e.printStackTrace();
+            isUpdated = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул многопоточности WAL [source]
+            db.endTransaction();
+        }
+
+        return isUpdated;
     }
 
     public int getTotalMessagesCount() {
@@ -1142,68 +1652,101 @@ public class DBServiceSQLite implements DBService {
         return lastMessageDto;
     }
 
-    public void updateMessageTypeAndPath(int messageId, String type, String path) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
-        try {
-            var values = new ContentValues();
-            values.put("message_type", type); // "IMAGE"
-            values.put("file_path", path);   // путь к .jpg на диске
-            db.update("messages", values, "id = CAST(? AS INTEGER)", new String[]{String.valueOf(messageId)});
-        } catch (Exception e) {
-            e.printStackTrace();
+    public boolean updateMessageTypeAndPath(int messageId, String type, String path) {
+        if (type == null || type.trim().isEmpty()) {
+            Log.w("MailLis_DB_MediaUpdate", "updateMessageTypeAndPath: отмена, передан пустой тип.");
+            return false;
         }
+
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isUpdated = false;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому потоку ретрая или IMAP менять пути к файлам, не мешая плавному чтению UI [source]
+        db.beginTransactionNonExclusive();
+        try {
+            ContentValues values = new ContentValues();
+            values.put("message_type", type.trim());
+            values.put("file_path", path != null ? path.trim() : null);
+
+            // 2. ИСПРАВЛЕНИЕ: Контролируем количество измененных строк на диске
+            int affectedRows = db.update(
+                    "messages",
+                    values,
+                    "id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(messageId)}
+            );
+
+            // Если строка физически обновилась на диске смартфона — фиксируем транзакцию
+            if (affectedRows > 0) {
+                db.setTransactionSuccessful(); // Намертво записываем изменения в лог WAL [source]
+                isUpdated = true;
+                Log.d("MailLis_DB_MediaUpdate", "🎉 Успешно обновлен тип контента (" + type + ") и путь к файлу для сообщения ID: " + messageId);
+            } else {
+                Log.w("MailLis_DB_MediaUpdate", "Предупреждение: сообщение с ID " + messageId + " не найдено. Данные медиа не изменены.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_MediaUpdate", "Критическая ошибка транзакции при обновлении медиа-параметров для ID: " + messageId, e);
+            e.printStackTrace();
+            isUpdated = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул многопоточности WAL [source]
+            db.endTransaction();
+        }
+
+        return isUpdated;
     }
 
     public long createGroupChat(String groupName, byte[] generatedGroupKey, String creatorEmail) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         long localId = -1;
 
-        try {
-            //long globalUniqueId = System.currentTimeMillis(); // Генерируем уникальный сквозной ID группы
+        // КРИТИЧЕСКИЙ ФИКС КОЛЛИЗИИ: Генерируем уникальный сквозной глобальный ID группы на базе таймстемпа!
+        // Число вида 1793948574932 никогда не совпадет с локальными автоинкрементами 1, 2, 3...
+        long globalUniqueId = System.currentTimeMillis();
 
-            // 1. СБОРКА ДАННЫХ ДЛЯ НОВОЙ ТАБЛИЦЫ GROUP_CHATS
-            var values = new ContentValues();
-            // ИСПРАВЛЕНИЕ: Используем правильные новые имена колонок
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Защищает пишущий поток от конфликтов с фоновой службой синхронизации SyncRunnable [source]
+        db.beginTransactionNonExclusive();
+        try {
+            // =========================================================================
+            // ШАГ 1: СБОРКА ДАННЫХ ДЛЯ ТАБЛИЦЫ GROUP_CHATS
+            // =========================================================================
+            ContentValues values = new ContentValues();
             values.put("group_name", groupName != null ? groupName.trim() : "Новая группа");
             values.put("creator_email", creatorEmail != null ? creatorEmail.trim().toLowerCase() : "unknown@mail.ru");
             values.put("group_secret_key", generatedGroupKey);
 
+            // Сразу записываем сгенерированный глобальный ID, общий для всей P2P-сети!
+            values.put("remote_group_id", globalUniqueId);
+
             // Вставляем запись в таблицу групповых чатов
             localId = db.insert("group_chats", null, values);
 
-            // 2. СИНХРОНИЗАЦИЯ: Так как мы создатели группы, наш локальный ID
-            // должен стать глобальным remote_group_id для всех будущих участников группы
+            // =========================================================================
+            // ШАГ 2: КОНТРОЛЬ РЕЗУЛЬТАТА И ЗАВЕРШЕНИЕ ТРАНЗАКЦИИ
+            // =========================================================================
             if (localId != -1) {
-                ContentValues updateValues = new ContentValues();
-                updateValues.put("remote_group_id", localId);
-
-                // Точечно обновляем только что созданную строку
-                db.update(
-                        "group_chats",
-                        updateValues,
-                        "id = CAST(? AS INTEGER)",
-                        new String[]{String.valueOf(localId)}
-                );
-
-                Log.i("MailLis_DB_Group", "Успешно создана группа \"" + groupName
-                        + "\" в таблице group_chats. Присвоен ID: " + localId);
+                // Коммитим транзакцию на физический накопитель только при успешном INSERT [source]
+                db.setTransactionSuccessful();
+                Log.i("MailLis_DB_Group", "🎉 Группа \"" + groupName + "\" успешно создана в транзакции.");
+                Log.d("MailLis_DB_Group", "Локальный ID: " + localId + " | Глобальный P2P ID (remote_group_id): " + globalUniqueId);
+            } else {
+                Log.w("MailLis_DB_Group", "Ошибка insert: база данных вернула -1 при создании группы " + groupName);
             }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB_Group", "Критическая ошибка при создании группы: " + groupName, e);
+            Log.e("MailLis_DB_Group", "Критическая ошибка транзакции при создании группы: " + groupName, e);
             e.printStackTrace();
+            localId = -1;
+        } finally {
+            // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
 
         return localId;
     }
-
-    /**
-     * Проверяет, является ли переданный ID глобальным идентификатором группового чата.
-     * Ищет строго по колонке remote_group_id для исключения ложных срабатываний автоинкремента.
-     *
-     * @param chatId числовой идентификатор чата из активности или сетевого слоя
-     * @return true, если это гарантированно группа; false, если это одиночный чат
-     */
     public boolean isGroupChat(long chatId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         boolean isGroup = false;
@@ -1225,56 +1768,116 @@ public class DBServiceSQLite implements DBService {
         return isGroup;
     }
 
-    public void saveReceivedGroupChat(long remoteChatId, String incomingGroupName,
-                                      byte[] decryptedGroupKey, String creatorEmail) {
+    public boolean saveReceivedGroupChat(long remoteChatId, String incomingGroupName,
+                                         byte[] decryptedGroupKey, String creatorEmail) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean isSuccess = false;
 
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому конвейеру дописывать крипто-ключи, не блокируя секундный таймер интерфейса [source]
+        db.beginTransactionNonExclusive();
         try {
-            var values = new ContentValues();
+            // =========================================================================
+            // ШАГ 1: СБОРКА ДАННЫХ ДЛЯ ТАБЛИЦЫ GROUP_CHATS
+            // =========================================================================
+            ContentValues values = new ContentValues();
 
-            // КРИТИЧЕСКИ ВАЖНО: записываем ID создателя в колонку remote_group_id,
-            // чтобы у всех участников группы был один и тот же глобальный идентификатор синхронизации!
+            // Записываем глобальный remote_group_id, общий для всей P2P-сети
             values.put("remote_group_id", remoteChatId);
             values.put("group_name", incomingGroupName != null ? incomingGroupName.trim() : "Групповой чат");
             values.put("creator_email", creatorEmail != null ? creatorEmail.trim().toLowerCase() : "unknown@mail.ru");
 
-            // Ключ записываем только если он успешно расшифрован (на этапе финального инвайта)
+            // Ключ записываем только если он успешно расшифрован на этапе финального инвайта [source]
             if (decryptedGroupKey != null && decryptedGroupKey.length > 0) {
                 values.put("group_secret_key", decryptedGroupKey);
             }
 
-            // Используем insertWithOnConflict с флагом CONFLICT_REPLACE.
-            // Так как на колонку remote_group_id установлено ограничение UNIQUE, SQLite при повторном инвайте
-            // просто перезапишет старую строку свежими данными (например, допишет AES-ключ поверх заготовки чата).
+            // =========================================================================
+            // ШАГ 2: АТОМАРНЫЙ ИМПОРТ С ПЕРЕЗАПИСЬЮ ПРИ КОНФЛИКТАХ
+            // =========================================================================
+            // Так как на колонку remote_group_id установлено ограничение UNIQUE, SQLite
+            // автоматически перезапишет старую заготовку чата свежим AES-ключом [source].
             long rowId = db.insertWithOnConflict(
                     "group_chats",
                     null,
                     values,
-                    CONFLICT_REPLACE
+                    SQLiteDatabase.CONFLICT_REPLACE
             );
 
-            Log.i("MailLis_DB_Group", "Группа успешно импортирована в таблицу group_chats. Локальный ID: " + rowId + " (Remote ID: " + remoteChatId + ")");
+            if (rowId != -1) {
+                // Коммитим транзакцию на физический диск только при успешной записи [source]
+                db.setTransactionSuccessful();
+                isSuccess = true;
+                Log.i("MailLis_DB_Group", "🎉 Группа успешно импортирована/обновлена в транзакции. Локальный ID: "
+                        + rowId + " (Remote ID: " + remoteChatId + ")");
+            } else {
+                Log.w("MailLis_DB_Group", "Ошибка CONFLICT_REPLACE: база данных вернула -1 для группы ID: " + remoteChatId);
+            }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB_Group", "Критический сбой сохранения полученного группового чата. Remote ID: " + remoteChatId, e);
+            Log.e("MailLis_DB_Group", "Критическая ошибка транзакции при сохранении полученного чата. Remote ID: " + remoteChatId, e);
             e.printStackTrace();
+            isSuccess = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
+
+        return isSuccess;
     }
 
-    public void savePublicKey(String email, byte[] publicKeyBytes) {
-        if (email == null || publicKeyBytes == null) return;
+    public boolean savePublicKey(String email, byte[] publicKeyBytes) {
+        if (email == null || email.trim().isEmpty() || publicKeyBytes == null || publicKeyBytes.length == 0) {
+            Log.w("MailLis_DB_CryptoCache", "savePublicKey: отмена, переданы пустые или невалидные параметры.");
+            return false;
+        }
+
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        String normalizedEmail = email.trim().toLowerCase();
+        boolean isSuccess = false;
+
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому конвейеру сохранять ключи, не блокируя секундный таймер UI-потока [source]
+        db.beginTransactionNonExclusive();
         try {
+            // =========================================================================
+            // ШАГ 1: СБОРКА ДАННЫХ ДЛЯ ТАБЛИЦЫ PUBLIC_KEYS
+            // =========================================================================
             ContentValues values = new ContentValues();
-            values.put("email", email.trim().toLowerCase());
+            values.put("email", normalizedEmail);
             values.put("peer_public_key", publicKeyBytes);
 
-            // CONFLICT_REPLACE гарантирует автоматический апдейт ключа при его изменении
-            db.insertWithOnConflict("public_keys", null, values, CONFLICT_REPLACE);
-            Log.d("MailLis_Cache", "Ключ для " + email + " успешно сохранен в кэш public_keys");
+            // =========================================================================
+            // ШАГ 2: АТОМАРНАЯ ЗАПИСЬ С ОБНОВЛЕНИЕМ ПРИ КОНФЛИКТАХ (CONFLICT_REPLACE)
+            // =========================================================================
+            // Если на колонку email установлено ограничение UNIQUE/PRIMARY KEY, СУБД
+            // автоматически обновит старый ключ свежим бинарным массивом [source].
+            long rowId = db.insertWithOnConflict(
+                    "public_keys",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_REPLACE
+            );
+
+            if (rowId != -1) {
+                // Коммитим транзакцию на физический накопитель только при успешной записи [source]
+                db.setTransactionSuccessful();
+                isSuccess = true;
+                Log.d("MailLis_DB_CryptoCache", "🔒 Ключ для " + normalizedEmail + " успешно сохранен в кэш public_keys. RowID: " + rowId);
+            } else {
+                Log.w("MailLis_DB_CryptoCache", "Ошибка CONFLICT_REPLACE: база данных вернула -1 для email: " + normalizedEmail);
+            }
+
         } catch (Exception e) {
+            Log.e("MailLis_DB_CryptoCache", "Критическая ошибка транзакции при сохранении публичного ключа для: " + normalizedEmail, e);
             e.printStackTrace();
+            isSuccess = false;
+        } finally {
+            // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
+
+        return isSuccess;
     }
 
     public byte[] getPublicKeyByEmail(String email) {
@@ -1295,19 +1898,23 @@ public class DBServiceSQLite implements DBService {
         return key;
     }
 
-
-    /**
-     * Безопасно добавляет участника в группу, используя глобальный remote_group_id.
-     * Автоматически вычисляет локальный ID группы для сохранения целостности связей БД.
-     */
-    public void addGroupMember(long remoteGroupId, String userEmail) {
-        if (userEmail == null || userEmail.isEmpty()) return;
+    public boolean addGroupMember(long remoteGroupId, String userEmail) {
+        if (userEmail == null || userEmail.trim().isEmpty()) {
+            Log.w("MailLis_DB_Members", "addGroupMember: отмена, передан пустой userEmail.");
+            return false;
+        }
 
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         String normalizedEmail = userEmail.trim().toLowerCase();
+        boolean isSuccess = false;
 
+        // 1. ОТКРЫВАЕМ БЕЗОПАСНУЮ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Позволяет фоновому конвейеру писать состав группы, не блокируя секундный таймер UI-потока [source]
+        db.beginTransactionNonExclusive();
         try {
-            // 1. НАХОДИМ РЕАЛЬНЫЙ ЛОКАЛЬНЫЙ ID ГРУППЫ по её глобальному remote_group_id или id
+            // =========================================================================
+            // ШАГ 1: НАХОДИМ РЕАЛЬНЫЙ ЛОКАЛЬНЫЙ ID ГРУППЫ [source]
+            // =========================================================================
             long localGroupId = -1;
             String findIdSql = "SELECT id FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) OR id = CAST(? AS INTEGER) LIMIT 1";
 
@@ -1317,43 +1924,54 @@ public class DBServiceSQLite implements DBService {
                 }
             }
 
-            // Если группа не найдена (например, инвайт еще не обработан), пишем лог и выходим
+            // Если группа не найдена (например, инвайт еще не успел создаться), выходим с откатом транзакции
             if (localGroupId == -1) {
-                Log.e("MailLis_DB", "Не удалось добавить мембера " + normalizedEmail + ": группа с ID " + remoteGroupId + " не найдена в group_chats!");
-                return;
+                Log.e("MailLis_DB_Members", "Не удалось добавить мембера " + normalizedEmail + ": группа с ID " + remoteGroupId + " не найдена в group_chats!");
+                db.setTransactionSuccessful(); // Фиксируем "пустой" успех, чтобы закрыть транзакцию без падения
+                return false;
             }
 
-            // 2. ЗАЩИТА ОТ ДУБЛИКАТОВ
+            // =========================================================================
+            // ШАГ 2: ЗАЩИТА ОТ ДУБЛИКАТОВ (Повторный инвайт или веерный SMTP-пакет) [source]
+            // =========================================================================
             String checkSql = "SELECT 1 FROM group_members WHERE group_id = CAST(? AS INTEGER) AND user_email LIKE ? LIMIT 1";
             try (Cursor cursor = db.rawQuery(checkSql, new String[]{String.valueOf(localGroupId), normalizedEmail})) {
                 if (cursor != null && cursor.moveToFirst()) {
-                    Log.d("MailLis_DB", "Пользователь " + normalizedEmail + " уже состоит в группе " + remoteGroupId);
-                    return;
+                    db.setTransactionSuccessful(); // Закрываем транзакцию — юзер уже на месте, цель достигнута [source]
+                    Log.d("MailLis_DB_Members", "Пользователь " + normalizedEmail + " уже состоит в группе " + remoteGroupId);
+                    return true;
                 }
             }
 
-            // 3. ВСТАВКА В ТАБЛИЦУ С ПРАВИЛЬНЫМ ЛОКАЛЬНЫМ ID
-            var values = new ContentValues();
-            values.put("group_id", localGroupId); // Записываем вычисленный локальный ID (1, 2, 3...)
+            // =========================================================================
+            // ШАГ 3: СБОРКА ДАННЫХ И АТОМАРНАЯ ВСТАВКА В БАЗУ ДАННЫХ
+            // =========================================================================
+            ContentValues values = new ContentValues();
+            values.put("group_id", localGroupId); // Записываем вычисленный локальный ID (1, 2, 3...) [source]
             values.put("user_email", normalizedEmail);
 
-            db.insert("group_members", null, values);
-            Log.i("MailLis_DB", "В группу " + remoteGroupId + " (локальный ID: " + localGroupId + ") успешно добавлен: " + normalizedEmail);
+            long rowId = db.insert("group_members", null, values);
+
+            if (rowId != -1) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения на флеш-памяти [source]
+                isSuccess = true;
+                Log.i("MailLis_DB_Members", "👥 В группу " + remoteGroupId + " (локальный ID: " + localGroupId + ") успешно добавлен: " + normalizedEmail);
+            } else {
+                Log.w("MailLis_DB_Members", "Ошибка insert: база данных вернула -1 при добавлении мембера " + normalizedEmail);
+            }
 
         } catch (Exception e) {
-            Log.e("MailLis_DB", "Ошибка при добавлении мембера " + normalizedEmail, e);
+            Log.e("MailLis_DB_Members", "Критическая ошибка транзакции при добавлении мембера: " + normalizedEmail, e);
             e.printStackTrace();
+            isSuccess = false;
+        } finally {
+            // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
+
+        return isSuccess;
     }
 
-    /**
-     * Возвращает список Email-адресов всех участников конкретной группы (исключая свой собственный).
-     * Гарантированно работает как на устройстве Создателя, так и у приглашенных Участников.
-     *
-     * @param groupId числовой идентификатор чата (локальный id или глобальный remote_group_id)
-     * @param myEmail email текущего пользователя приложения (чтобы исключить себя из рассылки)
-     * @return список email-адресов участников группы
-     */
     public List<String> getGroupMembers(long groupId, String myEmail) {
         List<String> members = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -1393,14 +2011,6 @@ public class DBServiceSQLite implements DBService {
         return members;
     }
 
-    /**
-     * Извлекает секретный AES-ключ группы по её идентификатору.
-     * Ищет совпадения как по локальному ID (для создателя), так и по remote_group_id (для участников).
-     * Защищено от багов приведения типов данных (Type Mismatch) на Android 14+.
-     *
-     * @param groupId числовой идентификатор чата, полученный из Intent или сообщений
-     * @return 32-байтный массив секретного AES-ключа группы, либо null, если группа не найдена
-     */
     public byte[] getGroupSecretKey(long groupId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         byte[] key = null;
@@ -1433,43 +2043,50 @@ public class DBServiceSQLite implements DBService {
     }
 
     public boolean deletePublicKeyByEmail(String email) {
-        if (email == null || email.isEmpty()) {
+        if (email == null || email.trim().isEmpty()) {
+            Log.w("MailLis_CryptoCache", "deletePublicKeyByEmail: отмена, передан пустой email.");
             return false;
         }
 
         SQLiteDatabase db = dbHelper.getWritableDatabase();
+        String normalizedEmail = email.trim().toLowerCase();
         boolean isDeleted = false;
 
-        // 1. Стандартизируем Email: убираем пробелы по краям и переводим в нижний регистр
-        String normalizedEmail = email.trim().toLowerCase();
-
+        // 1. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ [source]
+        // Защищает пишущий поток от коллизий с секундным таймером и фоновым сервисом IMAP/SMTP [source]
+        db.beginTransactionNonExclusive();
         try {
-            // 2. Выполняем точечное удаление строки из таблицы public_keys.
-            // Оператор LIKE обеспечивает регистронезависимое сравнение байт и защищает от Type Mismatch.
+            // =========================================================================
+            // ВЫПОЛНЯЕМ ТОЧЕЧНОЕ УДАЛЕНИЕ СТРОКИ ИЗ ТАБЛИЦЫ PUBLIC_KEYS
+            // =========================================================================
+            // Оператор LIKE совместно с нижним регистром защищает от скрытых пробелов
             int rowsAffected = db.delete(
                     "public_keys",
                     "email LIKE ?",
                     new String[]{normalizedEmail}
             );
 
-            isDeleted = (rowsAffected > 0);
-            Log.d("MailLis_Crypto", "Удаление ключа для " + normalizedEmail + ". Очищено строк кэша: " + rowsAffected);
+            // Если из таблицы физически исчезла запись — коммитим транзакцию
+            if (rowsAffected > 0) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения на флеш-памяти [source]
+                isDeleted = true;
+                Log.d("MailLis_Crypto", "🎉 Успешно! deletePublicKeyByEmail: Ключ для " + normalizedEmail + " удален. Очищено строк: " + rowsAffected);
+            } else {
+                Log.w("MailLis_Crypto", "Предупреждение: ключ для " + normalizedEmail + " не найден в кэше public_keys.");
+            }
 
         } catch (Exception e) {
-            Log.e("MailLis_Crypto", "Критическая ошибка при удалении публичного ключа для: " + normalizedEmail, e);
+            Log.e("MailLis_Crypto", "Критическая ошибка транзакции при удалении публичного ключа для: " + normalizedEmail, e);
             e.printStackTrace();
+            isDeleted = false;
+        } finally {
+            // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
+            db.endTransaction();
         }
 
         return isDeleted;
     }
 
-    /**
-     * Полностью и гарантированно удаляет групповой чат, всех его участников и историю сообщений.
-     * Выполняет явную последовательную очистку таблиц в обход отключенных по умолчанию Foreign Keys в Android.
-     *
-     * @param groupId числовой идентификатор чата (локальный id или глобальный remote_group_id)
-     * @return true, если удаление из всех таблиц прошло успешно; false в случае сбоя
-     */
     public boolean deleteGroupChatAndMessages(long groupId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         boolean success;
@@ -1553,15 +2170,6 @@ public class DBServiceSQLite implements DBService {
         return recipientEmail;
     }
 
-    /**
-     * Возвращает список Email-адресов всех участников конкретной группы (исключая свой собственный).
-     * Гарантированно работает как на устройстве Создателя, так и у приглашенных Участников.
-     * Использует реляционный подзапрос для сопоставления локальных и глобальных ID групп.
-     *
-     * @param groupId числовой идентификатор чата из активности (локальный id или глобальный remote_group_id)
-     * @param myEmail email текущего пользователя приложения (чтобы исключить себя из списка рассылки)
-     * @return список email-адресов участников группы в нижнем регистре
-     */
     public List<String> getGroupMembersEmails(long groupId, String myEmail) {
         List<String> membersList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -1601,5 +2209,41 @@ public class DBServiceSQLite implements DBService {
         }
 
         return membersList;
+    }
+
+    public boolean removeGroupMemberByEmail(long groupId, String userEmail) {
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        boolean success = false;
+        String normalizedEmail = userEmail.trim().toLowerCase();
+
+        db.beginTransaction();
+        try {
+            // 1. Находим локальный ID группы (подстраховка от ID Mismatch)
+            long localGroupId = -1;
+            String findIdSql = "SELECT id FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) OR id = CAST(? AS INTEGER) LIMIT 1";
+            try (Cursor cursor = db.rawQuery(findIdSql, new String[]{String.valueOf(groupId), String.valueOf(groupId)})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    localGroupId = cursor.getLong(0);
+                }
+            }
+
+            if (localGroupId != -1) {
+                // 2. Удаляем строку из линкера участников
+                int rows = db.delete("group_members", "group_id = CAST(? AS INTEGER) AND user_email LIKE ?",
+                        new String[]{String.valueOf(localGroupId), normalizedEmail});
+
+                // 3. Вырезаем публичный ключ участника, чтобы исключить утечку и спам
+                db.delete("public_keys", "email LIKE ?", new String[]{normalizedEmail});
+
+                db.setTransactionSuccessful();
+                success = rows > 0;
+                Log.i("MailLis_DB_Sync", "Участник " + normalizedEmail + " успешно удален из группы " + groupId);
+            }
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Sync", "Ошибка удаления участника " + normalizedEmail, e);
+        } finally {
+            db.endTransaction();
+        }
+        return success;
     }
 }

@@ -5,7 +5,10 @@ import static android.content.Context.MODE_PRIVATE;
 import static android.widget.Toast.LENGTH_SHORT;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.GROUP_LEAVE;
+import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
+import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 
 import android.app.AlertDialog;
 import android.content.Context;
@@ -26,6 +29,8 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.activity.ChatActivity;
+import ru.toboe512.maillis.client.EmailClient;
+import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.ChatPreview;
 import ru.toboe512.maillis.utils.ChatDiffCallback;
@@ -35,11 +40,13 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     private final List<ChatPreview> chatList;
     private final Context context;
     private final DBService dbService; // Помощник для удаления из SQLite
+    private final EmailClient emailClient;
 
-    public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService) {
+    public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService, EmailClient emailClient) {
         this.context = context;
         this.chatList = chatList;
         this.dbService = dbService;
+        this.emailClient = emailClient;
     }
 
     @NonNull
@@ -105,13 +112,15 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     // Удаление записи из SQLite и анимация списка
     private void deleteChatFromDatabase(int chatId, int position) {
         // Удаляем сам чат. Связанные сообщения в SQLite удалятся автоматически благодаря ON DELETE CASCADE
-        boolean isDeleted;
         List<String> members = new ArrayList<>();
         ChatPreview chatPreview = chatList.get(position);
 
         if (chatPreview == null) {
             return;
         }
+
+        boolean isDeleted;
+
         if (chatPreview.isGroup()) {
             // Загружаем наш собственный логин из SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -119,7 +128,14 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             //Вытаскиваем email участников, чтобы зачистить их ключи из public_keys
             members = dbService.getGroupMembers(chatId, myEmail);
             //  dbService.deleteGroupMembersByRemoteId(chatId);
+            long currentTimestamp = System.currentTimeMillis();
+            int generatedId = dbService.saveGroupMessage(chatId, myEmail,
+                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
+            emailClient.sendGroupMessageOverNetwork(chatId,
+                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs);
+
             isDeleted = dbService.deleteGroupChatAndMessages(chatId);
+
         } else {
             // Удаляем данные из SQLite
             members.add(dbService.getRecipientEmailByChatId(chatId));

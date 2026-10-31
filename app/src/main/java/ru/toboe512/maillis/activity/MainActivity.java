@@ -1,5 +1,8 @@
 package ru.toboe512.maillis.activity;
 
+import static android.Manifest.permission.POST_NOTIFICATIONS;
+import static android.content.pm.PackageManager.PERMISSION_GRANTED;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -22,6 +25,8 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ChatsAdapter;
+import ru.toboe512.maillis.client.EmailClient;
+import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.ChatPreview;
@@ -40,12 +45,13 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         List<ChatPreview> chatList = new ArrayList<>();
 
         dbService = DBServiceSQLite.getInstance(this);
-        chatsAdapter = new ChatsAdapter(this, chatList, dbService);
+        chatsAdapter = new ChatsAdapter(this, chatList, dbService,
+                EmailClientImpl.getInstance(dbService, this));
 
         // Пропишите это в onCreate() вашей MainActivity для проверки и запроса прав
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 101);
+            if (checkSelfPermission(POST_NOTIFICATIONS) != PERMISSION_GRANTED) {
+                requestPermissions(new String[]{POST_NOTIFICATIONS}, 101);
             }
         }
 

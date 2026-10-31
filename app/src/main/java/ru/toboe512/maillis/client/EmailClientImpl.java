@@ -11,6 +11,7 @@ import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_INVITE_MAIL;
+import static ru.toboe512.maillis.consts.Consts.GROUP_LEAVE;
 import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_PRE_INVITE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_PRE_INVITE_RESPONSE_MAIL;
@@ -53,6 +54,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.Authenticator;
@@ -178,6 +180,11 @@ public class EmailClientImpl implements EmailClient {
                         deleteMessage(msg, inbox);
                         continue;
                     }
+                    if (subject.contains(GROUP_LEAVE)) {
+                        maillisGroupLeave(msg);
+                        deleteMessage(msg, inbox);
+                        continue;
+                    }
                     String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
                     //Далее блок ловли хендшейка свои майлы нам не интересны
                     if (senderEmail.contains(myEmail)) {
@@ -239,6 +246,30 @@ public class EmailClientImpl implements EmailClient {
         return result;
     }
 
+    private boolean maillisGroupLeave(Message msg) {
+        try {
+            String[] parts = msg.getSubject().split(" ");
+            long remoteGroupId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
+
+            // Читаем из тела письма, какой именно Email покинул чат
+            String leaverEmail = msg.getContent().toString().trim().toLowerCase();
+
+            if (remoteGroupId > 0 && !leaverEmail.isEmpty()) {
+                // Принудительно вырезаем его из SQLite участников и кэша публичных ключей Tink
+                dbService.removeGroupMemberByEmail(remoteGroupId, leaverEmail);
+
+                // Локально пишем системное сообщение в чат для уведомления пользователя
+                dbService.saveIncomingGroupMessage(remoteGroupId, "Система",
+                        GROUP_LEAVE, "🏃 Пользователь " + leaverEmail + " покинул чат.",
+                        System.currentTimeMillis(), extractMsgId(msg), "TEXT", null);
+
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return true;
+    }
+
     private boolean maillisReadReceipt(Message msg) throws MessagingException, IOException {
         // 💥 ПОЙМАЛИ ОТЧЕТ О ПРОЧТЕНИИ ЧАТА!
         // В теле этого письма друг прислал нам Message-ID нашего же отправленного ранее сообщения
@@ -257,6 +288,16 @@ public class EmailClientImpl implements EmailClient {
 
         if (groupChatId <= 0 || !dbService.isGroupChat(groupChatId)) {
             return false;
+        }
+
+        // АВТО-СИНХРОНИЗАЦИЯ: Достаем служебный заголовок состава участников
+        String[] membersHeader = msg.getHeader("X-MailLis-Group-Members");
+        if (membersHeader != null && membersHeader.length > 0) {
+            String[] incomingEmails = membersHeader[0].split(",");
+            for (String email : incomingEmails) {
+                // Метод addGroupMember внутри себя сам проверит дубликаты и привяжет к нужному localId!
+                dbService.addGroupMember(groupChatId, email.trim().toLowerCase());
+            }
         }
 
         byte[] groupKey = dbService.getGroupSecretKey(groupChatId);
@@ -331,12 +372,13 @@ public class EmailClientImpl implements EmailClient {
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         try {
             // Парсим ID чата, назначенный создателем группы
-            String[] parts = msg.getSubject().split(" ");
+            String[] parts = msg.getSubject().split(SPACE_STRING);
             long remoteChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
 
             if (remoteChatId <= 0) {
                 return false;
             }
+
             String body = msg.getContent().toString().trim();
             String[] bodyLines = body.split("\\r\\n");
 
@@ -345,13 +387,23 @@ public class EmailClientImpl implements EmailClient {
 
             byte[] creatorPublicKeyBytes = Base64.decode(creatorPublicKeyBase64, NO_WRAP);
 
+            // АВТО-СИНХРОНИЗАЦИЯ: Достаем служебный заголовок состава участников
+            String[] membersHeader = msg.getHeader("X-MailLis-Group-Members");
+            if (membersHeader != null && membersHeader.length > 0) {
+                String[] incomingEmails = membersHeader[0].split(",");
+                for (String email : incomingEmails) {
+                    // Метод addGroupMember внутри себя сам проверит дубликаты и привяжет к нужному localId!
+                    dbService.addGroupMember(remoteChatId, email.trim().toLowerCase());
+                }
+            }
+
             // 1. Сохраняем публичный Tink-ключ создателя группы в таблицу контактов,
             // чтобы мы могли шифровать сообщения лично для него
             dbService.savePublicKey(senderEmail, creatorPublicKeyBytes);
 
             // 2. Создаем у себя заготовку группового чата (пока без секретного AES-ключа группы)
             dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, null, senderEmail);
-            dbService.addGroupMember(remoteChatId, senderEmail); // Записываем создателя как участника
+            //dbService.addGroupMember(remoteChatId, senderEmail); // Записываем создателя как участника
 
             Log.i("MailLis_P2P_Group", "Поймали Pre-Invite в группу \"" + incomingGroupName + "\". Высылаем свой Tink-ключ в ответ...");
 
@@ -834,7 +886,7 @@ public class EmailClientImpl implements EmailClient {
                                 String base64GroupText = Base64.encodeToString(encryptedBytes, NO_WRAP);
 
                                 // Вызываем наш веерный SMTP метод
-                                sendGroupMessageOverNetwork(chatId, base64GroupText, msg.getId(), prefs);
+                                sendGroupMessageOverNetwork(chatId, msg.getSubject(), base64GroupText, msg.getId(), prefs);
                                 Log.d("MailLis_Retry", "Групповое сообщение " + msg.getId() +
                                         " успешно отправлено в очередь ретрая.");
                             } else {
@@ -1042,7 +1094,21 @@ public class EmailClientImpl implements EmailClient {
                 List<String> recipients = dbService.getGroupMembers(chatId, myEmail);
                 Session session = createSmtpSession(prefs);
 
+
+                // Склеиваем список участников в одну строку через запятую для заголовка
+                StringBuilder membersSb = new StringBuilder(myEmail); // Начинаем со своего email
+                for (String email : recipients) {
+                    membersSb.append(",").append(email);
+                }
+                String groupComposition = membersSb.toString();
+
                 String generatedServerUid = EMPTI_STRING;
+
+                recipients = recipients
+                        .stream()
+                        .filter(e -> !e.equals(myEmail))
+                        .collect(Collectors.toList());
+
                 // ВЕЕРНАЯ РАССЫЛКА: Шлем копию письма каждому участнику отдельно
                 for (String recipientEmail : recipients) {
                     var message = new MimeMessage(session);
@@ -1055,6 +1121,7 @@ public class EmailClientImpl implements EmailClient {
                     var multipart = getMimeMultipart(currentTimestamp, base64EncryptedImage);
 
                     message.setContent(multipart);
+                    message.addHeader("X-MailLis-Group-Members", groupComposition);
                     message.saveChanges();
 
                     Transport.send(message);
@@ -1087,7 +1154,7 @@ public class EmailClientImpl implements EmailClient {
     }
 
 
-    public void sendGroupMessageOverNetwork(long chatId, String cipherTextBase64, int localMessageId, SharedPreferences prefs) {
+    public void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs) {
         networkExecutor.execute(() -> {
             try {
                 dbService.markMessageAsSending(localMessageId);
@@ -1095,9 +1162,23 @@ public class EmailClientImpl implements EmailClient {
 
                 // Получаем всех участников этой группы из SQLite
                 List<String> recipients = dbService.getGroupMembers(chatId, myEmail);
+
+                // Склеиваем список участников в одну строку через запятую для заголовка
+                StringBuilder membersSb = new StringBuilder(myEmail); // Начинаем со своего email
+                for (String email : recipients) {
+                    membersSb.append(",").append(email);
+                }
+                String groupComposition = membersSb.toString();
+
                 Session session = createSmtpSession(prefs);
 
                 String generatedServerUid = EMPTI_STRING;
+
+                recipients = recipients
+                        .stream()
+                        .filter(e -> !e.equals(myEmail))
+                        .collect(Collectors.toList());
+
                 // ВЕЕРНАЯ РАССЫЛКА: Шлем копию письма каждому участнику отдельно
                 for (String recipientEmail : recipients) {
                     var message = new MimeMessage(session);
@@ -1105,8 +1186,10 @@ public class EmailClientImpl implements EmailClient {
                     message.setRecipients(TO, InternetAddress.parse(recipientEmail));
 
                     // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
-                    message.setSubject(GROUP_MESSAGE_MAIL + SPACE_STRING + chatId);
+                    message.setSubject(subject);
                     message.setText(cipherTextBase64);
+                    // КРИТИЧЕСКИЙ ФИКС: Передаем весь состав группы прямо внутри метаданных заголовка письма!
+                    message.addHeader("X-MailLis-Group-Members", groupComposition);
                     message.saveChanges();
 
                     Transport.send(message);
@@ -1138,6 +1221,16 @@ public class EmailClientImpl implements EmailClient {
                 // Проверяем, есть ли у нас публичный ключ Tink этого друга
                 byte[] peerPublicKeyBytes = dbService.getPublicKeyByEmail(recipientEmail);
 
+                // Получаем всех участников этой группы из SQLite
+                List<String> recipients = dbService.getGroupMembers(chatId, myEmail);
+
+                // Склеиваем список участников в одну строку через запятую для заголовка
+                StringBuilder membersSb = new StringBuilder(myEmail); // Начинаем со своего email
+                for (String email : recipients) {
+                    membersSb.append(",").append(email);
+                }
+                String groupComposition = membersSb.toString();
+
                 var message = new MimeMessage(session);
                 message.setFrom(new InternetAddress(myEmail));
                 message.setRecipients(TO, InternetAddress.parse(recipientEmail));
@@ -1161,7 +1254,9 @@ public class EmailClientImpl implements EmailClient {
                     Log.w("MailLis_Group", "Ключа друга нет. Отправлен безопасный Pre-Invite для: " + recipientEmail);
                 }
 
+                message.addHeader("X-MailLis-Group-Members", groupComposition);
                 message.saveChanges();
+
                 Transport.send(message);
 
             } catch (Exception e) {
@@ -1183,10 +1278,12 @@ public class EmailClientImpl implements EmailClient {
                 // Сигнализируем создателю группы, возвращая наш публичный ключ Tink
                 message.setSubject(GROUP_PRE_INVITE_RESPONSE_MAIL + SPACE_STRING + chatId);
                 String myPublicKeyBas64 = cryptoService.getMyPublicKeyBas64();
-                message.setText(myPublicKeyBas64);
 
+                message.setText(myPublicKeyBas64);
                 message.saveChanges();
+
                 Transport.send(message);
+
                 Log.d("MailLis_Group", "Ответ на Pre-Invite успешно отправлен создателю: " + creatorEmail);
             } catch (Exception e) {
                 e.printStackTrace();

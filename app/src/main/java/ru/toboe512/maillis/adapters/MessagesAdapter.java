@@ -315,12 +315,12 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     private void deleteMessageFromDb(int messageId, int position) {
 
         // Удаляем строго по первичному ключу ID сообщения
-        int rowsDeleted = dbService.deleteMessage(messageId);
+        boolean rowsDeleted = dbService.deleteMessage(messageId);
 
         messageDtoList.remove(position);
         // Красивая плавная анимация исчезновения сообщения из списка
         notifyItemRemoved(position);
-        if (rowsDeleted <= 0) {
+        if (!rowsDeleted) {
             return;
         }
         notifyItemRangeChanged(position, messageDtoList.size());
