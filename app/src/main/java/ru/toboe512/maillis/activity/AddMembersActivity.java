@@ -3,11 +3,13 @@ package ru.toboe512.maillis.activity;
 import static android.content.Intent.getIntent;
 
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -15,7 +17,10 @@ import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.Toast;
 
+import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,41 +40,37 @@ public class AddMembersActivity extends AppCompatActivity {
     private EmailClient emailClient;
     private SharedPreferences prefs;
     private ListView listView;
-    private List<Contact> availableContacts = new ArrayList<>();
+    private final List<Contact> availableContacts = new ArrayList<>();
 
     @Override
-    protected void onCreate(Bundle Bundle) {
-        super.onCreate(Bundle);
+    protected void onCreate(Bundle savedInstanceState) {
+        // Извлекаем ID группы с проверкой на "всеядность" типов данных (int / long)
+        if (getIntent() != null) {
+            // Пробуем считать как long (наш эталонный P2P ID на базе таймстемпа)
+            groupId = getIntent().getLongExtra("GROUP_ID", -1);
 
-        // =========================================================================
-        // УЛЬТИМАТИВНЫЙ ФИКС ЧАСОВ: ДЕЛАЕМ ШТОРКУ ПРОЗРАЧНОЙ И КАСКАДНОЙ
-        // =========================================================================
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            Window window = getWindow();
-
-            // 1. Сбрасываем любые полноэкранные флаги, которые могли принудительно гасить часы
-            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
-            // 2. Включаем режим кастомной отрисовки фона под шторкой
-            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-
-            // 3. Делаем саму полосу шторки полностью прозрачной (чтобы тулбар просвечивал сквозь неё)
-            window.setStatusBarColor(Color.TRANSPARENT);
-
-            // 4. Заставляем разметку заехать ПОД прозрачную шторку, но вернуть иконки часов
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                View decorView = window.getDecorView();
-                // Флаг LAYOUT_STABLE стабилизирует часы, а LAYOUT_FULLSCREEN пускает цвет наверх
-                int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
-
-                // Жестко вырезаем флаг LIGHT_STATUS_BAR, заставляя часы намертво стать БЕЛЫМИ!
-                decorView.setSystemUiVisibility(flags);
+            // Если вернулся -1, значит из ChatActivity прилетело число типа int!
+            if (groupId == -1) {
+                int intGroupId = getIntent().getIntExtra("GROUP_ID", -1);
+                if (intGroupId != -1) {
+                    groupId = intGroupId; // Безопасно приводим int к long
+                    Log.d("MailLis_Fix_Intent", "Тип данных распознан как INT. Приведено к LONG: " + groupId);
+                }
             }
         }
 
-        setContentView(R.layout.activity_add_members); // Создайте простой ListView в XML
+        super.onCreate(savedInstanceState);
 
-        groupId = getIntent().getLongExtra("GROUP_ID", -1);
+        EdgeToEdge.enable(this);
+        setContentView(R.layout.activity_add_members);
+
+        if (groupId == -1) {
+            Toast.makeText(this, "Ошибка: ID группы не передан", Toast.LENGTH_SHORT).show();
+            finish();
+            return;
+        }
+
+        // Инициализация сервисов и UI
         dbService = DBServiceSQLite.getInstance(this);
         emailClient = EmailClientImpl.getInstance(dbService, this);
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
@@ -79,7 +80,7 @@ public class AddMembersActivity extends AppCompatActivity {
     }
 
     private void loadAvailableContacts() {
-        String myEmail = prefs.getString(Config.KEY_EMAIL_LOGIN, "");
+        String myEmail = prefs.getString(Config.KEY_EMAIL_LOGIN, EMPTI_STRING);
         // Получаем все контакты устройства
         List<Contact> allContacts = dbService.getContacts();
         // Получаем тех, кто уже в группе, чтобы исключить их из списка
@@ -106,7 +107,7 @@ public class AddMembersActivity extends AppCompatActivity {
     }
 
     private void inviteContactToExistingGroup(String targetEmail) {
-        String myEmail = prefs.getString(Config.KEY_EMAIL_LOGIN, "");
+        String myEmail = prefs.getString(Config.KEY_EMAIL_LOGIN, EMPTI_STRING);
         String groupName = dbService.getGroupNameByGroupId(groupId);
 
         // 1. Добавляем новичка в свою локальную базу данных

@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?><!-- Корневой контейнер теперь пускает фон на самый верх экрана -->
-<RelativeLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#F5F5F5">
 
-    <!-- СИНИЙ ТУЛБАР: Он растягивается наверх и заезжает ПОД прозрачную шторку, окрашивая область часов -->
+    <!-- СИНИЙ ТУЛБАР: Растягивается наверх и окрашивает область часов -->
     <RelativeLayout
         android:id="@+id/addMembersToolbar"
         android:layout_width="match_parent"
@@ -26,23 +25,22 @@
             android:textStyle="bold" />
     </RelativeLayout>
 
-    <!-- ОСНОВНОЙ КОНТЕНТ (ИНСТРУКЦИЯ И СПИСОК): Он располагается СТРОГО под синим тулбаром -->
+    <!-- ОСНОВНОЙ КОНТЕНТ: fitsSystemWindows защитит нижнюю часть списка от навигационного бара -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_below="@id/addMembersToolbar"
-        android:orientation="vertical">
+        android:fitsSystemWindows="true"
+        android:orientation="vertical"> <!-- Добавлено сюда -->
 
-        <!-- Описание-инструкция -->
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:padding="16dp"
-            android:text="Выберите contact из списка ниже, чтобы пригласить его в текущую P2P-группу:"
+            android:text="Выберите контакт из списка ниже, чтобы пригласить его в текущую P2P-группу:"
             android:textColor="#666666"
             android:textSize="14sp" />
 
-        <!-- Список контактов -->
         <ListView
             android:id="@+id/listViewContactsToGroup"
             android:layout_width="match_parent"
@@ -51,4 +49,5 @@
             android:divider="#E0E0E0"
             android:dividerHeight="1dp" />
     </LinearLayout>
+
 </RelativeLayout>
