@@ -283,11 +283,13 @@ public class ChatActivity extends AppCompatActivity {
                 androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(ChatActivity.this, v);
 
                 // Добавляем пункты меню программно (чтобы не плодить лишние XML файлы)
-                popup.getMenu().add(0, 1, 0, "🛑 ️Заблокировать");
-                popup.getMenu().add(1, 2, 1, "🗑️ Удалить чат");
-                // Здесь вы можете добавить любые другие пункты, например:
-                // popup.getMenu().add(0, 2, 1, "👤 Информация");
 
+                popup.getMenu().add(0, 2, 1, "🗑️ Удалить чат");
+                if (isGroup) {
+                    popup.getMenu().add(0, 3, 2, "👤 Добавить участника");
+                } else {
+                    popup.getMenu().add(0, 1, 0, "🛑 ️Заблокировать");
+                }
                 // Настраиваем клики по пунктам меню
                 popup.setOnMenuItemClickListener(item -> {
                     if (item.getItemId() == 1) {
@@ -295,13 +297,16 @@ public class ChatActivity extends AppCompatActivity {
                         showBlockUserDialog();
                         return true;
                     }
-                    return false;
-                });
-
-                popup.setOnMenuItemClickListener(item -> {
                     if (item.getItemId() == 2) {
                         // ВЫЗЫВАЕМ ВАШУ ОТЛАЖЕННУЮ ЛОГИКУ УДАЛЕНИЯ ВСЕГО ЧАТА
                         showDeleteChatDialog();
+                        return true;
+                    }
+                    if (item.getItemId() == 3) {
+                        // Запускаем наш новый экран выбора контактов, передавая ID текущей группы
+                        Intent intent2 = new Intent(ChatActivity.this, AddMembersActivity.class);
+                        intent2.putExtra("GROUP_ID", chatId);
+                        startActivity(intent2);
                         return true;
                     }
                     return false;
@@ -325,8 +330,10 @@ public class ChatActivity extends AppCompatActivity {
             public void onMultiChoiceStateChanged(boolean isActive, int selectedCount) {
                 if (isActive) {
                     // Переключаем тулбары: прячем обычный, показываем контекстный
-                    if (layoutNormalToolbar != null) layoutNormalToolbar.setVisibility(View.GONE);
-                    if (layoutEditToolbar != null) layoutEditToolbar.setVisibility(View.VISIBLE);
+                    if (layoutNormalToolbar != null)
+                        layoutNormalToolbar.setVisibility(View.GONE);
+                    if (layoutEditToolbar != null)
+                        layoutEditToolbar.setVisibility(View.VISIBLE);
 
                     if (textViewSelectedCount != null) {
                         textViewSelectedCount.setText("Выбрано: " + selectedCount);

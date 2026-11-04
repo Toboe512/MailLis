@@ -480,4 +480,14 @@ public interface DBService {
      * вместе с его крипто-ключами; {@code false} в случае ошибки или если группа не найдена
      */
     boolean removeGroupMemberByEmail(long groupId, String userEmail);
+
+    /**
+     * Находит и возвращает строковое название группы по её идентификатору.
+     * Ищет строго внутри таблицы 'group_chats', сопоставляя как локальный id,
+     * так и глобальный remote_group_id для корректной синхронизации участников. [source]
+     *
+     * @param groupId числовой идентификатор группы (локальный id или глобальный remote_group_id)
+     * @return текстовое название группы, либо пустая строка, если запись не найдена
+     */
+    String getGroupNameByGroupId(long groupId);
 }

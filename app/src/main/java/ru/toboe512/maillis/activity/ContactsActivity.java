@@ -44,14 +44,14 @@ public class ContactsActivity extends AppCompatActivity {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         }
 
-        // Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
+        // вешаем прямой клик на стрелочку навигации
         toolbar.setNavigationOnClickListener(v -> finish());
 
-        // 2. Инициализируем сервисы работы с базой
+        // Инициализируем сервисы работы с базой
         dbService = DBServiceSQLite.getInstance(this);
         contactList = new ArrayList<>();
 
-        // 3. Настраиваем RecyclerView
+        // Настраиваем RecyclerView
         recyclerView = findViewById(R.id.recyclerViewContactsList);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
@@ -80,7 +80,7 @@ public class ContactsActivity extends AppCompatActivity {
                             .show();
                 },
 
-                // АРГУМЕНТ 3: Лямбда для кнопки БАНА (серый замок). ПРОВЕРЬТЕ НАЛИЧИЕ ЭТОГО БЛОКА!
+                // АРГУМЕНТ 3: Лямбда для кнопки БАНА (серый замок).
                 (contact, position) -> {
                     Log.d("MailLis_Click", "Ура, клик по кнопке бана сработал для: " + contact.getEmail());
 

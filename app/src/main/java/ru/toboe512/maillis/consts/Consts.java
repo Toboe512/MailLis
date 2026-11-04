@@ -17,6 +17,7 @@ public class Consts {
     public static final String GROUP_INVITE_MAIL = "[MailLis-Group-Invite]";
     public static final String GROUP_PRE_INVITE_MAIL = "[MailLis-Group-PreInvite]";
     public static final String GROUP_PRE_INVITE_RESPONSE_MAIL = "[MailLis-Group-PreInvite-Response]";
+    public static final String GROUP_SYNC = "[MailLis-Group-Sync]";
 
     public static final String GROUP_LEAVE = "[MailLis-Group-Leave]";
     //public static final String READ_RECEIPT = "[MAILLIS-READ-RECEIPT]";

@@ -39,4 +39,14 @@ public interface EmailClient {
      * Ключ шифруется индивидуальным публичным Tink-ключом получателя.
      */
     void sendGroupInviteOverNetwork(String recipientEmail, long chatId, String groupName, byte[] groupSecretKey, SharedPreferences prefs);
+
+    /**
+     * Отправляет техническое письмо-предуведомление новому участнику.
+     */
+    void sendPreInviteOverNetwork(String targetEmail, long groupId, String groupName, SharedPreferences prefs) throws Exception;
+
+    /**
+     * Отправляет служебную команду старым участникам группы для синхронизации состава.
+     */
+    public void sendGroupSyncNotification(String oldMemberEmail, long groupId, String newMemberEmail, SharedPreferences prefs) throws Exception;
 }

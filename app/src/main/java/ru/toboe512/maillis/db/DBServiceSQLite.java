@@ -2246,4 +2246,35 @@ public class DBServiceSQLite implements DBService {
         }
         return success;
     }
+
+    public String getGroupNameByGroupId(long groupId) {
+        String groupName = ""; // Вы можете заменить на вашу константу EMPTI_STRING, если она есть
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+
+        // ОПТИМИЗАЦИЯ: Сканируем таблицу group_chats, используя CAST и лимит в 1 строку [source]
+        String sql = "SELECT group_name FROM group_chats " +
+                "WHERE id = CAST(? AS INTEGER) OR remote_group_id = CAST(? AS INTEGER) " +
+                "LIMIT 1";
+
+        String[] selectionArgs = new String[]{String.valueOf(groupId), String.valueOf(groupId)};
+
+        // Использование try-with-resources гарантирует 100% закрытие курсора и защиту от Memory Leaks [source]
+        try (Cursor cursor = db.rawQuery(sql, selectionArgs)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int nameIdx = cursor.getColumnIndex("group_name");
+                if (nameIdx >= 0) {
+                    String result = cursor.getString(nameIdx);
+                    if (result != null) {
+                        groupName = result.trim();
+                    }
+                }
+            }
+            Log.d("MailLis_DB_Group", "getGroupNameByGroupId для ID " + groupId + " -> " + groupName);
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Group", "Критическая ошибка при поиске group_name для ID: " + groupId, e);
+            e.printStackTrace();
+        }
+
+        return groupName;
+    }
 }

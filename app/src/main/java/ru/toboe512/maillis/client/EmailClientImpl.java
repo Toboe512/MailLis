@@ -15,6 +15,7 @@ import static ru.toboe512.maillis.consts.Consts.GROUP_LEAVE;
 import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_PRE_INVITE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_PRE_INVITE_RESPONSE_MAIL;
+import static ru.toboe512.maillis.consts.Consts.GROUP_SYNC;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 import static ru.toboe512.maillis.consts.Consts.INBOX;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
@@ -31,7 +32,6 @@ import static ru.toboe512.maillis.consts.Consts.TEXT_MSG;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
@@ -43,8 +43,6 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
 import java.util.List;
 import java.util.Objects;
@@ -190,6 +188,12 @@ public class EmailClientImpl implements EmailClient {
                     if (senderEmail.contains(myEmail)) {
                         continue;
                     }
+                    //  В СУЩЕСТВУЮЩУЮ ГРУППУ ДОБАВИЛСЯ КТО-ТО ЕЩЕ (Синхронизация состава)
+                    if (subject.contains(GROUP_SYNC)) {
+                        groupSync(msg);
+                        deleteMessage(msg, inbox);
+                        continue;
+                    }
                     // СЦЕНАРИЙ 1: Нам прилетел Pre-Invite (Мы получатель, у нас просят ключ для вступления)
                     if (subject.contains(GROUP_PRE_INVITE_MAIL)) {
                         result = maillisGroupPreInviteCase(msg, inbox, prefs);
@@ -244,6 +248,28 @@ public class EmailClientImpl implements EmailClient {
             executor.shutdown();
         }
         return result;
+    }
+
+    private void groupSync(Message msg) {
+        try {
+            String[] parts = msg.getSubject().split(" ");
+            long remoteChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
+            String newMemberEmail = msg.getContent().toString().trim().toLowerCase();
+
+            if (remoteChatId > 0 && !newMemberEmail.isEmpty()) {
+                // Просто дописываем нового участника в локальную таблицу group_members
+                dbService.addGroupMember(remoteChatId, newMemberEmail);
+
+                // Пишем тихое системное уведомление в чат
+                dbService.saveIncomingGroupMessage(remoteChatId, "Система", "[MailLis-System]",
+                        "➕ К группе присоединился участник: " + newMemberEmail,
+                        System.currentTimeMillis(), extractMsgId(msg), "TEXT", null);
+
+
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private boolean maillisGroupLeave(Message msg) {
@@ -1289,6 +1315,36 @@ public class EmailClientImpl implements EmailClient {
                 e.printStackTrace();
             }
         });
+    }
+
+    public void sendPreInviteOverNetwork(String targetEmail, long groupId, String groupName, SharedPreferences prefs) throws Exception {
+        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
+        Session session = createSmtpSession(prefs);
+        MimeMessage message = new MimeMessage(session);
+        message.setFrom(new InternetAddress(prefs.getString(KEY_EMAIL_LOGIN, "")));
+        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(targetEmail));
+
+        // Специальная служебная тема для перехвата фоновым IMAP приемником новичка
+        message.setSubject("[MailLis-Group-PreInvite] " + groupId);
+        // В тело пишем название группы и email создателя
+        message.setText(groupName + "\n" + myEmail);
+        message.saveChanges();
+
+        Transport.send(message);
+    }
+
+    public void sendGroupSyncNotification(String oldMemberEmail, long groupId, String newMemberEmail, SharedPreferences prefs) throws Exception {
+        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
+        Session session = createSmtpSession(prefs);
+        MimeMessage message = new MimeMessage(session);
+        message.setFrom(new InternetAddress(prefs.getString(KEY_EMAIL_LOGIN, "")));
+        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(oldMemberEmail));
+
+        message.setSubject("[MailLis-Group-Sync] " + groupId);
+        message.setText(newMemberEmail); // Передаем email новичка, которого нужно дописать в базу
+        message.saveChanges();
+
+        Transport.send(message);
     }
 
     private Store connectToImapServer(SharedPreferences prefs) throws MessagingException {
