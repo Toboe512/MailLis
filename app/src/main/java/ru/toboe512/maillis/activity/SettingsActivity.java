@@ -1,6 +1,5 @@
 package ru.toboe512.maillis.activity;
 
-import static android.content.Context.MODE_PRIVATE;
 import static android.widget.Toast.LENGTH_LONG;
 import static android.widget.Toast.LENGTH_SHORT;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
@@ -12,7 +11,6 @@ import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_SERVER;
 import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_PORT;
 import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_SERVER;
 
-import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.MenuItem;
@@ -42,8 +40,6 @@ public class SettingsActivity extends AppCompatActivity {
     private EditText editTextSmtpPort;
     private EditText editTextEmailLogin;
     private EditText editTextEmailPassword;
-    private Button buttonTestConnection;
-    private Button buttonSaveSettings;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -73,8 +69,9 @@ public class SettingsActivity extends AppCompatActivity {
         editTextSmtpPort = findViewById(R.id.editTextSmtpPort);
         editTextEmailLogin = findViewById(R.id.editTextEmailLogin);
         editTextEmailPassword = findViewById(R.id.editTextEmailPassword);
-        buttonTestConnection = findViewById(R.id.buttonTestConnection);
-        buttonSaveSettings = findViewById(R.id.buttonSaveSettings);
+
+        Button buttonTestConnection = findViewById(R.id.buttonTestConnection);
+        Button buttonSaveSettings = findViewById(R.id.buttonSaveSettings);
 
         // Загружаем ранее сохраненные данные при открытии экрана
         loadSavedSettings();

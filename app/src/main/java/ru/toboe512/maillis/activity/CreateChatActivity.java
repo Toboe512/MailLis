@@ -34,8 +34,6 @@ import ru.toboe512.maillis.dto.Contact;
 
 public class CreateChatActivity extends AppCompatActivity {
 
-    private RecyclerView recyclerView;
-    private ContactsAdapter adapter;
     private List<Contact> contactList;
     private DBService dbService;
     private EditText editTextGroupName;
@@ -69,14 +67,15 @@ public class CreateChatActivity extends AppCompatActivity {
 
         // Настраиваем список RecyclerView
         editTextGroupName = findViewById(R.id.editTextGroupName);
-        recyclerView = findViewById(R.id.recyclerViewSelectContacts);
+
+        RecyclerView recyclerView = findViewById(R.id.recyclerViewSelectContacts);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
 
         // Загружаем данные из SQLite
         contactList = dbService.getContacts();
 
-        adapter = new ContactsAdapter(this, contactList);
+        var adapter = new ContactsAdapter(this, dbService, contactList);
 
         // КРИТИЧЕСКИ ВАЖНО: Принудительно заставляем список на экране перерисовать полученные строки
         adapter.notifyDataSetChanged();

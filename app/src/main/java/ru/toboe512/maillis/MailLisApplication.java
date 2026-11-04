@@ -7,11 +7,11 @@ import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 
-//@HiltAndroidApp // Обязательная аннотация!
 public class MailLisApplication extends Application {
 
     private DBService dbService;
     private EmailClient emailClient;
+
     @Override
     public void onCreate() {
         super.onCreate();

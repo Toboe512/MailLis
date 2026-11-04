@@ -1,7 +1,6 @@
 package ru.toboe512.maillis.adapters;
 
 
-import static android.content.Context.MODE_PRIVATE;
 import static android.view.View.GONE;
 import static android.view.View.VISIBLE;
 import static android.widget.RelativeLayout.ALIGN_PARENT_END;
@@ -9,12 +8,8 @@ import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_START;
 import static android.widget.RelativeLayout.TRUE;
-import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 
-import android.app.AlertDialog;
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.view.LayoutInflater;
@@ -24,7 +19,6 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
@@ -37,8 +31,6 @@ import java.util.List;
 import java.util.Set;
 
 import ru.toboe512.maillis.R;
-import ru.toboe512.maillis.client.EmailClient;
-import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.MessageDto;
 import ru.toboe512.maillis.utils.MessageDiffCallback;
 
@@ -50,9 +42,6 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     }
 
     private final List<MessageDto> messageDtoList = new ArrayList<>();
-    private final Context context;
-    private final DBService dbService;
-    private final EmailClient emailClient;
 
     // Поля на уровне класса вашего MessagesAdapter:
     private boolean isMultiChoiceMode = false;
@@ -60,12 +49,6 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     // Используем Set<Integer>, он на уровне языка гарантирует 100% уникальность ID
     private final Set<Integer> selectedMessageIds = new HashSet<>();
     private MultiChoiceListener multiChoiceListener;
-
-    public MessagesAdapter(Context context, EmailClient emailClient, DBService dbService) {
-        this.context = context;
-        this.emailClient = emailClient;
-        this.dbService = dbService;
-    }
 
     @NonNull
     @Override
@@ -82,10 +65,8 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     public void onBindViewHolder(@NonNull MessageViewHolder holder, int position) {
         MessageDto messageDto = messageDtoList.get(position);
 
-        // =========================================================================
-        // 1. ОПТИМИЗАЦИЯ КОНТЕНТА: Читаем файл с диска ТОЛЬКО если текст/картинка изменились!
+        // ОПТИМИЗАЦИЯ КОНТЕНТА: Читаем файл с диска ТОЛЬКО если текст/картинка изменились!
         // Защита от ежесекундного чтения накопителя и фризов UI.
-        // =========================================================================
         if (IMAGE_MSG.equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
             holder.textViewText.setVisibility(GONE);
             if (holder.imageViewPhoto != null) {
@@ -118,7 +99,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             }
         }
 
-        // 2. УПРАВЛЕНИЕ EMAIL ОТПРАВИТЕЛЯ (ИСПОЛЬЗУЕМ КОРРЕКТНЫЙ ФЛАГ ТИПА КОМНАТЫ ИЗ АДАПТЕРА)
+        // УПРАВЛЕНИЕ EMAIL ОТПРАВИТЕЛЯ (ИСПОЛЬЗУЕМ КОРРЕКТНЫЙ ФЛАГ ТИПА КОМНАТЫ ИЗ АДАПТЕРА)
         if (holder.textViewSender != null) {
             if (messageDto.isGroup() && !messageDto.isMine()) {
                 holder.textViewSender.setVisibility(VISIBLE);
@@ -130,7 +111,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             }
         }
 
-        // 3. ДИНАМИЧЕСКОЕ ВЫРАВНИВАНИЕ СТОРОН (ПРАВО / ЛЕВО)
+        // ДИНАМИЧЕСКОЕ ВЫРАВНИВАНИЕ СТОРОН (ПРАВО / ЛЕВО)
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) holder.cardMessage.getLayoutParams();
 
         if (messageDto.isMine()) {
@@ -139,7 +120,7 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             params.addRule(ALIGN_PARENT_RIGHT, TRUE);
             params.addRule(ALIGN_PARENT_END, TRUE);
 
-            // 4. МГНОВЕННОЕ ОБНОВЛЕНИЕ ГАЛОЧЕК (СВЯЗКА С НАШИМ СЕКУНДНЫМ ТАЙМЕРОМ)
+            // МГНОВЕННОЕ ОБНОВЛЕНИЕ ГАЛОЧЕК (СВЯЗКА С НАШИМ СЕКУНДНЫМ ТАЙМЕРОМ)
             if (holder.textViewStatus != null) {
                 holder.textViewStatus.setVisibility(VISIBLE);
 
@@ -181,10 +162,8 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
         holder.cardMessage.setLayoutParams(params);
 
-        // =========================================================================
-        // ИСПРАВЛЕНИЕ 1: Проверяем выделение СТРОГО по наличию ID сообщения в нашем Set!
+        // Проверяем выделение СТРОГО по наличию ID сообщения в нашем Set!
         // Теперь даже если таймер обновит объекты, ячейка сохранит визуальное выделение.
-        // =========================================================================
         if (selectedMessageIds.contains(messageDto.getId())) {
             holder.itemView.setBackgroundColor(android.graphics.Color.parseColor("#220088CC")); // Синяя подсветка
         } else {
@@ -283,41 +262,6 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
             textViewStatus = itemView.findViewById(R.id.textViewMessageStatus);
             imageViewPhoto = itemView.findViewById(R.id.imageViewMessagePhoto);
         }
-    }
-
-    // Всплывающее окно подтверждения удаления
-    private void showDeleteMessageDialog(MessageDto messageDto, int position) {
-        var builder = new AlertDialog.Builder(context);
-        builder.setTitle("Удалить сообщение");
-        builder.setMessage("Вы уверены, что хотите удалить это сообщение?");
-
-        builder.setPositiveButton("Удалить", (dialog, which) -> {
-            deleteMessageFromDb(messageDto.getId(), position);
-            // ЗАПУСКАЕМ СЕТЕВОЕ УДАЛЕНИЕ С СЕРВЕРА MAIL.RU
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-            emailClient.deleteMessageFromServer(messageDto.getServerUid(), prefs);
-        });
-
-        builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
-
-        AlertDialog dialog = builder.create();
-        dialog.show();
-    }
-
-    // Удаление строки из SQLite
-    private void deleteMessageFromDb(int messageId, int position) {
-
-        // Удаляем строго по первичному ключу ID сообщения
-        boolean rowsDeleted = dbService.deleteMessage(messageId);
-
-        messageDtoList.remove(position);
-        // Красивая плавная анимация исчезновения сообщения из списка
-        notifyItemRemoved(position);
-        if (!rowsDeleted) {
-            return;
-        }
-        notifyItemRangeChanged(position, messageDtoList.size());
-        Toast.makeText(context, "Сообщение удалено", Toast.LENGTH_SHORT).show();
     }
 
     // Внутри класса MessagesAdapter:

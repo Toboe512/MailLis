@@ -21,7 +21,6 @@ import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -31,20 +30,20 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
-import android.view.MenuItem;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.PopupMenu;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -67,7 +66,6 @@ import ru.toboe512.maillis.dto.MessageDto;
 
 public class ChatActivity extends AppCompatActivity {
 
-    private RecyclerView recyclerView;
     private MessagesAdapter messagesAdapter;
     private EditText editTextMessage;
     // Переменные для работы с базой данных
@@ -84,15 +82,14 @@ public class ChatActivity extends AppCompatActivity {
 
     long actualIntervalMs;
     private final Handler timerHandler = new Handler(Looper.getMainLooper());
+
     // Создаем явный, стабильный объект Runnable через лямбду Java 8
     private final Runnable timerRunnable = new Runnable() {
         @Override
         public void run() {
-            // А. Запускаем наше фоновое считывание статусов сообщений из SQLite
+            // Запускаем наше фоновое считывание статусов сообщений из SQLite
             updateUiFromDatabase();
 
-            // Б. КРИТИЧЕСКИЙ ФИКС: Явно указываем timerRunnable для циклического перезапуска!
-            // Теперь планировщик никогда не потеряет ссылку в памяти и цикл будет бесконечным.
             timerHandler.postDelayed(this, actualIntervalMs);
         }
     };
@@ -131,10 +128,11 @@ public class ChatActivity extends AppCompatActivity {
         dbService = DBServiceSQLite.getInstance(this);
         emailClient = EmailClientImpl.getInstance(dbService, this);
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
-        messagesAdapter = new MessagesAdapter(this, emailClient, dbService);
+        messagesAdapter = new MessagesAdapter();
 
         editTextMessage = findViewById(R.id.editTextMessage);
-        recyclerView = findViewById(R.id.recyclerViewMessages);
+
+        RecyclerView recyclerView = findViewById(R.id.recyclerViewMessages);
 
         var layoutManager = new LinearLayoutManager(this);
         layoutManager.setStackFromEnd(true); // Чат строится снизу вверх, как в Telegram
@@ -158,10 +156,8 @@ public class ChatActivity extends AppCompatActivity {
             }
 
             long currentTimestamp = System.currentTimeMillis();
-            // ПРОВЕРКА: Определяем архитектурный тип текущей комнаты чата
-            boolean isGroup = dbService.isGroupChat(chatId);
 
-            // 1. Сохраняем сообщение локально в SQLite базу данных
+            // Сохраняем сообщение локально в SQLite базу данных
             // Метод saveMessage сам выставит статус "is_sent = 0" (часики) и "is_mine = 1"
             int generatedId;
             if (isGroup) {
@@ -170,8 +166,8 @@ public class ChatActivity extends AppCompatActivity {
                 generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
             }
 
-            // 2. Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
-            // Сообщение мгновенно появится на экране со значком "Часики" и больше не будет двоиться.
+            // Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
+            // Сообщение мгновенно появится на экране со значком "Часики"
             updateUiFromDatabase();
 
             // Чистим поле ввода сообщения
@@ -236,7 +232,6 @@ public class ChatActivity extends AppCompatActivity {
                         public void onError(Exception e) {
                             // Сеть полностью отключилась или моргнула
                             Toast.makeText(ChatActivity.this, "Сеть недоступна. Сообщение отложено.", LENGTH_SHORT).show();
-
                             // Перечитываем SQLite, чтобы у сообщения гарантированно горел значок "Часики" (is_sent = 0)
                             updateUiFromDatabase();
                         }
@@ -272,10 +267,9 @@ public class ChatActivity extends AppCompatActivity {
         if (buttonChatMenu != null) {
             buttonChatMenu.setOnClickListener(v -> {
                 // Создаем встроенное всплывающее меню, привязанное к кнопке "три точки"
-                androidx.appcompat.widget.PopupMenu popup = new androidx.appcompat.widget.PopupMenu(ChatActivity.this, v);
+                var popup = new PopupMenu(ChatActivity.this, v);
 
                 // Добавляем пункты меню программно (чтобы не плодить лишние XML файлы)
-
                 popup.getMenu().add(0, 2, 1, "🗑️ Удалить чат");
                 if (isGroup) {
                     popup.getMenu().add(0, 3, 2, "👤 Добавить участника");
@@ -297,7 +291,7 @@ public class ChatActivity extends AppCompatActivity {
                     }
                     if (item.getItemId() == 3) {
                         // Запускаем наш новый экран выбора контактов, передавая ID текущей группы
-                        Intent intent2 = new Intent(ChatActivity.this, AddMembersActivity.class);
+                        var intent2 = new Intent(ChatActivity.this, AddMembersActivity.class);
                         intent2.putExtra("GROUP_ID", chatId);
                         startActivity(intent2);
                         return true;
@@ -310,14 +304,14 @@ public class ChatActivity extends AppCompatActivity {
             });
         }
 
-        // 1. Инициализируем кнопки управления в тулбаре ChatActivity
+        // Инициализируем кнопки управления в тулбаре ChatActivity
         View layoutNormalToolbar = findViewById(R.id.layoutNormalToolbar); // Обычный заголовок чата
         View layoutEditToolbar = findViewById(R.id.layoutEditToolbar);     // Контекстный тулбар удаления
         TextView textViewSelectedCount = findViewById(R.id.textViewSelectedCount);
         ImageButton buttonDeleteSelected = findViewById(R.id.buttonDeleteSelected);
         ImageButton buttonCancelSelection = findViewById(R.id.buttonCancelSelection);
 
-        // 2. Вешаем слушатель множественного выбора на адаптер
+        // Вешаем слушатель множественного выбора на адаптер
         messagesAdapter.setMultiChoiceListener(new MessagesAdapter.MultiChoiceListener() {
             @Override
             public void onMultiChoiceStateChanged(boolean isActive, int selectedCount) {
@@ -374,7 +368,7 @@ public class ChatActivity extends AppCompatActivity {
                                 runOnUiThread(() -> {
                                     messagesAdapter.clearSelection();
                                     updateUiFromDatabase(); // Наш DiffUtil плавно сотрет их с экрана!
-                                    Toast.makeText(ChatActivity.this, "Сообщения успешно удалены", Toast.LENGTH_SHORT).show();
+                                    Toast.makeText(ChatActivity.this, "Сообщения успешно удалены", LENGTH_SHORT).show();
                                 });
                             }).start();
                         })
@@ -383,7 +377,7 @@ public class ChatActivity extends AppCompatActivity {
             });
         }
 
-        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
                 if (messagesAdapter != null && !messagesAdapter.getSelectedMessages().isEmpty()) {
@@ -411,27 +405,6 @@ public class ChatActivity extends AppCompatActivity {
     }
 
     @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == android.R.id.home) {
-            finish();
-            return true;
-        }
-
-        int id = item.getItemId();
-
-        if (id == R.id.action_block_user) {
-            showBlockUserDialog(); // Показываем окно бана
-            return true;
-        }
-        if (id == R.id.action_delete_chat) {
-            showDeleteChatDialog(); // Показываем окно удаления
-            updateUiFromDatabase();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
-    }
-
-    @Override
     protected void onResume() {
         super.onResume();
 
@@ -455,7 +428,7 @@ public class ChatActivity extends AppCompatActivity {
         // Это критически важно, чтобы приложение не высаживало батарею смартфона в фоне!
         if (timerHandler != null) {
             timerHandler.removeCallbacks(timerRunnable);
-            Log.w("MailLis_Timer", "🛑 Секундный цикл UI остановлен.");
+            Log.d("MailLis_Timer", "🛑 Секундный цикл UI остановлен.");
         }
     }
 
@@ -571,7 +544,7 @@ public class ChatActivity extends AppCompatActivity {
         }).start();
     }
 
-    //Инициализируем приемник сигналов от фоновой службы с поддержкой goAsync()
+    // Инициализируем приемник сигналов от фоновой службы с поддержкой goAsync()
     @NonNull
     private BroadcastReceiver getMailLisChatUI() {
         return new BroadcastReceiver() {
@@ -610,14 +583,14 @@ public class ChatActivity extends AppCompatActivity {
                 }
 
                 long currentTimestamp = System.currentTimeMillis();
-                // 2. СОХРАНЯЕМ ЛОКАЛЬНУЮ КОПИЮ НА ДИСКЕ ТЕЛЕФОНА (ДЛЯ НАШЕГО ЭКРАНА ЧАТА)
+                // СОХРАНЯЕМ ЛОКАЛЬНУЮ КОПИЮ НА ДИСКЕ ТЕЛЕФОНА (ДЛЯ НАШЕГО ЭКРАНА ЧАТА)
                 String localFileName = "sent_img_" + currentTimestamp + ".jpg";
                 File localFile = new File(getCacheDir(), localFileName);
                 try (var fos = new FileOutputStream(localFile)) {
                     fos.write(rawImageBytes);
                 }
 
-                // 3. ЗАПИСЫВАЕМ СТРОКУ В SQLITE БАЗУ ДАННЫХ
+                // ЗАПИСЫВАЕМ СТРОКУ В SQLITE БАЗУ ДАННЫХ
                 // Передаем тип "IMAGE" и путь к нашему файлу. Статус изначально 0 (часики)
                 int generatedId = dbService.saveGenericMessage(chatId, myEmail, CHAT_IMAGE_MAIL,
                         CHAT_IMAGE_MAIL, true, currentTimestamp);
@@ -627,7 +600,7 @@ public class ChatActivity extends AppCompatActivity {
                 // Мгновенно обновляем интерфейс через DiffUtil — картинка с часиками появится на экране!
                 updateUiFromDatabase();
 
-                // 4. ПЕРЕДАЕМ В СЕТЕВОЙ СЛОЙ НА ШИФРОВАНИЕ И ОТПРАВКУ ПО SMTP
+                // ПЕРЕДАЕМ В СЕТЕВОЙ СЛОЙ НА ШИФРОВАНИЕ И ОТПРАВКУ ПО SMTP
                 if (isGroup) {
                     emailClient.sendGroupImageOverNetwork(chatId, rawImageBytes, generatedId, prefs);
                 } else {
@@ -659,7 +632,7 @@ public class ChatActivity extends AppCompatActivity {
 
     @Nullable
     private byte[] getRawImageBytes(Uri imageUri) throws IOException {
-        // 1. СЖАТИЕ КАРТИНКИ (Оптимизация трафика)
+        // СЖАТИЕ КАРТИНКИ (Оптимизация трафика)
         InputStream inputStream = getContentResolver().openInputStream(imageUri);
         Bitmap originalBitmap = BitmapFactory.decodeStream(inputStream);
         if (inputStream != null) {

@@ -25,7 +25,6 @@ public class ContactsActivity extends AppCompatActivity {
     private DBServiceSQLite dbService;
     private List<Contact> contactList;
     private ManageContactsAdapter adapter;
-    private RecyclerView recyclerView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,7 +51,7 @@ public class ContactsActivity extends AppCompatActivity {
         contactList = new ArrayList<>();
 
         // Настраиваем RecyclerView
-        recyclerView = findViewById(R.id.recyclerViewContactsList);
+        RecyclerView recyclerView = findViewById(R.id.recyclerViewContactsList);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         // Инициализируем адаптер с колбэком удаления
@@ -86,7 +85,8 @@ public class ContactsActivity extends AppCompatActivity {
 
                     new AlertDialog.Builder(ContactsActivity.this)
                             .setTitle("Блокировка контакта")
-                            .setMessage("Вы уверены, что хотите заблокировать " + contact.getEmail() + "? Его сообщения будут автоматически уничтожаться, а сам он переместится в Чёрный список.")
+                            .setMessage("Вы уверены, что хотите заблокировать " + contact.getEmail() +
+                                    "? Его сообщения будут автоматически уничтожаться, а сам он переместится в Чёрный список.")
                             .setCancelable(true)
                             .setPositiveButton("Заблокировать", (dialog, which) -> {
                                 new Thread(() -> {

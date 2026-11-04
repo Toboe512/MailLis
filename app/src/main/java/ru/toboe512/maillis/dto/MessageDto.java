@@ -6,17 +6,13 @@ public class MessageDto {
     private final String senderEmail;
     private final String subject;
 
-    public void setText(String text) {
-        this.text = text;
-    }
-
     private String text;
     private final long timestamp;
     private final boolean isMine; // Флаг: отправлено мной или нет
     private final String serverUid; // ДОБАВЛЕНО ПОЛЕ ДЛЯ СЕРВЕРНОГО ID
     private final int status;
 
-    private String messageType; // "TEXT" или "IMAGE"
+    private final String messageType; // "TEXT" или "IMAGE"
     private String filePath;    // Путь к картинке во внутреннем кэше
 
     private boolean isSelectedForDelete = false; // Флаг выделения сообщения
@@ -84,6 +80,10 @@ public class MessageDto {
 
     public String getText() {
         return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
     }
 
     public long getTimestamp() {

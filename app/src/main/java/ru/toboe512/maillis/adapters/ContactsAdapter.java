@@ -18,19 +18,20 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.db.ChatDbHelper;
+import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.Contact;
 
 public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.ContactViewHolder> {
 
     private final List<Contact> contactList;
     private final Context context;
-    private final ChatDbHelper dbHelper;
+    private final DBService dbService;
 
     // ОБНОВЛЕННЫЙ КОНСТРУКТОР: теперь принимает контекст для работы с БД и диалогами
-    public ContactsAdapter(Context context, List<Contact> contactList) {
+    public ContactsAdapter(Context context, DBService dbService, List<Contact> contactList) {
         this.context = context;
         this.contactList = contactList;
-        this.dbHelper = new ChatDbHelper(context);
+        this.dbService = dbService;
     }
 
     @NonNull
@@ -65,10 +66,6 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
         return contactList.size();
     }
 
-    public ChatDbHelper getDbHelper() {
-        return dbHelper;
-    }
-
     static class ContactViewHolder extends RecyclerView.ViewHolder {
         TextView textViewName, textViewEmail;
         CheckBox checkBox;
@@ -101,13 +98,10 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
 
     // Нативное удаление строки из SQLite по ее ID
     private void deleteContactFromDb(int contactId, int position) {
-        SQLiteDatabase db = dbHelper.getWritableDatabase();
 
-        // Запрос удаления: DELETE FROM contacts WHERE id = contactId
-        int rowsDeleted = db.delete("contacts", "id = ?", new String[]{String.valueOf(contactId)});
-        db.close();
+        boolean isDeleted = dbService.deleteContact(contactId);
 
-        if (rowsDeleted > 0) {
+        if (isDeleted) {
             // Удаляем элемент из текущего массива памяти
             contactList.remove(position);
 

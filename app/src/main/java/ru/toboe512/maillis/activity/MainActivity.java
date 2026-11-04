@@ -32,6 +32,7 @@ import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.ChatPreview;
+import ru.toboe512.maillis.service.MailLisPushService;
 
 
 public class MainActivity extends AppCompatActivity { // Важно: наследуемся от AppCompatActivity
@@ -112,7 +113,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         super.onStart();
 
         // Переносим запуск службы сюда — когда окно приложения гарантированно находится в фокусе!
-        Intent serviceIntent = new Intent(this, ru.toboe512.maillis.service.MailLisPushService.class);
+        Intent serviceIntent = new Intent(this, MailLisPushService.class);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
         } else {
@@ -178,7 +179,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
 
         // 2. ИСПРАВЛЕНИЕ: Переход на экран Чёрного списка (бан-листа)
         if (id == R.id.action_ban_list) {
-            Intent intent = new Intent(MainActivity.this, ru.toboe512.maillis.activity.BanListActivity.class);
+            Intent intent = new Intent(MainActivity.this, BanListActivity.class);
             startActivity(intent);
             return true;
         }

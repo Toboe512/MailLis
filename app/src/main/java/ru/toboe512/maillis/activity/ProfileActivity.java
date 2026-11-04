@@ -55,7 +55,7 @@ public class ProfileActivity extends AppCompatActivity {
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         try {
-            cryptoService = new CryptoServiceImpl(this); // Инициализация вашего криптосервиса Tink
+            cryptoService = new CryptoServiceImpl(this); // Инициализация криптосервиса Tink
         } catch (GeneralSecurityException | IOException e) {
             throw new RuntimeException(e);
         }
@@ -74,7 +74,7 @@ public class ProfileActivity extends AppCompatActivity {
 
         // Получаем ваш публичный ключ Tink в Base64 для обмена с друзьями
         try {
-            String myPublicKeyBase64 = cryptoService.getMyPublicKeyBas64(); // Проверьте имя метода вашего CryptoService
+            String myPublicKeyBase64 = cryptoService.getMyPublicKeyBas64();
             textViewPublicKey.setText(myPublicKeyBase64);
 
             // Обработка копирования ключа в буфер обмена Android

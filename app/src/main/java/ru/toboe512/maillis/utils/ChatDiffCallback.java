@@ -1,5 +1,7 @@
 package ru.toboe512.maillis.utils;
 
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+
 import androidx.recyclerview.widget.DiffUtil;
 
 import java.util.List;
@@ -41,9 +43,9 @@ public class ChatDiffCallback extends DiffUtil.Callback {
         boolean oldChaNoNull = oldChat != null;
         boolean newChaNoNull = newChat != null;
         String oldChatTitle = oldChaNoNull && oldChat.getTitle() != null
-                ? oldChat.getTitle() : "";
+                ? oldChat.getTitle() : EMPTI_STRING;
         String oldChatLastMessage = oldChaNoNull && oldChat.getLastMessage() != null
-                ? oldChat.getLastMessage() : "";
+                ? oldChat.getLastMessage() : EMPTI_STRING;
 
 
 

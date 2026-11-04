@@ -152,34 +152,32 @@ public class EmailClientImpl implements EmailClient {
 
                     // СЛУЧАЙ В: Прилетело обычное текстовое сообщение чата
                     if (subject.contains(CHAT_MESSAGE)) {
-                        result = maillisChatMessageCase(msg, inbox, prefs);
+                        result = chatMessageCase(msg, prefs);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     if (subject.contains(CHAT_IMAGE_MAIL)) {
-                        result = maillisChatImageCase(msg, context.getCacheDir(), prefs);
-                        if (result) {
-                            deleteMessage(msg, inbox);
-                        }
+                        result = chatImageCase(msg, context.getCacheDir(), prefs);
+                        deleteMessage(msg, inbox);
                         continue;
                     }
                     if (subject.contains(GROUP_MESSAGE_MAIL)) {
-                        result = maillisGroupMessageCase(msg);
+                        result = groupMessageCase(msg);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     if (subject.contains(GROUP_IMAGE_MAIL)) {
-                        result = maillisGroupImageCase(msg, context.getCacheDir());
+                        result = groupImageCase(msg, context.getCacheDir());
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     if (subject.contains(READ_RECEIPT)) {
-                        maillisReadReceipt(msg);
+                        result = readReceipt(msg);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     if (subject.contains(GROUP_LEAVE)) {
-                        maillisGroupLeave(msg);
+                        result = groupLeave(msg);
                         deleteMessage(msg, inbox);
                         continue;
                     }
@@ -190,37 +188,37 @@ public class EmailClientImpl implements EmailClient {
                     }
                     //  В СУЩЕСТВУЮЩУЮ ГРУППУ ДОБАВИЛСЯ КТО-ТО ЕЩЕ (Синхронизация состава)
                     if (subject.contains(GROUP_SYNC)) {
-                        groupSync(msg);
+                        result = groupSync(msg);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     // СЦЕНАРИЙ 1: Нам прилетел Pre-Invite (Мы получатель, у нас просят ключ для вступления)
                     if (subject.contains(GROUP_PRE_INVITE_MAIL)) {
-                        result = maillisGroupPreInviteCase(msg, inbox, prefs);
+                        result = groupPreInviteCase(msg, prefs);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     // СЦЕНАРИЙ 2: Создателю группы прилетел ответный Tink-ключ от друга
                     if (subject.contains(GROUP_PRE_INVITE_RESPONSE_MAIL)) {
-                        result = maillisGroupPreInviteResponseCase(msg, inbox, prefs);
+                        result = groupPreInviteResponseCase(msg, prefs);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     // СЦЕНАРИЙ 3: Получателю прилетел долгожданный ЗАШИФРОВАННЫЙ AES-ключ группы
                     if (subject.contains(GROUP_INVITE_MAIL)) {
-                        result = maillisGroupInviteCase(msg, inbox);
+                        result = groupInviteCase(msg, inbox);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     // СЛУЧАЙ А: Прилетел запрос на создание чата и обмен ключами
                     if (subject.contains(KEY_REQUEST)) {
-                        result = maillisKeyRequestCase(msg, inbox, prefs);
+                        result = keyRequestCase(msg, prefs);
                         deleteMessage(msg, inbox);
                         continue;
                     }
                     // СЛУЧАЙ Б: Прилетел ответный ключ (собеседник подтвердил создание нашего чата)
                     if (subject.contains(KEY_RESPONSE)) {
-                        result = maillisKeyResponseCase(msg, inbox);
+                        result = keyResponseCase(msg);
                         deleteMessage(msg, inbox);
                     }
                 }
@@ -250,7 +248,7 @@ public class EmailClientImpl implements EmailClient {
         return result;
     }
 
-    private void groupSync(Message msg) {
+    private boolean groupSync(Message msg) {
         try {
             String[] parts = msg.getSubject().split(" ");
             long remoteChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
@@ -264,15 +262,15 @@ public class EmailClientImpl implements EmailClient {
                 dbService.saveIncomingGroupMessage(remoteChatId, "Система", "[MailLis-System]",
                         "➕ К группе присоединился участник: " + newMemberEmail,
                         System.currentTimeMillis(), extractMsgId(msg), "TEXT", null);
-
-
             }
+            return true;
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
     }
 
-    private boolean maillisGroupLeave(Message msg) {
+    private boolean groupLeave(Message msg) {
         try {
             String[] parts = msg.getSubject().split(" ");
             long remoteGroupId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
@@ -296,7 +294,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisReadReceipt(Message msg) throws MessagingException, IOException {
+    private boolean readReceipt(Message msg) throws MessagingException, IOException {
         // 💥 ПОЙМАЛИ ОТЧЕТ О ПРОЧТЕНИИ ЧАТА!
         // В теле этого письма друг прислал нам Message-ID нашего же отправленного ранее сообщения
         String readMessageServerUid = msg.getContent().toString().trim();
@@ -306,7 +304,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisGroupMessageCase(Message msg) throws Exception {
+    private boolean groupMessageCase(Message msg) throws Exception {
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         // Парсим ID родительского чата из темы письма
         String[] parts = msg.getSubject().split(SPACE_STRING);
@@ -344,7 +342,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisGroupImageCase(Message msg, File cacheDir) throws Exception {
+    private boolean groupImageCase(Message msg, File cacheDir) throws Exception {
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         // Парсим ID родительского чата из темы письма
         String[] parts = msg.getSubject().split(SPACE_STRING);
@@ -393,7 +391,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisGroupPreInviteCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException {
+    private boolean groupPreInviteCase(Message msg, SharedPreferences prefs) throws MessagingException {
 
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         try {
@@ -442,7 +440,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisGroupPreInviteResponseCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException {
+    private boolean groupPreInviteResponseCase(Message msg, SharedPreferences prefs) throws MessagingException {
         try {
             String[] parts = msg.getSubject().split(" ");
             long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
@@ -474,7 +472,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisGroupInviteCase(Message msg, Folder inbox) throws MessagingException, GeneralSecurityException, IOException {
+    private boolean groupInviteCase(Message msg, Folder inbox) throws MessagingException, GeneralSecurityException, IOException {
 
         // Извлекаем ID чата, который назначил создатель группы
         String[] subjectParts = msg.getSubject().split(" ");
@@ -509,7 +507,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisChatMessageCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException, IOException, GeneralSecurityException {
+    private boolean chatMessageCase(Message msg, SharedPreferences prefs) throws MessagingException, IOException, GeneralSecurityException {
 
         boolean result;
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
@@ -558,7 +556,7 @@ public class EmailClientImpl implements EmailClient {
         return result;
     }
 
-    private boolean maillisChatImageCase(Message msg, File cacheDir, SharedPreferences prefs) throws MessagingException, IOException, GeneralSecurityException {
+    private boolean chatImageCase(Message msg, File cacheDir, SharedPreferences prefs) throws MessagingException, IOException, GeneralSecurityException {
 
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
@@ -607,7 +605,7 @@ public class EmailClientImpl implements EmailClient {
                 currentTimestamp, messageId, IMAGE_MSG, file.getAbsolutePath());
     }
 
-    private boolean maillisKeyRequestCase(Message msg, Folder inbox, SharedPreferences prefs) throws MessagingException, IOException {
+    private boolean keyRequestCase(Message msg, SharedPreferences prefs) throws MessagingException, IOException {
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
         long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
@@ -634,7 +632,7 @@ public class EmailClientImpl implements EmailClient {
         return true;
     }
 
-    private boolean maillisKeyResponseCase(Message msg, Folder inbox) throws MessagingException, IOException {
+    private boolean keyResponseCase(Message msg) throws MessagingException, IOException {
         boolean result = false;
         String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
         // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite

@@ -6,7 +6,6 @@ import static android.widget.Toast.LENGTH_SHORT;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.GROUP_LEAVE;
-import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
 import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 
@@ -30,7 +29,6 @@ import java.util.List;
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.activity.ChatActivity;
 import ru.toboe512.maillis.client.EmailClient;
-import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.ChatPreview;
 import ru.toboe512.maillis.utils.ChatDiffCallback;
@@ -102,8 +100,10 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
         var builder = new AlertDialog.Builder(context);
         builder.setTitle("Удалить чат");
         builder.setMessage("Вы уверены, что хотите удалить чат '" + chat.getTitle() + "' и всю историю переписки?");
-        builder.setPositiveButton("Удалить", (dialog, which) -> deleteChatFromDatabase(chat.getId(), position));
-        builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
+        builder.setPositiveButton("Удалить", (dialog, which) ->
+                deleteChatFromDatabase(chat.getId(), position));
+        builder.setNegativeButton("Отмена", (dialog, which) ->
+                dialog.dismiss());
 
         AlertDialog dialog = builder.create();
         dialog.show();
@@ -125,9 +125,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             // Загружаем наш собственный логин из SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
-            //Вытаскиваем email участников, чтобы зачистить их ключи из public_keys
-            members = dbService.getGroupMembers(chatId, myEmail);
-            //  dbService.deleteGroupMembersByRemoteId(chatId);
+
             long currentTimestamp = System.currentTimeMillis();
             int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
@@ -141,7 +139,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             members.add(dbService.getRecipientEmailByChatId(chatId));
             isDeleted = dbService.deleteChatAndMessages(chatId);
         }
-//        if (isDeleted) {
+//        if (isDeleted) { //TODO придумать как удалять публичные ключи
 //            // 3. Если группа стерта, убираем из кэша публичные ключи участников
 //            for (String memberEmail : members) {
 //                dbService.deletePublicKeyByEmail(memberEmail);
@@ -165,7 +163,6 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
         }
     }
 
-    // Внутри вашего класса ChatsAdapter:
     public void updateChatsList(List<ChatPreview> newChats) {
         // 1. Вычисляем разницу между текущим списком в памяти адаптера (this.chatList) и новым из БД
         var diffCallback = new ChatDiffCallback(this.chatList, newChats);

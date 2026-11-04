@@ -11,7 +11,6 @@ public class ChatDbHelper extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "MailLisChat.db";
     private static final int DATABASE_VERSION = 19;
 
-    // Конструктор
     public ChatDbHelper(Context context) {
         super(context, DATABASE_NAME, null, DATABASE_VERSION);
         // ВОТ ЭТА СТРОКА разрешает параллельные операции чтения и записи из разных потоков!

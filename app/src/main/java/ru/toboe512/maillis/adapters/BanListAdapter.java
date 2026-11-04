@@ -30,7 +30,9 @@ public class BanListAdapter extends RecyclerView.Adapter<BanListAdapter.BanViewH
     @NonNull
     @Override
     public BanViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.item_banned_user, parent, false);
+        View view = LayoutInflater
+                .from(parent.getContext())
+                .inflate(R.layout.item_banned_user, parent, false);
         return new BanViewHolder(view);
     }
 

@@ -21,9 +21,9 @@ public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAd
     private final List<Contact> contacts;
     private final OnContactDeleteListener deleteListener;
 
-    private final OnContactBanListener banListener; // НОВЫЙ ЛИСТЕНЕР
+    private final OnContactBanListener banListener;
 
-    // НОВЫЙ ИНТЕРФЕЙС ДЛЯ БАНА
+    // ИНТЕРФЕЙС ДЛЯ БАНА
     public interface OnContactBanListener {
         void onContactBan(Contact contact, int position);
     }

@@ -18,7 +18,6 @@ public class AddContactActivity extends AppCompatActivity {
 
     private EditText editTextName;
     private EditText editTextEmail;
-    private Button buttonSave;
     private ChatDbHelper dbHelper; // Объявляем помощник БД
 
     @Override
@@ -37,7 +36,8 @@ public class AddContactActivity extends AppCompatActivity {
 
         editTextName = findViewById(R.id.editTextContactName);
         editTextEmail = findViewById(R.id.editTextContactEmail);
-        buttonSave = findViewById(R.id.buttonSaveContact);
+
+        Button buttonSave = findViewById(R.id.buttonSaveContact);
 
         buttonSave.setOnClickListener(new View.OnClickListener() {
             @Override
