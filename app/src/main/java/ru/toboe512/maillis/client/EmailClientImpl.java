@@ -1317,21 +1317,6 @@ public class EmailClientImpl implements EmailClient {
         });
     }
 
-    public void sendPreInviteOverNetwork(String targetEmail, long groupId, String groupName, SharedPreferences prefs) throws Exception {
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
-        Session session = createSmtpSession(prefs);
-        MimeMessage message = new MimeMessage(session);
-        message.setFrom(new InternetAddress(prefs.getString(KEY_EMAIL_LOGIN, "")));
-        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(targetEmail));
-
-        // Специальная служебная тема для перехвата фоновым IMAP приемником новичка
-        message.setSubject("[MailLis-Group-PreInvite] " + groupId);
-        // В тело пишем название группы и email создателя
-        message.setText(groupName + "\n" + myEmail);
-        message.saveChanges();
-
-        Transport.send(message);
-    }
 
     public void sendGroupSyncNotification(String oldMemberEmail, long groupId, String newMemberEmail, SharedPreferences prefs) throws Exception {
         String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);

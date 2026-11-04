@@ -116,8 +116,9 @@ public class AddMembersActivity extends AppCompatActivity {
         // 2. Запускаем фоновый SMTP-транспорт
         new Thread(() -> {
             try {
+                byte[] groupSecretKey = dbService.getGroupSecretKey(groupId);
                 // А. Шлем Пре-Инвайт новичку, чтобы его телефон создал заготовку группы
-                emailClient.sendPreInviteOverNetwork(targetEmail, groupId, groupName, prefs);
+                emailClient.sendGroupInviteOverNetwork(targetEmail, groupId, groupName, groupSecretKey, prefs);
 
                 // Б. Шлем уведомление всем ОСТАЛЬНЫМ участникам группы, чтобы они тоже добавили его Email к себе
                 List<String> currentMembers = dbService.getGroupMembersEmails(groupId, myEmail);
