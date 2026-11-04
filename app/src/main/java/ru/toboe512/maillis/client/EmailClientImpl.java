@@ -537,22 +537,23 @@ public class EmailClientImpl implements EmailClient {
         String messageId = extractMsgId(msg);
         result = dbService.saveIncomingMessage(chatId, senderEmail, CHAT_MESSAGE,
                 messageText, currentTimestamp, messageId, TEXT_MSG, EMPTI_STRING);
-//
-//        // СРАЗУ ШЛЕМ СИГНАЛ ПРОЧТЕНИЯ: Отправляем скрытое SMTP письмо обратно другу
-//        if (messageId != null && !messageId.isEmpty()) {
-//            // Отправляем пустой текст, главное — тема [MailLis-Read-Receipt] и Message-ID в теле или теме
-//            sendEmailOverNetwork(chatId, senderEmail, MAILLIS_READ_RECEIPT, messageId, 0, prefs, new OnMessagesSynchronizedListener() {
-//                @Override
-//                public void onSynchronized(Message updatedMessage) {
-//                    Log.d("MailLis_Status", "Отчет о прочтении (✓✓) отправлен для письма: " + messageId);
-//                }
-//
-//                @Override
-//                public void onError(Exception e) {
-//                    // Если сети нет, отчет просто не улетит, ничего страшного
-//                }
-//            });
-//        }
+
+        // СРАЗУ ШЛЕМ СИГНАЛ ПРОЧТЕНИЯ: Отправляем скрытое SMTP письмо обратно другу
+        if (messageId != null && !messageId.isEmpty()) {
+          //  int generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, EMPTI_STRING, currentTimestamp);
+            // Отправляем пустой текст, главное — тема [MailLis-Read-Receipt] и Message-ID в теле или теме
+            sendEmailOverNetwork(chatId, senderEmail, READ_RECEIPT, messageId, 0, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
+                @Override
+                public void onSynchronized(MessageDto updatedMessages) {
+                    Log.d("MailLis_Status", "Отчет о прочтении (✓✓) отправлен для письма: " + messageId);
+                }
+
+                @Override
+                public void onError(Exception e) {
+                    // Если не отправлено ничего страшного
+                }
+            });
+        }
         Log.d("MailLis_P2P", "Новое сообщение успешно добавлено в чат " + chatId);
         return result;
     }

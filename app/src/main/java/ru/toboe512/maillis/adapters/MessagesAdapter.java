@@ -181,12 +181,6 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
         holder.cardMessage.setLayoutParams(params);
 
-//        // ОБРАБОТКА ДОЛГОГО КЛИКА НА СООБЩЕНИЕ
-//        holder.itemView.setOnLongClickListener(v -> {
-//            showDeleteMessageDialog(messageDto, position);
-//            return true;
-//        });
-
         // =========================================================================
         // ИСПРАВЛЕНИЕ 1: Проверяем выделение СТРОГО по наличию ID сообщения в нашем Set!
         // Теперь даже если таймер обновит объекты, ячейка сохранит визуальное выделение.

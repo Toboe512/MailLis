@@ -20,7 +20,6 @@ public class Consts {
     public static final String GROUP_SYNC = "[MailLis-Group-Sync]";
 
     public static final String GROUP_LEAVE = "[MailLis-Group-Leave]";
-    //public static final String READ_RECEIPT = "[MAILLIS-READ-RECEIPT]";
 
     // Ключи для сохранения полей настроек
     public static final String KEY_IMAP_SERVER = "imap_server";

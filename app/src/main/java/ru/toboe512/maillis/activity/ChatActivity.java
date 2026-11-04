@@ -292,6 +292,7 @@ public class ChatActivity extends AppCompatActivity {
                     if (item.getItemId() == 2) {
                         // ВЫЗЫВАЕМ ВАШУ ОТЛАЖЕННУЮ ЛОГИКУ УДАЛЕНИЯ ВСЕГО ЧАТА
                         showDeleteChatDialog();
+                        updateUiFromDatabase();
                         return true;
                     }
                     if (item.getItemId() == 3) {
@@ -357,7 +358,7 @@ public class ChatActivity extends AppCompatActivity {
                 }
 
                 // Показываем нативное диалоговое окно подтверждения
-                new androidx.appcompat.app.AlertDialog.Builder(ChatActivity.this)
+                new AlertDialog.Builder(ChatActivity.this)
                         .setTitle("Удаление сообщений")
                         .setMessage("Вы уверены, что хотите удалить эти сообщения (" + toDelete.size() + " шт.) со своего устройства?")
                         .setPositiveButton("Удалить", (dialog, which) -> {
@@ -424,6 +425,7 @@ public class ChatActivity extends AppCompatActivity {
         }
         if (id == R.id.action_delete_chat) {
             showDeleteChatDialog(); // Показываем окно удаления
+            updateUiFromDatabase();
             return true;
         }
         return super.onOptionsItemSelected(item);
@@ -551,9 +553,6 @@ public class ChatActivity extends AppCompatActivity {
                         )
                         .collect(toList());
 
-                if (freshMessageDtos.isEmpty()) {
-                    return;
-                }
                 // 2. ВОЗВРАЩАЕМСЯ НА ГЛАВНЫЙ ПОТОК ANDROID для перерисовки экрана!
                 runOnUiThread(() -> {
                     if (messagesAdapter != null) {
