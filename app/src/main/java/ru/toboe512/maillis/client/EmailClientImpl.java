@@ -429,7 +429,6 @@ public class EmailClientImpl implements EmailClient {
 
             // 2. Создаем у себя заготовку группового чата (пока без секретного AES-ключа группы)
             dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, null, senderEmail);
-            //dbService.addGroupMember(remoteChatId, senderEmail); // Записываем создателя как участника
 
             Log.i("MailLis_P2P_Group", "Поймали Pre-Invite в группу \"" + incomingGroupName + "\". Высылаем свой Tink-ключ в ответ...");
 

@@ -1748,19 +1748,20 @@ public class DBServiceSQLite implements DBService {
                 Log.i("MailLis_DB_Group", "🎉 Группа \"" + groupName + "\" успешно создана в транзакции.");
                 Log.d("MailLis_DB_Group", "Локальный ID: " + localId + " | Глобальный P2P ID (remote_group_id): " + globalUniqueId);
             } else {
+                globalUniqueId = -1;
                 Log.w("MailLis_DB_Group", "Ошибка insert: база данных вернула -1 при создании группы " + groupName);
             }
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Group", "Критическая ошибка транзакции при создании группы: " + groupName, e);
             e.printStackTrace();
-            localId = -1;
+            globalUniqueId = -1;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
             db.endTransaction();
         }
 
-        return localId;
+        return globalUniqueId;
     }
     public boolean isGroupChat(long chatId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -2283,8 +2284,8 @@ public class DBServiceSQLite implements DBService {
                 int rows = db.delete("group_members", "group_id = CAST(? AS INTEGER) AND user_email LIKE ?",
                         new String[]{String.valueOf(localGroupId), normalizedEmail});
 
-                // 3. Вырезаем публичный ключ участника, чтобы исключить утечку и спам
-                db.delete("public_keys", "email LIKE ?", new String[]{normalizedEmail});
+//                // 3. Вырезаем публичный ключ участника, чтобы исключить утечку и спам
+//                db.delete("public_keys", "email LIKE ?", new String[]{normalizedEmail});
 
                 db.setTransactionSuccessful();
                 success = rows > 0;

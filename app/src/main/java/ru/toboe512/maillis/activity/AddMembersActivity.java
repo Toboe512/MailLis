@@ -44,25 +44,16 @@ public class AddMembersActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Извлекаем ID группы с проверкой на "всеядность" типов данных (int / long)
-        if (getIntent() != null) {
-            // Пробуем считать как long (наш эталонный P2P ID на базе таймстемпа)
-            groupId = getIntent().getLongExtra("GROUP_ID", -1);
-
-            // Если вернулся -1, значит из ChatActivity прилетело число типа int!
-            if (groupId == -1) {
-                int intGroupId = getIntent().getIntExtra("GROUP_ID", -1);
-                if (intGroupId != -1) {
-                    groupId = intGroupId; // Безопасно приводим int к long
-                    Log.d("MailLis_Fix_Intent", "Тип данных распознан как INT. Приведено к LONG: " + groupId);
-                }
-            }
-        }
-
         super.onCreate(savedInstanceState);
 
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_add_members);
+
+        // Извлекаем ID группы с проверкой на "всеядность" типов данных (int / long)
+        if (getIntent() != null) {
+            // Пробуем считать как long (наш эталонный P2P ID на базе таймстемпа)
+            groupId = getIntent().getLongExtra("GROUP_ID", -1);
+        }
 
         if (groupId == -1) {
             Toast.makeText(this, "Ошибка: ID группы не передан", Toast.LENGTH_SHORT).show();

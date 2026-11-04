@@ -243,9 +243,9 @@ public interface DBService {
     String getRecipientEmailByChatId(long chatId);
 
     /**
-     * Помечает сообщение как не отправленное
+     * Возвращает неотправленные сообщения
      *
-     * @return список всех сообщений
+     * @return список всех неотправленных сообщений
      */
     List<MessageDto> getUnsentMessages();
 
@@ -279,6 +279,11 @@ public interface DBService {
      */
     boolean isUserBanned(String email);
 
+    /**
+     * Возвращает список забаненых пользователей
+     *
+     * @return список забаненых пользователей
+     */
     List<String> getBannedUsers();
 
     /**
@@ -367,7 +372,7 @@ public interface DBService {
      * @param groupName         выбранное пользователем название группы
      * @param generatedGroupKey сгенерированный случайный 32-байтный AES-ключ для этой группы
      * @param creatorEmail      email текущего пользователя приложения (создателя)
-     * @return локальный ID созданной группы в SQLite, либо -1 при критической ошибке
+     * @return глобальный ID созданной группы в SQLite, либо -1 при критической ошибке
      */
     long createGroupChat(String groupName, byte[] generatedGroupKey, String creatorEmail);
 
@@ -466,8 +471,6 @@ public interface DBService {
      *     <li>Реляционный поиск внутреннего идентификатора группы по сквозному глобальному
      *     {@code remote_group_id} для защиты от коллизий автоинкремента на устройствах участников.</li>
      *     <li>Физическое удаление связующей строки из таблицы участников {@code group_members}.</li>
-     *     <li>Принудительное вырезание открытого криптографического ключа Tink удаляемого контакта
-     *     из кэша {@code public_keys}, чтобы веерный SMTP-конвейер больше не шифровал на него пакеты.</li>
      * </ol>
      *
      * <p><i>Архитектурное примечание:</i> Для обеспечения максимальной параллельности с секундным
