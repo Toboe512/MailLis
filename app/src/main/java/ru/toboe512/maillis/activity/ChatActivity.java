@@ -5,6 +5,7 @@ import static android.graphics.Bitmap.CompressFormat.JPEG;
 import static android.util.Base64.NO_WRAP;
 import static android.widget.Toast.LENGTH_SHORT;
 import static java.util.stream.Collectors.toList;
+import static ru.toboe512.maillis.config.Config.DEFAULT_SYNC_INTERVAL_MS;
 import static ru.toboe512.maillis.config.Config.KEY_SYNC_INTERVAL;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
@@ -110,23 +111,20 @@ public class ChatActivity extends AppCompatActivity {
         // Загружаем наш собственный логин из SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
-        actualIntervalMs = prefs.getLong(KEY_SYNC_INTERVAL, 20000);
+        actualIntervalMs = prefs.getLong(KEY_SYNC_INTERVAL, DEFAULT_SYNC_INTERVAL_MS);
 
-        // Стрелочка назад
-        ActionBar actionBar = getSupportActionBar();
-        if (actionBar != null) {
-            actionBar.setDisplayHomeAsUpEnabled(true);
-            actionBar.setTitle("Чат");
-        }
-
+        TextView textViewChatTitle = findViewById(R.id.textViewChatTitle);
         // Получаем ID чата и имя из интента (передано с главного экрана)
         Intent intent = getIntent();
         if (intent != null) {
             chatId = intent.getLongExtra("CHAT_ID", 1);
             String chatTitle = intent.getStringExtra("CHAT_TITLE");
             isGroup = getIntent().getBooleanExtra("IS_GROUP", false); // По умолчанию false (тет-а-тет)
-            if (chatTitle != null && actionBar != null) {
-                actionBar.setTitle(chatTitle);
+            if (chatTitle != null) {
+                textViewChatTitle.setText(chatTitle.trim());
+            } else {
+                // Подстраховка: если имя прилетело пустым, пишем дефолтное значение
+                textViewChatTitle.setText(isGroup ? "Групповой чат" : "Личный чат");
             }
         }
 
@@ -171,7 +169,6 @@ public class ChatActivity extends AppCompatActivity {
             } else {
                 generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
             }
-
 
             // 2. Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
             // Сообщение мгновенно появится на экране со значком "Часики" и больше не будет двоиться.
@@ -242,10 +239,6 @@ public class ChatActivity extends AppCompatActivity {
 
                             // Перечитываем SQLite, чтобы у сообщения гарантированно горел значок "Часики" (is_sent = 0)
                             updateUiFromDatabase();
-
-                            // ВЫЗОВ РЕТРАЯ: Принудительно пинаем наш общий networkExecutor,
-                            // чтобы при восстановлении интернета сообщение улетело само!
-                            // emailClient.retryUnsentMessages(prefs);
                         }
                     });
         });
@@ -329,19 +322,23 @@ public class ChatActivity extends AppCompatActivity {
             public void onMultiChoiceStateChanged(boolean isActive, int selectedCount) {
                 if (isActive) {
                     // Переключаем тулбары: прячем обычный, показываем контекстный
-                    if (layoutNormalToolbar != null)
+                    if (layoutNormalToolbar != null) {
                         layoutNormalToolbar.setVisibility(View.GONE);
-                    if (layoutEditToolbar != null)
+                    }
+                    if (layoutEditToolbar != null) {
                         layoutEditToolbar.setVisibility(View.VISIBLE);
-
+                    }
                     if (textViewSelectedCount != null) {
                         textViewSelectedCount.setText("Выбрано: " + selectedCount);
                     }
-                } else {
-                    // Возвращаем всё назад, если выбор пуст
-                    if (layoutNormalToolbar != null)
-                        layoutNormalToolbar.setVisibility(View.VISIBLE);
-                    if (layoutEditToolbar != null) layoutEditToolbar.setVisibility(View.GONE);
+                    return;
+                }
+                // Возвращаем всё назад, если выбор пуст
+                if (layoutNormalToolbar != null) {
+                    layoutNormalToolbar.setVisibility(View.VISIBLE);
+                }
+                if (layoutEditToolbar != null) {
+                    layoutEditToolbar.setVisibility(View.GONE);
                 }
             }
         });
@@ -355,7 +352,9 @@ public class ChatActivity extends AppCompatActivity {
         if (buttonDeleteSelected != null) {
             buttonDeleteSelected.setOnClickListener(v -> {
                 List<MessageDto> toDelete = messagesAdapter.getSelectedMessages();
-                if (toDelete.isEmpty()) return;
+                if (toDelete.isEmpty()) {
+                    return;
+                }
 
                 // Показываем нативное диалоговое окно подтверждения
                 new androidx.appcompat.app.AlertDialog.Builder(ChatActivity.this)
@@ -386,20 +385,20 @@ public class ChatActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                // Логика осталась прежней, но теперь она написана на актуальном API Android!
                 if (messagesAdapter != null && !messagesAdapter.getSelectedMessages().isEmpty()) {
                     // Если включен режим множественного выбора — сбрасываем его
                     messagesAdapter.clearSelection();
-                } else {
-                    // Иначе — выключаем этот колбэк и закрываем экран чата
-                    setEnabled(false);
-                    finish();
+                    return;
                 }
+                // Иначе — выключаем этот колбэк и закрываем экран чата
+                setEnabled(false);
+                finish();
             }
         });
 
         // Инициализируем нашу кастомную стрелочку назад
         ImageButton buttonChatBack = findViewById(R.id.buttonChatBack);
+
 
         if (buttonChatBack != null) {
             buttonChatBack.setOnClickListener(v -> {
@@ -423,29 +422,16 @@ public class ChatActivity extends AppCompatActivity {
             showBlockUserDialog(); // Показываем окно бана
             return true;
         }
-
         if (id == R.id.action_delete_chat) {
             showDeleteChatDialog(); // Показываем окно удаления
             return true;
         }
-
         return super.onOptionsItemSelected(item);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // 1. Сразу загружаем историю из локальной SQLite
-        var filter = new IntentFilter("ru.toboe512.maillis.UPDATE_CHATS");
-
-//        // Используем ContextCompat вместо стандартного registerReceiver.
-//        // Это полностью отключает проверку Lint и гарантирует защиту Android 14+ на уровне системы!
-//        ContextCompat.registerReceiver(
-//                this,
-//                messageUpdateReceiver,
-//                filter,
-//                ContextCompat.RECEIVER_NOT_EXPORTED // Указываем, что интент строго внутренний
-//        );
 
         // Первичное обновление истории при заходе на экран (наш старый код)
         updateUiFromDatabase();
@@ -462,10 +448,6 @@ public class ChatActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-
-//        if (messageUpdateReceiver != null) {
-//            unregisterReceiver(messageUpdateReceiver);
-//        }
 
         // ОСТАНАВЛИВАЕМ ЦИКЛ при выходе с экрана чата
         // Это критически важно, чтобы приложение не высаживало батарею смартфона в фоне!
@@ -638,7 +620,8 @@ public class ChatActivity extends AppCompatActivity {
 
                 // 3. ЗАПИСЫВАЕМ СТРОКУ В SQLITE БАЗУ ДАННЫХ
                 // Передаем тип "IMAGE" и путь к нашему файлу. Статус изначально 0 (часики)
-                int generatedId = dbService.saveGenericMessage(chatId, myEmail, CHAT_IMAGE_MAIL, CHAT_IMAGE_MAIL, true, currentTimestamp);
+                int generatedId = dbService.saveGenericMessage(chatId, myEmail, CHAT_IMAGE_MAIL,
+                        CHAT_IMAGE_MAIL, true, currentTimestamp);
                 // Принудительно обновляем тип и путь в базе данных
                 dbService.updateMessageTypeAndPath(generatedId, IMAGE_MSG, localFile.getAbsolutePath());
 
@@ -649,22 +632,23 @@ public class ChatActivity extends AppCompatActivity {
                 if (isGroup) {
                     emailClient.sendGroupImageOverNetwork(chatId, rawImageBytes, generatedId, prefs);
                 } else {
-                    emailClient.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
-                        @Override
-                        public void onSynchronized(MessageDto updatedMessageDto) {
-                            // Успех! Сетевой слой сам вызвал markMessageAsSent, нам нужно только перерисовать галочку
-                            updateUiFromDatabase();
-                        }
+                    emailClient.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs,
+                            new EmailClientImpl.OnMessagesSynchronizedListener() {
+                                @Override
+                                public void onSynchronized(MessageDto updatedMessageDto) {
+                                    // Успех! Сетевой слой сам вызвал markMessageAsSent, нам нужно только перерисовать галочку
+                                    updateUiFromDatabase();
+                                }
 
-                        @Override
-                        public void onError(Exception e) {
-                            runOnUiThread(() ->
-                                    Toast.makeText(ChatActivity.this,
-                                                    "Ошибка отправки медиафайла: " + e.getMessage(), LENGTH_SHORT)
-                                            .show());
-                            updateUiFromDatabase();
-                        }
-                    });
+                                @Override
+                                public void onError(Exception e) {
+                                    runOnUiThread(() ->
+                                            Toast.makeText(ChatActivity.this,
+                                                            "Ошибка отправки медиафайла: " + e.getMessage(), LENGTH_SHORT)
+                                                    .show());
+                                    updateUiFromDatabase();
+                                }
+                            });
                 }
 
             } catch (Exception e) {
