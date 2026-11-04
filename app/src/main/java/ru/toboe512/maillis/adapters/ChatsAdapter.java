@@ -110,7 +110,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     }
 
     // Удаление записи из SQLite и анимация списка
-    private void deleteChatFromDatabase(int chatId, int position) {
+    private void deleteChatFromDatabase(long chatId, int position) {
         // Удаляем сам чат. Связанные сообщения в SQLite удалятся автоматически благодаря ON DELETE CASCADE
         List<String> members = new ArrayList<>();
         ChatPreview chatPreview = chatList.get(position);

@@ -56,7 +56,6 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
 
     // Поля на уровне класса вашего MessagesAdapter:
     private boolean isMultiChoiceMode = false;
-    private final List<MessageDto> selectedMessages = new ArrayList<>();
 
     // Используем Set<Integer>, он на уровне языка гарантирует 100% уникальность ID
     private final Set<Integer> selectedMessageIds = new HashSet<>();

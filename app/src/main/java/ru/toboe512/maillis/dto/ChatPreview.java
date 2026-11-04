@@ -3,7 +3,7 @@ package ru.toboe512.maillis.dto;
 
 public class ChatPreview {
 
-    private final int id;
+    private final long id;
     private String title;
     private final boolean isHandShake;
 
@@ -27,7 +27,7 @@ public class ChatPreview {
         return isHandShake;
     }
 
-    public ChatPreview(int id, String title, String lastMessage, boolean isHandShake, boolean isGroup) {
+    public ChatPreview(long id, String title, String lastMessage, boolean isHandShake, boolean isGroup) {
         this.id = id;
         this.title = title;
         this.lastMessage = lastMessage;
@@ -35,7 +35,7 @@ public class ChatPreview {
         this.isGroup = isGroup;
     }
 
-    public int getId() {
+    public long getId() {
         return id;
     }
 

@@ -3,6 +3,7 @@ package ru.toboe512.maillis.activity;
 import static android.widget.Toast.LENGTH_SHORT;
 import static android.widget.Toast.makeText;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
 
 import android.content.Intent;
@@ -147,7 +148,7 @@ public class CreateChatActivity extends AppCompatActivity {
                     // А. Генерируем уникальный 32-байтный секретный ключ AES-256 для этой группы
                     byte[] groupSecretKey = CryptoServiceImpl.generateGroupSymmetricKey();
 
-                    String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "my@mail.ru").trim();
+                    String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
                     // Б. Создаем групповую комнату в SQLite (is_group = 1, пишем BLOB ключа)
                     long newChatId = dbService.createGroupChat(finalGroupName, groupSecretKey, myEmail);
 

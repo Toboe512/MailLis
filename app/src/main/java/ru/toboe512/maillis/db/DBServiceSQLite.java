@@ -537,80 +537,95 @@ public class DBServiceSQLite implements DBService {
         return isUpdated;
     }
 
+    /**
+     * Выгружает агрегированный список чатов и групп для главного экрана.
+     * Извлекает превью последних сообщений за один проход базы данных без вызовов диска в цикле Java [source].
+     * Защищено от переполнения ID групп и коллизий идентификаторов [source].
+     */
     public List<ChatPreview> loadChats() {
         List<ChatPreview> chatList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
 
-        // ОПТИМИЗИРОВАННЫЙ UNION ЗАПРОС С КОРРЕКТНЫМ ВЫДЕЛЕНИЕМ СКВОЗНЫХ ИДЕНТИФИКАТОРОВ
+        // МОЩНЫЙ И ПРАВИЛЬНЫЙ UNION ЗАПРОС
         String sql =
-                // --- ЧАСТЬ 1: Вытягиваем одиночные чаты (is_group_message = 0) ---
+                // --- ЧАСТЬ 1: ОДИНОЧНЫЕ ЧАТЫ (is_group_message = 0) ---
                 "SELECT " +
-                        "  id AS chat_id, " +
-                        "  recipient_email AS chat_name, " +
-                        "  COALESCE((SELECT message_text FROM messages WHERE chat_id = chats.id " +
-                        "AND is_group_message = 0 ORDER BY timestamp DESC LIMIT 1), 'Нет сообщений') AS last_msg, " +
-                        "  COALESCE((SELECT timestamp FROM messages WHERE chat_id = chats.id " +
-                        "AND is_group_message = 0 ORDER BY timestamp DESC LIMIT 1), 0) AS last_time, " +
-                        "  0 AS is_group_flag " + // 0 = одиночный чат
-                        "FROM chats " +
+                        "  c.id AS chat_id, " +
+                        "  c.recipient_email AS chat_name, " +
+                        "  m.message_text AS text_preview, " +
+                        "  m.subject AS subject_preview, " +
+                        "  COALESCE(m.timestamp, 0) AS sorted_time, " +
+                        "  0 AS is_group_flag " +
+                        "FROM chats c " +
+                        "LEFT JOIN messages m ON m.id = ( " +
+                        "  SELECT id FROM messages WHERE chat_id = c.id AND is_group_message = 0 " +
+                        "  ORDER BY timestamp DESC LIMIT 1 " +
+                        ") " +
 
-                        "UNION ALL " + // Склеиваем таблицы без потери данных
+                        "UNION ALL " +
 
-                        // --- ЧАСТЬ 2: ИСПРАВЛЕНО ДЛЯ ГРУПП (Вытягиваем именно remote_group_id как сквозной chat_id) ---
+                        // --- ЧАСТЬ 2: ГРУППОВЫЕ ЧАТЫ (С полным реляционным сопоставлением ID) ---
                         "SELECT " +
-                        "  remote_group_id AS chat_id, " + // КРИТИЧЕСКИЙ ФИКС: отдаем глобальный ID для синхронизации
-                        "  group_name AS chat_name, " +
-                        "  COALESCE((SELECT message_text FROM messages WHERE chat_id = group_chats.remote_group_id " +
-                        "AND is_group_message = 1 ORDER BY timestamp DESC LIMIT 1), 'Группа создана') AS last_msg, " +
-                        "  COALESCE((SELECT timestamp FROM messages WHERE chat_id = group_chats.remote_group_id " +
-                        "AND is_group_message = 1 ORDER BY timestamp DESC LIMIT 1), 0) AS last_time, " +
-                        "  1 AS is_group_flag " + // 1 = группа
-                        "FROM group_chats " +
+                        "  g.remote_group_id AS chat_id, " + // Отдаем глобальный ID для P2P-синхронизации [source]
+                        "  g.group_name AS chat_name, " +
+                        "  m_g.message_text AS text_preview, " +
+                        "  m_g.subject AS subject_preview, " +
+                        "  COALESCE(m_g.timestamp, 0) AS sorted_time, " +
+                        "  1 AS is_group_flag " +
+                        "FROM group_chats g " +
+                        "LEFT JOIN messages m_g ON m_g.id = ( " +
+                        "  SELECT id FROM messages WHERE is_group_message = 1 AND ( " +
+                        "    chat_id = g.id OR chat_id = g.remote_group_id " + // Исправлен маппинг ID создателя и участников! [source]
+                        "  ) ORDER BY timestamp DESC LIMIT 1 " +
+                        ") " +
 
-                        // --- ОБЩАЯ СОРТИРОВКА: Новые чаты всегда сверху ---
-                        "ORDER BY last_time DESC";
+                        // ---ОБЩАЯ СОРТИРОВКА: Чаты со свежей активностью всегда наверху ---
+                        "ORDER BY sorted_time DESC";
 
+        // Автоматическое закрытие курсора через try-with-resources исключает Memory Leaks [source]
         try (Cursor cursor = db.rawQuery(sql, null)) {
             if (cursor != null && cursor.moveToFirst()) {
+
                 int idIdx = cursor.getColumnIndex("chat_id");
                 int nameIdx = cursor.getColumnIndex("chat_name");
-                int timeIdx = cursor.getColumnIndex("last_time");
+                int textIdx = cursor.getColumnIndex("text_preview");
+                int subjectIdx = cursor.getColumnIndex("subject_preview");
                 int groupIdx = cursor.getColumnIndex("is_group_flag");
 
-                if (idIdx >= 0 && nameIdx >= 0 && timeIdx >= 0 && groupIdx >= 0) {
+                if (idIdx >= 0 && nameIdx >= 0 && textIdx >= 0 && subjectIdx >= 0 && groupIdx >= 0) {
                     do {
-                        // Используем long для ID чатов во избежание переполнения
+                        // Используем КАТЕГОРИЧЕСКИ long для ID во избежание переполнения (Downcasting Bug)! [source]
                         long id = cursor.getLong(idIdx);
                         String name = cursor.getString(nameIdx);
+                        String rawText = cursor.getString(textIdx);
+                        String subject = cursor.getString(subjectIdx);
                         boolean isGroup = cursor.getInt(groupIdx) == 1;
 
-                        // БЕЗОПАСНАЯ ПРОВЕРКА НА РУКОПОЖАТИЕ
                         boolean isHandShake = false;
+                        String finalMessageText = isGroup ? "Группа создана" : "Нет сообщений";
 
-                        // Теперь getLastMessage получит верный сквозной ID группы и найдет запись!
-                        var lastMsg = getLastMessage(id, isGroup);
+                        if (rawText != null) {
+                            finalMessageText = rawText;
 
-                        String msg = "Нет сообщений";
-                        if (isGroup) {
-                            msg = "Группа создана";
+                            // Проверяем на служебные заголовки рукопожатий (для одиночных чатов)
+                            if (subject != null && !isGroup) {
+                                // Если тема письма не содержит стандартный маркер текста — это хэндшейк обмена ключами Tink
+                                isHandShake = !subject.contains("MAILLIS_CHAT_MESSAGE");
+                                if (isHandShake) {
+                                    finalMessageText = "Чат создан";
+                                }
+                            }
                         }
 
-                        // Проверяем на служебные заголовки рукопожатий (для одиночных чатов)
-                        if (lastMsg != null && lastMsg.getSubject() != null) {
-                            isHandShake = !lastMsg.getSubject().contains("MAILLIS_CHAT_MESSAGE"); // Замените на вашу константу
-                            msg = isHandShake ? "Чат создан" : lastMsg.getText();
-                        } else if (lastMsg != null) {
-                            msg = lastMsg.getText(); // Если обычный текст, берем его
-                        }
-
-                        // Собираем готовый объект превью чата с правильным сквозным ID
-                        ChatPreview preview = new ChatPreview((int) id, name, msg, isHandShake, isGroup);
+                        // ВНИМАНИЕ: Измените тип первого параметра в вашем классе ChatPreview на long!
+                        // Конструктор должен быть: public ChatPreview(long id, String name, ...)
+                        ChatPreview preview = new ChatPreview(id, name, finalMessageText, isHandShake, isGroup);
                         chatList.add(preview);
 
                     } while (cursor.moveToNext());
                 }
             }
-            Log.d("MailLis_DB_Union", "Собрано чатов для главного экрана: " + chatList.size());
+            Log.d("MailLis_DB_Union", "Выгружено чатов для главного экрана: " + chatList.size());
         } catch (Exception e) {
             Log.e("MailLis_DB_Union", "Критическая ошибка выполнения UNION запроса в loadChats()", e);
             e.printStackTrace();
@@ -2087,55 +2102,91 @@ public class DBServiceSQLite implements DBService {
         return isDeleted;
     }
 
+    /**
+     * Полностью и безвозвратно удаляет групповой чат, участников, историю сообщений и крипто-ключи.
+     * Защищено от блокировок в WAL-режиме и багов каскадных триггеров FOREIGN KEY [source].
+     *
+     * @param groupId числовой идентификатор группы (локальный id или глобальный remote_group_id)
+     * @return true, если группа физически удалена из SQLite; false в случае сбоя
+     */
     public boolean deleteGroupChatAndMessages(long groupId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
-        boolean success;
+        boolean success = false;
 
-        // ХАК ДЛЯ НАДЕЖНОСТИ: Принудительно включаем поддержку внешних ключей для текущего соединения
+        // Принудительно включаем поддержку внешних ключей для текущего соединения [source]
         db.execSQL("PRAGMA foreign_keys = ON;");
 
-        // Открываем атомарную безопасную транзакцию
-        db.beginTransaction();
+        // ИСПОЛЬЗУЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ (Защита от SQLiteDatabaseLockedException) [source]
+        db.beginTransactionNonExclusive();
         try {
             // =========================================================================
-            // ШАГ 1: ЯВНО И ЖЕСТКО УДАЛЯЕМ УЧАСТНИКОВ ИЗ ТАБЛИЦЫ group_members
-            // Проверяем все варианты связей ID (прямой, через подзапросы к remote_group_id и обратно)
+            // ПРЕДВАРИТЕЛЬНЫЙ ШАГ: Находим оба ID (локальный и глобальный) до удаления,
+            // чтобы подзапросы не сбоили в процессе очистки таблиц!
             // =========================================================================
-            db.execSQL("DELETE FROM group_members WHERE " +
-                            "  group_id = CAST(? AS INTEGER) OR " +
-                            "  group_id = (SELECT id FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) LIMIT 1) OR " +
-                            "  group_id = (SELECT remote_group_id FROM group_chats WHERE id = CAST(? AS INTEGER) LIMIT 1)",
-                    new Object[]{groupId, groupId, groupId});
-            Log.d("MailLis_DB_Del", "Участники группы " + groupId + " принудительно стерты из таблицы group_members.");
+            long localId = -1;
+            long remoteId = -1;
+
+            String findIdsSql = "SELECT id, remote_group_id FROM group_chats " +
+                    "WHERE id = CAST(? AS INTEGER) OR remote_group_id = CAST(? AS INTEGER) LIMIT 1";
+            try (Cursor cursor = db.rawQuery(findIdsSql, new String[]{String.valueOf(groupId), String.valueOf(groupId)})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    localId = cursor.getLong(0);
+                    remoteId = cursor.getLong(1);
+                }
+            }
+
+            // Если группа вообще не найдена в базе — тихо выходим, транзакция успешна (её и так нет)
+            if (localId == -1) {
+                db.setTransactionSuccessful();
+                return true;
+            }
 
             // =========================================================================
-            // ШАГ 2: УДАЛЯЕМ ВСЮ ИСТОРИЮ СООБЩЕНИЙ ГРУППЫ ИЗ ТАБЛИЦЫ messages
+            // ШАГ 1: УДАЛЯЕМ САМУ КОМНАТУ ИЗ group_chats (ПЕРЕНЕСЕНО НА ПЕРВОЕ МЕСТО)
+            // Если в схеме БД есть ON DELETE CASCADE, этот шаг САМ очистит сообщения и мемберов! [source]
             // =========================================================================
-            db.execSQL("DELETE FROM messages WHERE is_group_message = 1 AND (" +
-                    "  chat_id = CAST(? AS INTEGER) OR " +
-                    "  chat_id = (SELECT remote_group_id FROM group_chats WHERE id = CAST(? AS INTEGER) LIMIT 1) OR " +
-                    "  chat_id = (SELECT id FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) LIMIT 1)" +
-                    ")", new Object[]{groupId, groupId, groupId});
-            Log.d("MailLis_DB_Del", "Сообщения группы " + groupId + " успешно очищены из таблицы messages.");
+            int deletedChats = db.delete(
+                    "group_chats",
+                    "id = CAST(? AS INTEGER) OR remote_group_id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(localId), String.valueOf(remoteId)}
+            );
 
             // =========================================================================
-            // ШАГ 3: УДАЛЯЕМ САМУ КОМНАТУ ГРУППЫ ИЗ ТАБЛИЦЫ group_chats
+            // ШАГ 2: ФОЛБЭК-ОЧИСТКА (Для баз данных, где забыли прописать FOREIGN KEY CASCADE)
+            // Гарантированно дочищаем хвосты по сохраненным ID
             // =========================================================================
-            db.execSQL("DELETE FROM group_chats WHERE id = CAST(? AS INTEGER) OR remote_group_id = CAST(? AS INTEGER)",
-                    new Object[]{groupId, groupId});
-            Log.d("MailLis_DB_Del", "Запись группы " + groupId + " удалена из таблицы group_chats.");
 
-            // Если все три удаления прошли без ошибок — фиксируем успех транзакции в SQLite диске
-            db.setTransactionSuccessful();
-            success = true;
-            Log.i("MailLis_DB_Del", "Групповой чат " + groupId + " и все связанные данные полностью стерты со смартфона.");
+            // Дочищаем участников
+            db.delete(
+                    "group_members",
+                    "group_id = CAST(? AS INTEGER) OR group_id = CAST(? AS INTEGER)",
+                    new String[]{String.valueOf(localId), String.valueOf(remoteId)}
+            );
+
+            // Дочищаем сообщения группы (is_group_message = 1)
+            db.delete(
+                    "messages",
+                    "is_group_message = 1 AND (chat_id = CAST(? AS INTEGER) OR chat_id = CAST(? AS INTEGER))",
+                    new String[]{String.valueOf(localId), String.valueOf(remoteId)}
+            );
+
+            // =========================================================================
+            // ШАГ 3: ФИНАЛИЗАЦИЯ И КОНТРОЛЬ
+            // =========================================================================
+            if (deletedChats > 0) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения на флеш-памяти [source]
+                success = true;
+                Log.i("MailLis_DB_Del", "🎉 Групповой чат " + groupId + " (Лок: " + localId + " | Дист: " + remoteId + ") полностью стерт.");
+            } else {
+                Log.w("MailLis_DB_Del", "Предупреждение: строка группы не была удалена из group_chats.");
+            }
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Del", "Критическая ошибка транзакции при удалении группы " + groupId, e);
             e.printStackTrace();
             success = false;
         } finally {
-            // Гарантированно закрываем транзакцию, высвобождая поток БД
+            // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL [source]
             db.endTransaction();
         }
 

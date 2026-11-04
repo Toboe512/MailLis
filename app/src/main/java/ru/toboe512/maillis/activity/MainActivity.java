@@ -3,6 +3,8 @@ package ru.toboe512.maillis.activity;
 import static android.Manifest.permission.POST_NOTIFICATIONS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
+import static androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED;
+
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;

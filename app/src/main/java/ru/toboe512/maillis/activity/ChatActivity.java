@@ -2,6 +2,7 @@ package ru.toboe512.maillis.activity;
 
 
 import static android.graphics.Bitmap.CompressFormat.JPEG;
+import static android.util.Base64.NO_WRAP;
 import static android.widget.Toast.LENGTH_SHORT;
 import static java.util.stream.Collectors.toList;
 import static ru.toboe512.maillis.config.Config.KEY_SYNC_INTERVAL;
@@ -70,7 +71,7 @@ public class ChatActivity extends AppCompatActivity {
     private EditText editTextMessage;
     // Переменные для работы с базой данных
     private DBService dbService;
-    private int chatId = 1; // ID текущего чата по умолчанию (для тестов)
+    private long chatId = 1; // ID текущего чата по умолчанию (для тестов)
     private boolean isGroup; // НАШ НОВЫЙ СИСТЕМНЫЙ ФЛАГ ТИПА КОМНАТЫ
     private EmailClient emailClient;
     private String recipientEmail = EMPTI_STRING;
@@ -79,9 +80,6 @@ public class ChatActivity extends AppCompatActivity {
     private BroadcastReceiver messageUpdateReceiver;
     // Объявляем лаунчер как поле класса ChatActivity
     private ActivityResultLauncher<Intent> photoPickerLauncher;
-
-    // ОБЪЯВЛЯЕМ КОМПОНЕНТЫ ТАЙМЕРА СТРОГО НА УРОВНЕ КЛАССА АКТИВНОСТИ
-    private static final long TIMER_INTERVAL_MS = 5000; // Интервал обновления — ровно 1 секунда
 
     long actualIntervalMs;
     private final Handler timerHandler = new Handler(Looper.getMainLooper());
@@ -124,7 +122,7 @@ public class ChatActivity extends AppCompatActivity {
         // Получаем ID чата и имя из интента (передано с главного экрана)
         Intent intent = getIntent();
         if (intent != null) {
-            chatId = intent.getIntExtra("CHAT_ID", 1);
+            chatId = intent.getLongExtra("CHAT_ID", 1);
             String chatTitle = intent.getStringExtra("CHAT_TITLE");
             isGroup = getIntent().getBooleanExtra("IS_GROUP", false); // По умолчанию false (тет-а-тет)
             if (chatTitle != null && actionBar != null) {
@@ -191,10 +189,11 @@ public class ChatActivity extends AppCompatActivity {
                     if (groupSecretKey != null && groupSecretKey.length > 0) {
                         // Шифруем текст сообщения общим AES-ключом группы
                         byte[] encryptedGroupBytes = CryptoServiceImpl.encryptGroupText(text, groupSecretKey);
-                        String base64GroupText = Base64.encodeToString(encryptedGroupBytes, Base64.NO_WRAP);
+                        String base64GroupText = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
 
                         // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
-                        emailClient.sendGroupMessageOverNetwork(chatId, GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs);
+                        emailClient.sendGroupMessageOverNetwork(chatId,
+                                GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs);
 
                         // Сразу обновляем экран (сообщение перейдет в статус отправки)
                         updateUiFromDatabase();
