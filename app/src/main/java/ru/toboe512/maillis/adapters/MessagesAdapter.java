@@ -50,6 +50,25 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     private final Set<Integer> selectedMessageIds = new HashSet<>();
     private MultiChoiceListener multiChoiceListener;
 
+    static class MessageViewHolder extends RecyclerView.ViewHolder {
+        CardView cardMessage;
+        LinearLayout layoutBackground;
+        TextView textViewSender;
+        TextView textViewText;
+        TextView textViewStatus;
+        ImageView imageViewPhoto;
+
+        public MessageViewHolder(@NonNull View itemView) {
+            super(itemView);
+            cardMessage = itemView.findViewById(R.id.cardMessage);
+            layoutBackground = itemView.findViewById(R.id.layoutMessageBackground);
+            textViewSender = itemView.findViewById(R.id.textViewSender);
+            textViewText = itemView.findViewById(R.id.textViewMessageText);
+            textViewStatus = itemView.findViewById(R.id.textViewMessageStatus);
+            imageViewPhoto = itemView.findViewById(R.id.imageViewMessagePhoto);
+        }
+    }
+
     @NonNull
     @Override
     public MessageViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -243,25 +262,6 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     @Override
     public int getItemCount() {
         return messageDtoList.size();
-    }
-
-    static class MessageViewHolder extends RecyclerView.ViewHolder {
-        CardView cardMessage;
-        LinearLayout layoutBackground;
-        TextView textViewSender;
-        TextView textViewText;
-        TextView textViewStatus;
-        ImageView imageViewPhoto;
-
-        public MessageViewHolder(@NonNull View itemView) {
-            super(itemView);
-            cardMessage = itemView.findViewById(R.id.cardMessage);
-            layoutBackground = itemView.findViewById(R.id.layoutMessageBackground);
-            textViewSender = itemView.findViewById(R.id.textViewSender);
-            textViewText = itemView.findViewById(R.id.textViewMessageText);
-            textViewStatus = itemView.findViewById(R.id.textViewMessageStatus);
-            imageViewPhoto = itemView.findViewById(R.id.imageViewMessagePhoto);
-        }
     }
 
     // Внутри класса MessagesAdapter:

@@ -19,4 +19,6 @@ public class Config {
 
     // Дефолтный интервал опроса (20 секунд), если пользователь ещё ничего не менял
     public static final long DEFAULT_SYNC_INTERVAL_MS = 20000;
+
+    public static final String KEY_BIOMETRIC_ENABLED = "biometric_protection_enabled";
 }

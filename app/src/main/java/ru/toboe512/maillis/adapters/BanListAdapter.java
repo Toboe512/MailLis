@@ -22,6 +22,17 @@ public class BanListAdapter extends RecyclerView.Adapter<BanListAdapter.BanViewH
         void onUnbanClick(String email, int position);
     }
 
+    static class BanViewHolder extends RecyclerView.ViewHolder {
+        TextView textViewEmail;
+        ImageButton buttonUnban;
+
+        public BanViewHolder(@NonNull View itemView) {
+            super(itemView);
+            textViewEmail = itemView.findViewById(R.id.textViewBannedEmail);
+            buttonUnban = itemView.findViewById(R.id.imageButtonUnban);
+        }
+    }
+
     public BanListAdapter(List<String> bannedEmails, OnUnbanClickListener unbanClickListener) {
         this.bannedEmails = bannedEmails;
         this.unbanClickListener = unbanClickListener;
@@ -51,16 +62,5 @@ public class BanListAdapter extends RecyclerView.Adapter<BanListAdapter.BanViewH
     @Override
     public int getItemCount() {
         return bannedEmails.size();
-    }
-
-    static class BanViewHolder extends RecyclerView.ViewHolder {
-        TextView textViewEmail;
-        ImageButton buttonUnban;
-
-        public BanViewHolder(@NonNull View itemView) {
-            super(itemView);
-            textViewEmail = itemView.findViewById(R.id.textViewBannedEmail);
-            buttonUnban = itemView.findViewById(R.id.imageButtonUnban);
-        }
     }
 }

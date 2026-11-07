@@ -33,6 +33,20 @@ public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAd
         void onContactDelete(Contact contact, int position);
     }
 
+    static class ContactViewHolder extends RecyclerView.ViewHolder {
+        TextView textViewEmail;
+        ImageButton buttonDelete;
+
+        ImageButton buttonBan; // Новое поле для кнопки бана
+
+        public ContactViewHolder(@NonNull View itemView) {
+            super(itemView);
+            textViewEmail = itemView.findViewById(R.id.textViewContactEmail);
+            buttonDelete = itemView.findViewById(R.id.imageButtonDeleteContact);
+            buttonBan = itemView.findViewById(R.id.imageButtonBanContact); // Инициализация
+        }
+    }
+
     // Обновили конструктор, добавив banListener
     public ManageContactsAdapter(List<Contact> contacts, OnContactDeleteListener deleteListener, OnContactBanListener banListener) {
         this.contacts = contacts;
@@ -77,19 +91,5 @@ public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAd
     @Override
     public int getItemCount() {
         return contacts.size();
-    }
-
-    static class ContactViewHolder extends RecyclerView.ViewHolder {
-        TextView textViewEmail;
-        ImageButton buttonDelete;
-
-        ImageButton buttonBan; // Новое поле для кнопки бана
-
-        public ContactViewHolder(@NonNull View itemView) {
-            super(itemView);
-            textViewEmail = itemView.findViewById(R.id.textViewContactEmail);
-            buttonDelete = itemView.findViewById(R.id.imageButtonDeleteContact);
-            buttonBan = itemView.findViewById(R.id.imageButtonBanContact); // Инициализация
-        }
     }
 }

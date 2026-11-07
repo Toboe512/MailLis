@@ -37,8 +37,8 @@ public class CryptoServiceImpl implements CryptoService {
     private static final String PREF_FILE_NAME = "maillis_crypto_prefs";
     private static final String KEYSET_NAME = "maillis_private_keyset";
     private static final String MASTER_KEY_URI = "android-keystore://maillis_master_key";// "android-keystore://maillis_master_key6ryfhh58gfhhwrrtyugfiytt74y5gjhl";
-    private KeysetHandle devicePrivateKeyHandle;
-    private KeysetHandle devicePublicKeyHandle;
+    private final KeysetHandle devicePrivateKeyHandle;
+    private final KeysetHandle devicePublicKeyHandle;
 
     public CryptoServiceImpl(Context context) throws GeneralSecurityException, IOException {
         // 1. Регистрируем гибридное шифрование (включает ECDH и AES-GCM)
@@ -149,11 +149,11 @@ public class CryptoServiceImpl implements CryptoService {
             SecretKey secretKey = keyGen.generateKey();
 
             byte[] rawKeyBytes = secretKey.getEncoded();
-            android.util.Log.d("MailLis_Crypto", "Успешно сгенерирован новый AES-256 ключ группы. Длина: " + rawKeyBytes.length + " байт.");
+            Log.d("MailLis_Crypto", "Успешно сгенерирован новый AES-256 ключ группы. Длина: " + rawKeyBytes.length + " байт.");
 
             return rawKeyBytes;
         } catch (Exception e) {
-            android.util.Log.e("MailLis_Crypto", "Ошибка при генерации симметричного AES ключа", e);
+            Log.e("MailLis_Crypto", "Ошибка при генерации симметричного AES ключа", e);
 
             // Фолбэк на случай непредвиденного сбоя инициализации алгоритма
             byte[] fallbackKey = new byte[32];
@@ -170,8 +170,8 @@ public class CryptoServiceImpl implements CryptoService {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         byte[] iv = new byte[12];
         new SecureRandom().nextBytes(iv);
-        SecretKeySpec keySpec = new SecretKeySpec(groupKey, "AES");
-        GCMParameterSpec spec = new GCMParameterSpec(128, iv);
+        var keySpec = new SecretKeySpec(groupKey, "AES");
+        var spec = new GCMParameterSpec(128, iv);
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, spec);
         byte[] encrypted = cipher.doFinal(payload);
 
@@ -198,8 +198,8 @@ public class CryptoServiceImpl implements CryptoService {
 
         // Инициализируем стандартный шифр AES-GCM
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        SecretKeySpec keySpec = new SecretKeySpec(groupKey, "AES");
-        GCMParameterSpec spec = new GCMParameterSpec(128, iv); // 128-битный тег аутентификации
+        var keySpec = new SecretKeySpec(groupKey, "AES");
+        var spec = new GCMParameterSpec(128, iv); // 128-битный тег аутентификации
         cipher.init(Cipher.DECRYPT_MODE, keySpec, spec);
 
         return cipher.doFinal(payload);

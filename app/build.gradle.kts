@@ -93,4 +93,6 @@ dependencies {
 
     // Криптография Google Tink
     implementation("com.google.crypto.tink:tink-android:1.15.0")
+
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
 }

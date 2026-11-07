@@ -40,6 +40,17 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     private final DBService dbService; // Помощник для удаления из SQLite
     private final EmailClient emailClient;
 
+    static class ChatViewHolder extends RecyclerView.ViewHolder {
+        TextView textViewName, textViewLastMessage, textViewType;
+
+        public ChatViewHolder(@NonNull View itemView) {
+            super(itemView);
+            textViewName = itemView.findViewById(R.id.textViewChatName);
+            textViewLastMessage = itemView.findViewById(R.id.textViewLastMessage);
+            textViewType = itemView.findViewById(R.id.textViewChatType);
+        }
+    }
+
     public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService, EmailClient emailClient) {
         this.context = context;
         this.chatList = chatList;
@@ -82,17 +93,6 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     @Override
     public int getItemCount() {
         return chatList.size();
-    }
-
-    static class ChatViewHolder extends RecyclerView.ViewHolder {
-        TextView textViewName, textViewLastMessage, textViewType;
-
-        public ChatViewHolder(@NonNull View itemView) {
-            super(itemView);
-            textViewName = itemView.findViewById(R.id.textViewChatName);
-            textViewLastMessage = itemView.findViewById(R.id.textViewLastMessage);
-            textViewType = itemView.findViewById(R.id.textViewChatType);
-        }
     }
 
     // Отображение диалогового окна с подтверждением

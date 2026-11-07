@@ -2,9 +2,11 @@ package ru.toboe512.maillis.activity;
 
 import static android.widget.Toast.LENGTH_SHORT;
 import static ru.toboe512.maillis.config.Config.DEFAULT_SYNC_INTERVAL_MS;
+import static ru.toboe512.maillis.config.Config.KEY_BIOMETRIC_ENABLED;
 import static ru.toboe512.maillis.config.Config.KEY_EMAIL_LOGIN;
 import static ru.toboe512.maillis.config.Config.KEY_SYNC_INTERVAL;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
+import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -21,6 +23,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,6 +31,7 @@ import java.security.GeneralSecurityException;
 import java.text.DecimalFormat;
 
 import ru.toboe512.maillis.R;
+import ru.toboe512.maillis.config.Config;
 import ru.toboe512.maillis.crypto.CryptoService;
 import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 
@@ -42,6 +46,8 @@ public class ProfileActivity extends AppCompatActivity {
 
     private SharedPreferences prefs;
     private CryptoService cryptoService;
+
+    private SwitchCompat switchBiometric;
 
     // Массив вариантов для Спиннера (строковые описания)
     private final String[] intervalLabels = {"20 секунд (По умолчанию)", "1 минута", "5 минут", "10 минут"};
@@ -69,8 +75,26 @@ public class ProfileActivity extends AppCompatActivity {
         buttonClearCache = findViewById(R.id.buttonClearCache);
 
         // 1. ВЫВОДИМ ДАННЫЕ ПРОФИЛЯ
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, "unknown@mail.ru");
+        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
         textViewEmail.setText(myEmail);
+
+        switchBiometric = findViewById(R.id.switchBiometric);
+
+        // Считываем текущую настройку (по умолчанию считаем TRUE — безопасность превыше всего!)
+        boolean isBioEnabled = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false);
+        switchBiometric.setChecked(isBioEnabled);
+
+        // Слушатель ручного изменения положения переключателя пользователем
+        switchBiometric.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            // Сохраняем новое значение в постоянную память SharedPreferences [source]
+            prefs.edit().putBoolean(KEY_BIOMETRIC_ENABLED, isChecked).apply();
+
+            if (isChecked) {
+                Toast.makeText(ProfileActivity.this, "Биометрическая защита активирована 🔐", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(ProfileActivity.this, "Защита входа отключена ⚠️", Toast.LENGTH_SHORT).show();
+            }
+        });
 
         // Получаем ваш публичный ключ Tink в Base64 для обмена с друзьями
         try {

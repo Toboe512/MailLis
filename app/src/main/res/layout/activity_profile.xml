@@ -2,8 +2,8 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#F5F5F5">
+    android:background="#F5F5F5"
+    android:orientation="vertical">
 
     <!-- Кастомный тулбар профиля -->
     <RelativeLayout
@@ -36,11 +36,11 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
                 android:text="Ваш аккаунт"
                 android:textColor="#888888"
                 android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp"/>
+                android:textStyle="bold" />
 
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
@@ -65,9 +65,9 @@
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
-                        android:background="#E0E0E0"
                         android:layout_marginTop="12dp"
-                        android:layout_marginBottom="12dp"/>
+                        android:layout_marginBottom="12dp"
+                        android:background="#E0E0E0" />
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -81,23 +81,23 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="Загрузка ключа..."
-                        android:textColor="#444444"
-                        android:textSize="11sp"
+                        android:background="#EEEEEE"
                         android:ellipsize="end"
                         android:maxLines="3"
-                        android:background="#EEEEEE"
-                        android:padding="8dp"/>
+                        android:padding="8dp"
+                        android:text="Загрузка ключа..."
+                        android:textColor="#444444"
+                        android:textSize="11sp" />
 
                     <Button
                         android:id="@+id/buttonCopyKey"
+                        style="?android:attr/borderlessButtonStyle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
                         android:layout_gravity="right"
+                        android:layout_marginTop="8dp"
                         android:text="Скопировать ключ"
-                        style="?android:attr/borderlessButtonStyle"
-                        android:textColor="#0088CC"/>
+                        android:textColor="#0088CC" />
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
@@ -105,11 +105,11 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
                 android:text="Синхронизация сети IMAP/SMTP"
                 android:textColor="#888888"
                 android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp"/>
+                android:textStyle="bold" />
 
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
@@ -138,15 +138,66 @@
                 </LinearLayout>
             </androidx.cardview.widget.CardView>
 
-            <!-- БЛОК В: ПАМЯТЬ И КЭШ -->
+            <!-- БЛОК В: отпечаток пальца -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:text="Защита отпечатка пальца / PIN"
+                android:textColor="#222222"
+                android:textSize="14sp" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="24dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentLeft="true"
+                            android:layout_toLeftOf="@+id/switchBiometric"
+                            android:orientation="vertical">
+
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="18dp"
+                                android:text="Запрашивать биометрию при каждом входе"
+                                android:textColor="#888888"
+                                android:textSize="12sp" />
+                        </LinearLayout>
+
+                        <!-- Современный переключатель AndroidX -->
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchBiometric"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentRight="true"
+                            android:layout_centerVertical="true" />
+                    </RelativeLayout>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- БЛОК С: ПАМЯТЬ И КЭШ -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
                 android:text="Память устройства"
                 android:textColor="#888888"
                 android:textSize="12sp"
-                android:textStyle="bold"
-                android:layout_marginBottom="8dp"/>
+                android:textStyle="bold" />
 
             <androidx.cardview.widget.CardView
                 android:layout_width="match_parent"
@@ -161,9 +212,9 @@
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical"
                         android:layout_alignParentLeft="true"
-                        android:layout_toLeftOf="@+id/buttonClearCache">
+                        android:layout_toLeftOf="@+id/buttonClearCache"
+                        android:orientation="vertical">
 
                         <TextView
                             android:layout_width="wrap_content"
@@ -176,21 +227,21 @@
                             android:id="@+id/textViewCacheSize"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
+                            android:layout_marginTop="2dp"
                             android:text="Вычисление размера..."
                             android:textColor="#888888"
-                            android:textSize="12sp"
-                            android:layout_marginTop="2dp"/>
+                            android:textSize="12sp" />
                     </LinearLayout>
 
                     <Button
                         android:id="@+id/buttonClearCache"
+                        style="?android:attr/borderlessButtonStyle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_alignParentRight="true"
                         android:layout_centerVertical="true"
                         android:text="Очистить"
-                        style="?android:attr/borderlessButtonStyle"
-                        android:textColor="#FF3B30"/>
+                        android:textColor="#FF3B30" />
                 </RelativeLayout>
             </androidx.cardview.widget.CardView>
 

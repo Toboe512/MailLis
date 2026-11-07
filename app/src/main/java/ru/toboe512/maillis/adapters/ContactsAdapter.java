@@ -27,6 +27,18 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
     private final Context context;
     private final DBService dbService;
 
+    static class ContactViewHolder extends RecyclerView.ViewHolder {
+        TextView textViewName, textViewEmail;
+        CheckBox checkBox;
+
+        public ContactViewHolder(@NonNull View itemView) {
+            super(itemView);
+            textViewName = itemView.findViewById(R.id.textViewContactName);
+            textViewEmail = itemView.findViewById(R.id.textViewContactEmail);
+            checkBox = itemView.findViewById(R.id.checkBoxSelect);
+        }
+    }
+
     // ОБНОВЛЕННЫЙ КОНСТРУКТОР: теперь принимает контекст для работы с БД и диалогами
     public ContactsAdapter(Context context, DBService dbService, List<Contact> contactList) {
         this.context = context;
@@ -64,18 +76,6 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
     @Override
     public int getItemCount() {
         return contactList.size();
-    }
-
-    static class ContactViewHolder extends RecyclerView.ViewHolder {
-        TextView textViewName, textViewEmail;
-        CheckBox checkBox;
-
-        public ContactViewHolder(@NonNull View itemView) {
-            super(itemView);
-            textViewName = itemView.findViewById(R.id.textViewContactName);
-            textViewEmail = itemView.findViewById(R.id.textViewContactEmail);
-            checkBox = itemView.findViewById(R.id.checkBoxSelect);
-        }
     }
 
     // Метод показа всплывающего окна подтверждения удаления
