@@ -17,12 +17,13 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ManageContactsAdapter;
+import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;
 
 public class ContactsActivity extends AppCompatActivity {
 
-    private DBServiceSQLite dbService;
+    private DBService dbService;
     private List<Contact> contactList;
     private ManageContactsAdapter adapter;
 

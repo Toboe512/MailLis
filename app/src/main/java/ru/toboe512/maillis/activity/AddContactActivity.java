@@ -1,7 +1,5 @@
 package ru.toboe512.maillis.activity;
 
-import android.content.ContentValues;
-import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.view.MenuItem;
 import android.view.View;
@@ -12,13 +10,14 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import ru.toboe512.maillis.R;
-import ru.toboe512.maillis.db.ChatDbHelper;
+import ru.toboe512.maillis.db.DBService;
+import ru.toboe512.maillis.db.DBServiceSQLite;
 
 public class AddContactActivity extends AppCompatActivity {
 
     private EditText editTextName;
     private EditText editTextEmail;
-    private ChatDbHelper dbHelper; // Объявляем помощник БД
+    private DBService dbService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -32,7 +31,7 @@ public class AddContactActivity extends AppCompatActivity {
         }
 
         // Инициализируем БД
-        dbHelper = new ChatDbHelper(this);
+        dbService = DBServiceSQLite.getInstance(this);
 
         editTextName = findViewById(R.id.editTextContactName);
         editTextEmail = findViewById(R.id.editTextContactEmail);
@@ -49,16 +48,8 @@ public class AddContactActivity extends AppCompatActivity {
                     Toast.makeText(AddContactActivity.this, "Заполните все поля!", Toast.LENGTH_SHORT).show();
                 } else {
                     Toast.makeText(AddContactActivity.this, name + " добавлен в контакты", Toast.LENGTH_SHORT).show();
-                    // Логика записи в SQLite
-                    SQLiteDatabase db = dbHelper.getWritableDatabase();
 
-                    var values = new ContentValues();
-                    values.put("name", name);
-                    values.put("email", email);
-
-                    // Вставляем строку. Метод insert возвращает -1, если произошла ошибка (например, email уже существует)
-                    long newRowId = db.insert("contacts", null, values);
-                    db.close(); // Обязательно закрываем соединение
+                    long newRowId = dbService.saveContact(name, email);
 
                     if (newRowId == -1) {
                         Toast.makeText(AddContactActivity.this, "Ошибка: Контакт с таким Email уже есть!", Toast.LENGTH_LONG).show();

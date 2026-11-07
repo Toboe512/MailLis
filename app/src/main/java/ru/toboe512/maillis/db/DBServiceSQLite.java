@@ -41,6 +41,68 @@ public class DBServiceSQLite implements DBService {
         this.dbHelper = new ChatDbHelper(cotext.getApplicationContext());
     }
 
+    public long saveContact(String name, String email) {
+        if (email == null || email.trim().isEmpty()) {
+            Log.w("MailLis_DB_SaveContact", "saveContact: отмена, передан пустой email.");
+            return -1;
+        }
+
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        long newRowId = -1;
+
+        // 1. СТАНДАРТИЗАЦИЯ: Очищаем пробелы и жестко переводим Email в нижний регистр
+        String normalizedEmail = email.trim().toLowerCase();
+        String normalizedName = name != null ? name.trim() : normalizedEmail;
+
+        // 2. ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ
+        // Защищает пишущий поток от конфликтов с фоновой службой SyncRunnable
+        db.beginTransactionNonExclusive();
+        try {
+            // ШАГ 1: ПРОВЕРКА НА ДУБЛИКАТЫ (Исключаем дублирование записей)
+            String checkSql = "SELECT id FROM contacts WHERE email LIKE ? LIMIT 1";
+            try (Cursor cursor = db.rawQuery(checkSql, new String[]{normalizedEmail})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    newRowId = cursor.getLong(0);
+
+                    db.setTransactionSuccessful(); // Фиксируем успех — цель достигнута, контакт в базе
+                    Log.d("MailLis_DB_SaveContact", "Контакт " + normalizedEmail + " уже существует. Возвращаем ID: " + newRowId);
+                    return newRowId;
+                }
+            }
+
+            // ШАГ 2: СБОРКА ДАННЫХ И АТОМАРНАЯ ВСТАВКА ЧЕРЕЗ CONFLICT_IGNORE
+            ContentValues values = new ContentValues();
+            values.put("name", normalizedName);
+            values.put("email", normalizedEmail);
+
+            // Флаг CONFLICT_IGNORE на уровне Си-ядра страхует уникальность уникальных индексов UNIQUE(email)
+            newRowId = db.insertWithOnConflict(
+                    "contacts",
+                    null,
+                    values,
+                    SQLiteDatabase.CONFLICT_IGNORE
+            );
+
+            if (newRowId != -1) {
+                db.setTransactionSuccessful(); // Намертво фиксируем изменения на физическом диске
+                Log.i("MailLis_DB_SaveContact", "🎉 Успешно создан новый контакт. ID: " + newRowId + " для " + normalizedEmail);
+            } else {
+                Log.w("MailLis_DB_SaveContact", "Ошибка insert: база данных вернула -1 для " + normalizedEmail);
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_DB_SaveContact", "Критическая ошибка транзакции при сохранении контакта: " + normalizedEmail, e);
+            e.printStackTrace();
+            newRowId = -1;
+        } finally {
+            // 3. КРИТИЧЕСКИЙ ФИКС: Закрываем ТОЛЬКО транзакцию, высвобождая поток в пул WAL.
+            // Саму базу db.close() НЕ вызываем, сохраняя пул соединений приложения живым!
+            db.endTransaction();
+        }
+
+        return newRowId;
+    }
+
     public List<Contact> getContacts() {
         List<Contact> contactList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
@@ -2046,9 +2108,6 @@ public class DBServiceSQLite implements DBService {
     public boolean deleteGroupChatAndMessages(long groupId) {
         SQLiteDatabase db = dbHelper.getWritableDatabase();
         boolean success = false;
-
-        // Принудительно включаем поддержку внешних ключей для текущего соединения
-        db.execSQL("PRAGMA foreign_keys = ON;");
 
         // ИСПОЛЬЗУЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ (Защита от SQLiteDatabaseLockedException)
         db.beginTransactionNonExclusive();

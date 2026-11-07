@@ -19,11 +19,12 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.BanListAdapter;
+import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 
 public class BanListActivity extends AppCompatActivity {
 
-    private DBServiceSQLite dbService;
+    private DBService dbService;
     private List<String> bannedEmailsList;
     private BanListAdapter adapter;
 
