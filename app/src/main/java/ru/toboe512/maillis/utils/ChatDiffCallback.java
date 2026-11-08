@@ -53,7 +53,6 @@ public class ChatDiffCallback extends DiffUtil.Callback {
         return oldChaNoNull &&
                 newChaNoNull &&
                 oldChatTitle.equals(newChat.getTitle()) &&
-                oldChatLastMessage.equals(newChat.getLastMessage()) &&
-                oldChat.isHandShake() == newChat.isHandShake();
+                oldChatLastMessage.equals(newChat.getLastMessage());
     }
 }

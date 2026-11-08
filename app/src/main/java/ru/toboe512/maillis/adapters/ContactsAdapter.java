@@ -99,9 +99,11 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
     // Нативное удаление строки из SQLite по ее ID
     private void deleteContactFromDb(int contactId, int position) {
 
+        Contact contact = dbService.getContactById(contactId);
         boolean isDeleted = dbService.deleteContact(contactId);
 
         if (isDeleted) {
+            dbService.cleanUpPublicKeyIfNoContexts(contact.getEmail());
             // Удаляем элемент из текущего массива памяти
             contactList.remove(position);
 

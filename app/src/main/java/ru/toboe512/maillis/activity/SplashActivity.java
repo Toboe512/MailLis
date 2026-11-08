@@ -4,12 +4,14 @@ import static android.widget.Toast.LENGTH_SHORT;
 import static androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG;
 import static androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL;
 import static androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS;
-
 import static ru.toboe512.maillis.config.Config.KEY_BIOMETRIC_ENABLED;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -23,7 +25,6 @@ import androidx.core.content.ContextCompat;
 import java.util.concurrent.Executor;
 
 import ru.toboe512.maillis.R;
-import ru.toboe512.maillis.config.Config;
 
 public class SplashActivity extends AppCompatActivity {
 
@@ -37,12 +38,12 @@ public class SplashActivity extends AppCompatActivity {
         // Отображаем лаконичный сплэш-экран (создайте простой layout с вашим логотипом)
         setContentView(R.layout.activity_splash);
 
-        // Добавляем проверку пользовательских настроек из SharedPreferences [source]
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        // Добавляем проверку пользовательских настроек из SharedPreferences
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         boolean isBiometricRequired = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false);
 
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            // УЛЬТИМАТИВНЫЙ ФИКС: Если пользователь выключил защиту в настройках аккаунта —
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            // Если пользователь выключил защиту в настройках аккаунта —
             // мы мгновенно перенаправляем его в MainActivity, минуя вызов датчиков смартфона!
             if (!isBiometricRequired) {
                 navigateToMain();
@@ -54,7 +55,7 @@ public class SplashActivity extends AppCompatActivity {
     }
 
     private void checkBiometricAvailability() {
-        BiometricManager biometricManager = BiometricManager.from(this);
+        var biometricManager = BiometricManager.from(this);
 
         // ИСПРАВЛЕНИЕ: Разрешаем сильную биометрию ИЛИ обычный PIN-код/пароль телефона (DEVICE_CREDENTIAL)
         int authenticators = BIOMETRIC_STRONG | DEVICE_CREDENTIAL;
@@ -91,7 +92,7 @@ public class SplashActivity extends AppCompatActivity {
                     }
                 });
 
-        BiometricPrompt.PromptInfo.Builder builder = new BiometricPrompt.PromptInfo.Builder()
+        var builder = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Вход в MailLis")
                 .setSubtitle("Подтвердите личность для доступа к P2P-чатам")
                 .setAllowedAuthenticators(authenticators); // ИСПРАВЛЕНИЕ: Передаем наш всеядный фильтр

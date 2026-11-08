@@ -1,6 +1,10 @@
 package ru.toboe512.maillis.adapters;
 
 
+import static android.content.Intent.ACTION_VIEW;
+import static android.content.Intent.FLAG_ACTIVITY_NEW_TASK;
+import static android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION;
+import static android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
 import static android.view.View.GONE;
 import static android.view.View.VISIBLE;
 import static android.widget.RelativeLayout.ALIGN_PARENT_END;
@@ -8,10 +12,16 @@ import static android.widget.RelativeLayout.ALIGN_PARENT_LEFT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_RIGHT;
 import static android.widget.RelativeLayout.ALIGN_PARENT_START;
 import static android.widget.RelativeLayout.TRUE;
+import static android.widget.Toast.LENGTH_SHORT;
+import static ru.toboe512.maillis.consts.Consts.FILE_MSG;
 import static ru.toboe512.maillis.consts.Consts.IMAGE_MSG;
 
+import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -19,12 +29,15 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.cardview.widget.CardView;
+import androidx.core.content.FileProvider;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -105,6 +118,61 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
                     }).start();
                 }
             }
+        } else if (FILE_MSG.equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
+            // Делаем бабл сообщения визуально похожим на документ (например, добавляем иконку скрепки)
+            holder.textViewText.setText(messageDto.getText());
+
+            // КРИТИЧЕСКИЙ ФИКС: Принудительно очищаем флаги выделения, которые глушили клики [source]
+            holder.textViewText.setTextIsSelectable(false);
+            holder.textViewText.setFocusable(false);
+            holder.textViewText.setClickable(true); // Разрешаем клик по тексту
+
+            // ТЕПЕРЬ ВЕШАЕМ СЛУШАТЕЛЬ СТРОГО НА ТЕКСТ (Клик гарантированно провалится внутрь!) [source]
+            holder.textViewText.setOnClickListener(v -> {
+                Log.d("MailLis_Debug_Click", "🚀 УРА! Клик по баблу файла успешно дошел до Java кода!");
+
+                String localPath = messageDto.getFilePath();
+                if (localPath != null) {
+                    File file = new File(localPath);
+                    if (file.exists()) {
+                        try {
+                            Context currentContext = v.getContext();
+                            Uri fileUri = FileProvider.getUriForFile(
+                                    currentContext,
+                                    currentContext.getPackageName() + ".provider",
+                                    file
+                            );
+
+                            var intent = new Intent(ACTION_VIEW);
+                            intent.setDataAndType(fileUri, currentContext.getContentResolver().getType(fileUri));
+                            intent.addFlags(FLAG_GRANT_READ_URI_PERMISSION);
+                            intent.addFlags(FLAG_GRANT_WRITE_URI_PERMISSION);
+                            intent.addFlags(FLAG_ACTIVITY_NEW_TASK);
+
+                            // Извлекаем MIME-тип, определенный системой
+                            String mimeType = currentContext.getContentResolver().getType(fileUri);
+
+                            // Если тип не определен, ставим универсальный текстовый фолбэк,
+                            // чтобы Chrome или стандартный текстовый редактор эмулятора смогли его открыть!
+                            if (mimeType == null || mimeType.isEmpty()) {
+                                if (file.getName().endsWith(".txt")) {
+                                    mimeType = "text/plain";
+                                } else {
+                                    mimeType = "application/octet-stream"; // Всеядный поток байт
+                                }
+                            }
+
+                            intent.setDataAndType(fileUri, mimeType);
+
+                            currentContext.startActivity(Intent.createChooser(intent, "Открыть файл:"));
+                        } catch (Exception e) {
+                            Toast.makeText(v.getContext(), "Нет приложения для просмотра этого файла", LENGTH_SHORT).show();
+                        }
+                    } else {
+                        Toast.makeText(v.getContext(), "Файл удален с устройства", LENGTH_SHORT).show();
+                    }
+                }
+            });
         } else {
             if (holder.imageViewPhoto != null) {
                 holder.imageViewPhoto.setVisibility(GONE);

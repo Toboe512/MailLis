@@ -1,14 +1,18 @@
 package ru.toboe512.maillis.client;
 
+import static android.util.Base64.DEFAULT;
 import static android.util.Base64.NO_WRAP;
 import static java.lang.Boolean.FALSE;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static jakarta.mail.Flags.Flag.DELETED;
 import static jakarta.mail.Folder.READ_WRITE;
 import static jakarta.mail.Message.RecipientType.TO;
+import static ru.toboe512.maillis.consts.Consts.CHAT_FILE;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.FILE_MSG;
+import static ru.toboe512.maillis.consts.Consts.GROUP_CHAT_FILE;
 import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_INVITE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_LEAVE;
@@ -181,6 +185,16 @@ public class EmailClientImpl implements EmailClient {
                         deleteMessage(msg, inbox);
                         continue;
                     }
+                    if (subject.contains(CHAT_FILE)) {
+                        result = chatFile(msg, context.getCacheDir());
+                        deleteMessage(msg, inbox);
+                        continue;
+                    }
+                    if (subject.contains(GROUP_CHAT_FILE)) {
+                        result = chatGroupFile(msg, context.getCacheDir());
+                        deleteMessage(msg, inbox);
+                        continue;
+                    }
                     String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
                     //Далее блок ловли хендшейка свои майлы нам не интересны
                     if (senderEmail.contains(myEmail)) {
@@ -250,7 +264,7 @@ public class EmailClientImpl implements EmailClient {
 
     private boolean groupSync(Message msg) {
         try {
-            String[] parts = msg.getSubject().split(" ");
+            String[] parts = msg.getSubject().split(SPACE_STRING);
             long remoteChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
             String newMemberEmail = msg.getContent().toString().trim().toLowerCase();
 
@@ -292,6 +306,120 @@ public class EmailClientImpl implements EmailClient {
             e.printStackTrace();
         }
         return true;
+    }
+
+    private boolean chatGroupFile(Message msg, File cacheDir) {
+        try {
+            String[] parts = msg.getSubject().split(SPACE_STRING);
+            long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
+
+            if (groupChatId <= 0 || !dbService.isGroupChat(groupChatId)) {
+                return false;
+            }
+            // 1. Вытаскиваем зашифрованное тело письма
+            String encryptedPayload = msg.getContent().toString().trim();
+
+            byte[] groupSecretKey = dbService.getGroupSecretKey(groupChatId);
+            byte[] encryptedBytes = Base64.decode(encryptedPayload, NO_WRAP);
+            // 2. ДЕШИФРОВАНИЕ TINK
+            String decryptedPayload = CryptoServiceImpl.decryptGroupText(encryptedBytes, groupSecretKey); // Ваш метод дешифровки
+
+            if (decryptedPayload != null && decryptedPayload.contains("::SPLIT::")) {
+                String[] payloadParts = decryptedPayload.split("::SPLIT::");
+                String fileName = payloadParts[0];      // Оригинальное имя (например, report.pdf)
+                String base64Data = payloadParts[1];    // Контент в Base64
+
+                // 3. Декодируем Base64 обратно в массив байт
+                byte[] fileBytes = Base64.decode(base64Data, DEFAULT);
+
+                // 4. Сохраняем в изолированную безопасную внутреннюю память смартфона [source]
+                File storageDir = new File(cacheDir, "MailLis_Documents");
+                if (!storageDir.exists()) {
+                    storageDir.mkdirs();
+                }
+
+                // Создаем файл на диске
+                File receivedFile = new File(storageDir, System.currentTimeMillis() + "_" + fileName);
+                try (FileOutputStream fos = new FileOutputStream(receivedFile)) {
+                    fos.write(fileBytes);
+                }
+                String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+                long currentTimestamp = msg.getSentDate() != null
+                        ? msg.getSentDate().getTime()
+                        : System.currentTimeMillis();
+
+                // 5. ЗАПИСЫВАЕМ СТРОКУ В НАШУ ТРАНЗАКЦИОННУЮ СУБД WAL
+                // Пишем в message_text имя файла для отображения в бабле, а в file_path — путь к нему на диске!
+                dbService.saveIncomingGroupMessage(
+                        groupChatId,
+                        senderEmail,
+                        GROUP_MESSAGE_MAIL,
+                        "📎 Файл: " + fileName,
+                        currentTimestamp,
+                        extractMsgId(msg),
+                        FILE_MSG, // Наш новый тип контента!
+                        receivedFile.getAbsolutePath() // Локальный путь для открытия
+                );
+                return true;
+            }
+        } catch (Exception e) {
+            Log.e("MailLis_IMAP_File", "Ошибка приема входящего файла", e);
+            return false;
+        }
+        return false;
+    }
+    private boolean chatFile(Message msg, File cacheDir){
+        try {
+            // 1. Вытаскиваем зашифрованное тело письма
+            String encryptedPayload = msg.getContent().toString().trim();
+
+            // 2. ДЕШИФРОВАНИЕ TINK
+            String decryptedPayload = cryptoService.decrypted(encryptedPayload); // Ваш метод дешифровки
+
+            if (decryptedPayload != null && decryptedPayload.contains("::SPLIT::")) {
+                String[] payloadParts = decryptedPayload.split("::SPLIT::");
+                String fileName = payloadParts[0];      // Оригинальное имя (например, report.pdf)
+                String base64Data = payloadParts[1];    // Контент в Base64
+
+                // 3. Декодируем Base64 обратно в массив байт
+                byte[] fileBytes = Base64.decode(base64Data, DEFAULT);
+
+                // 4. Сохраняем в изолированную безопасную внутреннюю память смартфона [source]
+                var storageDir = new File(cacheDir, "MailLis_Documents");
+                if (!storageDir.exists()) {
+                    storageDir.mkdirs();
+                }
+
+                // Создаем файл на диске
+                var receivedFile = new File(storageDir, System.currentTimeMillis() + "_" + fileName);
+                try (FileOutputStream fos = new FileOutputStream(receivedFile)) {
+                    fos.write(fileBytes);
+                }
+                String senderEmail = ((InternetAddress) msg.getFrom()[0]).getAddress().trim();
+                long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
+                long currentTimestamp = msg.getSentDate() != null
+                        ? msg.getSentDate().getTime()
+                        : System.currentTimeMillis();
+
+                // 5. ЗАПИСЫВАЕМ СТРОКУ В НАШУ ТРАНЗАКЦИОННУЮ СУБД WAL
+                // Пишем в message_text имя файла для отображения в бабле, а в file_path — путь к нему на диске!
+                dbService.saveIncomingMessage(
+                        chatId,
+                        senderEmail,
+                        CHAT_FILE,
+                        "📎 Файл: " + fileName,
+                        currentTimestamp,
+                        extractMsgId(msg),
+                        FILE_MSG, // Наш новый тип контента!
+                        receivedFile.getAbsolutePath() // Локальный путь для открытия
+                );
+                return true;
+            }
+        } catch (Exception e) {
+            Log.e("MailLis_IMAP_File", "Ошибка приема входящего файла", e);
+            return false;
+        }
+        return false;
     }
 
     private boolean readReceipt(Message msg) throws MessagingException, IOException {
@@ -1317,17 +1445,67 @@ public class EmailClientImpl implements EmailClient {
 
 
     public void sendGroupSyncNotification(String oldMemberEmail, long groupId, String newMemberEmail, SharedPreferences prefs) throws Exception {
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
         Session session = createSmtpSession(prefs);
         MimeMessage message = new MimeMessage(session);
         message.setFrom(new InternetAddress(prefs.getString(KEY_EMAIL_LOGIN, "")));
-        message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(oldMemberEmail));
+        message.setRecipients(TO, InternetAddress.parse(oldMemberEmail));
 
         message.setSubject("[MailLis-Group-Sync] " + groupId);
         message.setText(newMemberEmail); // Передаем email новичка, которого нужно дописать в базу
         message.saveChanges();
 
         Transport.send(message);
+    }
+
+    public void sendFileOverNetwork(String recipientEmail, String subject, long chatId, File fileToSend, boolean isGroup, SharedPreferences prefs) {
+        networkExecutor.execute(() -> {
+            try {
+                if (fileToSend == null || !fileToSend.exists()) return;
+
+                // 1. Считываем бинарный файл в память смартфона
+                byte[] fileBytes = new byte[(int) fileToSend.length()];
+                try (FileInputStream fis = new FileInputStream(fileToSend)) {
+                    fis.read(fileBytes);
+                }
+
+                // 2. Кодируем байты в безопасную Base64 строку для почтовых серверов [source]
+                String base64File = Base64.encodeToString(fileBytes, DEFAULT);
+
+                // 3. ШИФРОВАНИЕ TINK (Используем ваш отлаженный метод шифрования текста)
+                // Мы упаковываем имя файла и его Base64-содержимое в один текстовый пакет через разделитель
+                String plainPayload = fileToSend.getName() + "::SPLIT::" + base64File;
+
+
+
+                String encryptedPayload;
+                if (isGroup) {
+                    byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
+                    byte[] groupBytes = CryptoServiceImpl.encryptGroupText(plainPayload, groupSecretKey); // Ваше шифрование групп
+                    encryptedPayload = Base64.encodeToString(groupBytes, NO_WRAP);
+                } else {
+                    byte[] publicKey = dbService.getPublicKey(chatId);
+                    encryptedPayload = cryptoService.encrypt(plainPayload, publicKey); // Ваше приватное шифрование
+                }
+
+                Session session = createSmtpSession(prefs);
+
+                // 4. СБОРКА И ОТПРАВКА СТАНДАРТНОГО SMTP КОНВЕРТА
+                MimeMessage message = new MimeMessage(session);
+                message.setFrom(new InternetAddress(prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING)));
+                message.setRecipients(TO, InternetAddress.parse(recipientEmail));
+
+                // Ставим специальный маркер темы писем, чтобы приемник понял, что это файл
+                message.setSubject(subject);
+                message.setText(encryptedPayload);
+                message.saveChanges();
+
+                Transport.send(message);
+                Log.d("MailLis_Network_File", "Файл " + fileToSend.getName() + " успешно отправлен на " + recipientEmail);
+
+            } catch (Exception e) {
+                Log.e("MailLis_Network_File", "Критическая ошибка SMTP отправки файла", e);
+            }
+        });
     }
 
     private Store connectToImapServer(SharedPreferences prefs) throws MessagingException {

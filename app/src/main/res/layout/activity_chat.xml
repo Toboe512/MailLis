@@ -131,13 +131,22 @@
 
         <!-- КНОПКА СКРЕПКИ: Выбор фото из галереи -->
         <ImageButton
-            android:id="@+id/buttonAttachFile"
+            android:id="@+id/buttonAttachImageFile"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_share"
             android:contentDescription="Прикрепить фото"
             app2:tint="#757575" />
+
+        <ImageButton
+            android:id="@+id/buttonAttachOtherFile"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_input_add"
+            android:contentDescription="Прикрепить файл"
+            android:tint="#0088CC" />
 
         <EditText
             android:id="@+id/editTextMessage"
@@ -157,5 +166,6 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="Отправить"
             android:src="@android:drawable/ic_menu_send" />
+
     </LinearLayout>
 </LinearLayout>

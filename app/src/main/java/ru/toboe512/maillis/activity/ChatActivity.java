@@ -2,15 +2,20 @@ package ru.toboe512.maillis.activity;
 
 
 import static android.graphics.Bitmap.CompressFormat.JPEG;
+import static android.provider.OpenableColumns.DISPLAY_NAME;
 import static android.util.Base64.NO_WRAP;
+import static android.view.View.GONE;
+import static android.view.View.VISIBLE;
 import static android.widget.Toast.LENGTH_SHORT;
 import static java.util.stream.Collectors.toList;
-import static ru.toboe512.maillis.config.Config.DEFAULT_SYNC_INTERVAL_MS;
-import static ru.toboe512.maillis.config.Config.KEY_SYNC_INTERVAL;
+import static ru.toboe512.maillis.config.Config.FILE_SEND_ENABLED;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
+import static ru.toboe512.maillis.consts.Consts.CHAT_FILE;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.CHAT_MESSAGE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.FILE_MSG;
+import static ru.toboe512.maillis.consts.Consts.GROUP_CHAT_FILE;
 import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.GROUP_LEAVE;
 import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
@@ -21,13 +26,13 @@ import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 import android.view.View;
@@ -44,6 +49,7 @@ import androidx.annotation.Nullable;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.PopupMenu;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -53,6 +59,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.List;
 
 import ru.toboe512.maillis.R;
@@ -80,19 +87,9 @@ public class ChatActivity extends AppCompatActivity {
     // Объявляем лаунчер как поле класса ChatActivity
     private ActivityResultLauncher<Intent> photoPickerLauncher;
 
-    long actualIntervalMs;
-    private final Handler timerHandler = new Handler(Looper.getMainLooper());
-
-    // Создаем явный, стабильный объект Runnable через лямбду Java 8
-    private final Runnable timerRunnable = new Runnable() {
-        @Override
-        public void run() {
-            // Запускаем наше фоновое считывание статусов сообщений из SQLite
-            updateUiFromDatabase();
-
-            timerHandler.postDelayed(this, actualIntervalMs);
-        }
-    };
+    // 2. Объявляем переменные класса
+    private ImageButton buttonAttachFile;
+    private ActivityResultLauncher<String> filePickerLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -108,7 +105,6 @@ public class ChatActivity extends AppCompatActivity {
         // Загружаем наш собственный логин из SharedPreferences
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
-        actualIntervalMs = prefs.getLong(KEY_SYNC_INTERVAL, DEFAULT_SYNC_INTERVAL_MS);
 
         TextView textViewChatTitle = findViewById(R.id.textViewChatTitle);
         // Получаем ID чата и имя из интента (передано с главного экрана)
@@ -145,98 +141,9 @@ public class ChatActivity extends AppCompatActivity {
         // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
         updateUiFromDatabase();
 
-        ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
-
         // Кнопка локальной отправки сообщения
-        buttonSend.setOnClickListener(v ->
-        {
-            String text = editTextMessage.getText().toString().trim();
-            if (text.isEmpty()) {
-                return;
-            }
-
-            long currentTimestamp = System.currentTimeMillis();
-
-            // Сохраняем сообщение локально в SQLite базу данных
-            // Метод saveMessage сам выставит статус "is_sent = 0" (часики) и "is_mine = 1"
-            int generatedId;
-            if (isGroup) {
-                generatedId = dbService.saveGroupMessage(chatId, myEmail, GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, text, currentTimestamp);
-            } else {
-                generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
-            }
-
-            // Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
-            // Сообщение мгновенно появится на экране со значком "Часики"
-            updateUiFromDatabase();
-
-            // Чистим поле ввода сообщения
-            editTextMessage.getText().clear();
-
-            if (isGroup) {
-                // РЕЖИМ А: ОТПРАВКА В ГРУППОВОЙ ЧАТ (Симметричный AES-GCM)
-                try {
-                    // Достаем общий 32-байтный секретный ключ этой группы из SQLite
-                    byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
-
-                    if (groupSecretKey != null && groupSecretKey.length > 0) {
-                        // Шифруем текст сообщения общим AES-ключом группы
-                        byte[] encryptedGroupBytes = CryptoServiceImpl.encryptGroupText(text, groupSecretKey);
-                        String base64GroupText = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
-
-                        // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
-                        emailClient.sendGroupMessageOverNetwork(chatId,
-                                GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs);
-
-                        // Сразу обновляем экран (сообщение перейдет в статус отправки)
-                        updateUiFromDatabase();
-                    } else {
-                        Log.e("MailLis_Group", "Ошибка: Ключ группы еще не получен или поврежден!");
-                        Toast.makeText(ChatActivity.this, "Ошибка: Ключ шифрования группы отсутствует.", LENGTH_SHORT).show();
-                    }
-                } catch (Exception e) {
-                    Log.e("MailLis_Group_Err", "Ошибка шифрования группового сообщения", e);
-                    e.printStackTrace();
-                }
-                return;
-            }
-            // РЕЖИМ Б: ОТПРАВКА В ОДИНОЧНЫЙ ЧАТ (Асимметричный Google Tink ECIES)
-            String sendTxt = text;
-            try {
-                // Извлекаем публичный Tink Protobuf-ключ собеседника
-                byte[] peerPublicKeyBytes = dbService.getPublicKey(chatId);
-
-                if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
-                    // Передаем именно публичный ключ друга в метод encode с вашим контекстом "MailLis_P2P_Protocol_v1"
-                    sendTxt = emailClient.getCryptoService().encrypt(text, peerPublicKeyBytes);
-                } else {
-                    Log.w("MailLis_Crypto", "Ключ чата еще не установлен. Отправка обычным текстом.");
-                }
-            } catch (GeneralSecurityException | IOException e) {
-                Log.e("CRYPTO_SERVICE_ERR", "Ошибка асимметричного шифрования при отправке", e);
-                e.printStackTrace();
-                return;
-            }
-
-            // 3. Отправляем одиночное сообщение по сети через SMTP
-            emailClient.sendEmailOverNetwork(chatId, recipientEmail, CHAT_MESSAGE, sendTxt,
-                    generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
-
-                        @Override
-                        public void onSynchronized(MessageDto updatedMessageDto) {
-                            // Успешно отправлено! Обновляем UI через DiffUtil (появится одна галочка)
-                            updateUiFromDatabase();
-                        }
-
-                        @Override
-                        public void onError(Exception e) {
-                            // Сеть полностью отключилась или моргнула
-                            Toast.makeText(ChatActivity.this, "Сеть недоступна. Сообщение отложено.", LENGTH_SHORT).show();
-                            // Перечитываем SQLite, чтобы у сообщения гарантированно горел значок "Часики" (is_sent = 0)
-                            updateUiFromDatabase();
-                        }
-                    });
-        });
+        ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
+        buttonSend.setOnClickListener(v -> buttonSend(prefs));
 
         // ИНИЦИАЛИЗАЦИЯ ФОТО-ПИКЕРА ГАЛЕРЕИ
         photoPickerLauncher = registerForActivityResult(
@@ -253,17 +160,16 @@ public class ChatActivity extends AppCompatActivity {
         );
 
         // Находим кнопку скрепки и вешаем клик
-        ImageButton buttonAttach = findViewById(R.id.buttonAttachFile);
+        ImageButton buttonAttach = findViewById(R.id.buttonAttachImageFile);
         buttonAttach.setOnClickListener(v -> {
             // Запускаем современный системный Photo Picker (только изображения)
-            Intent intentImage = new Intent(Intent.ACTION_PICK);
+            var intentImage = new Intent(Intent.ACTION_PICK);
             intentImage.setType("image/*");
             photoPickerLauncher.launch(intentImage);
         });
 
         // Инициализируем нашу кастомную кнопку меню
         ImageButton buttonChatMenu = findViewById(R.id.buttonChatMenu);
-
         if (buttonChatMenu != null) {
             buttonChatMenu.setOnClickListener(v -> {
                 // Создаем встроенное всплывающее меню, привязанное к кнопке "три точки"
@@ -304,12 +210,9 @@ public class ChatActivity extends AppCompatActivity {
             });
         }
 
-        // Инициализируем кнопки управления в тулбаре ChatActivity
         View layoutNormalToolbar = findViewById(R.id.layoutNormalToolbar); // Обычный заголовок чата
         View layoutEditToolbar = findViewById(R.id.layoutEditToolbar);     // Контекстный тулбар удаления
         TextView textViewSelectedCount = findViewById(R.id.textViewSelectedCount);
-        ImageButton buttonDeleteSelected = findViewById(R.id.buttonDeleteSelected);
-        ImageButton buttonCancelSelection = findViewById(R.id.buttonCancelSelection);
 
         // Вешаем слушатель множественного выбора на адаптер
         messagesAdapter.setMultiChoiceListener(new MessagesAdapter.MultiChoiceListener() {
@@ -318,10 +221,10 @@ public class ChatActivity extends AppCompatActivity {
                 if (isActive) {
                     // Переключаем тулбары: прячем обычный, показываем контекстный
                     if (layoutNormalToolbar != null) {
-                        layoutNormalToolbar.setVisibility(View.GONE);
+                        layoutNormalToolbar.setVisibility(GONE);
                     }
                     if (layoutEditToolbar != null) {
-                        layoutEditToolbar.setVisibility(View.VISIBLE);
+                        layoutEditToolbar.setVisibility(VISIBLE);
                     }
                     if (textViewSelectedCount != null) {
                         textViewSelectedCount.setText("Выбрано: " + selectedCount);
@@ -330,20 +233,22 @@ public class ChatActivity extends AppCompatActivity {
                 }
                 // Возвращаем всё назад, если выбор пуст
                 if (layoutNormalToolbar != null) {
-                    layoutNormalToolbar.setVisibility(View.VISIBLE);
+                    layoutNormalToolbar.setVisibility(VISIBLE);
                 }
                 if (layoutEditToolbar != null) {
-                    layoutEditToolbar.setVisibility(View.GONE);
+                    layoutEditToolbar.setVisibility(GONE);
                 }
             }
         });
 
         // Кнопка отмены (крестик)
+        ImageButton buttonCancelSelection = findViewById(R.id.buttonCancelSelection);
         if (buttonCancelSelection != null) {
             buttonCancelSelection.setOnClickListener(v -> messagesAdapter.clearSelection());
         }
 
-        // 3. ОБРАБОТКА ЖЕСТКОГО УДАЛЕНИЯ ПАЧКИ ПИСЕМ 🗑️
+        // ОБРАБОТКА ЖЕСТКОГО УДАЛЕНИЯ ПАЧКИ ПИСЕМ 🗑️
+        ImageButton buttonDeleteSelected = findViewById(R.id.buttonDeleteSelected);
         if (buttonDeleteSelected != null) {
             buttonDeleteSelected.setOnClickListener(v -> {
                 List<MessageDto> toDelete = messagesAdapter.getSelectedMessages();
@@ -393,8 +298,6 @@ public class ChatActivity extends AppCompatActivity {
 
         // Инициализируем нашу кастомную стрелочку назад
         ImageButton buttonChatBack = findViewById(R.id.buttonChatBack);
-
-
         if (buttonChatBack != null) {
             buttonChatBack.setOnClickListener(v -> {
                 // Вызываем OnBackPressedDispatcher, который мы настроили ранее.
@@ -402,33 +305,150 @@ public class ChatActivity extends AppCompatActivity {
                 getOnBackPressedDispatcher().onBackPressed();
             });
         }
+
+        if (FILE_SEND_ENABLED) {
+            fileSend();
+        }
+    }
+
+    private void fileSend() {
+        // ИНИЦИАЛИЗИРУЕМ СЛУШАТЕЛЬ ВЫБОРА ФАЙЛА (РЕГИСТРИРУЕМ КОНТРАКТ)
+        filePickerLauncher = registerForActivityResult(
+                new ActivityResultContracts.GetContent(),
+                uri -> {
+                    if (uri != null) {
+                        // Пользователь успешно выбрал файл, запускаем обработку
+                        handleSelectedFile(uri);
+                    }
+                }
+        );
+
+        // НАЖАТИЕ НА КНОПКУ ПЛЮС — Открываем системный проводник
+        buttonAttachFile = findViewById(R.id.buttonAttachOtherFile);
+        if (buttonAttachFile != null) {
+            buttonAttachFile.setOnClickListener(v -> {
+                // "*/*" означает, что пользователь может выбрать абсолютно любой файл (PDF, ZIP, DOCX и т.д.)
+                filePickerLauncher.launch("*/*");
+            });
+        }
+    }
+
+    private void buttonSend(SharedPreferences prefs) {
+        String text = editTextMessage.getText().toString().trim();
+        if (text.isEmpty()) {
+            return;
+        }
+
+        long currentTimestamp = System.currentTimeMillis();
+
+        // Сохраняем сообщение локально в SQLite базу данных
+        // Метод saveMessage сам выставит статус "is_sent = 0" (часики) и "is_mine = 1"
+        int generatedId;
+        if (isGroup) {
+            generatedId = dbService.saveGroupMessage(chatId, myEmail, GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, text, currentTimestamp);
+        } else {
+            generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
+        }
+
+        // Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
+        // Сообщение мгновенно появится на экране со значком "Часики"
+        updateUiFromDatabase();
+
+        // Чистим поле ввода сообщения
+        editTextMessage.getText().clear();
+
+        if (isGroup) {
+            // РЕЖИМ А: ОТПРАВКА В ГРУППОВОЙ ЧАТ (Симметричный AES-GCM)
+            try {
+                // Достаем общий 32-байтный секретный ключ этой группы из SQLite
+                byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
+
+                if (groupSecretKey != null && groupSecretKey.length > 0) {
+                    // Шифруем текст сообщения общим AES-ключом группы
+                    byte[] encryptedGroupBytes = CryptoServiceImpl.encryptGroupText(text, groupSecretKey);
+                    String base64GroupText = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
+
+                    // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
+                    emailClient.sendGroupMessageOverNetwork(chatId,
+                            GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs);
+
+                    // Сразу обновляем экран (сообщение перейдет в статус отправки)
+                    updateUiFromDatabase();
+                } else {
+                    Log.e("MailLis_Group", "Ошибка: Ключ группы еще не получен или поврежден!");
+                    Toast.makeText(ChatActivity.this, "Ошибка: Ключ шифрования группы отсутствует.", LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Log.e("MailLis_Group_Err", "Ошибка шифрования группового сообщения", e);
+                e.printStackTrace();
+            }
+            return;
+        }
+        // РЕЖИМ Б: ОТПРАВКА В ОДИНОЧНЫЙ ЧАТ (Асимметричный Google Tink ECIES)
+        String sendTxt = text;
+        try {
+            // Извлекаем публичный Tink Protobuf-ключ собеседника
+            byte[] peerPublicKeyBytes = dbService.getPublicKey(chatId);
+
+            if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
+                // Передаем именно публичный ключ друга в метод encode с вашим контекстом "MailLis_P2P_Protocol_v1"
+                sendTxt = emailClient.getCryptoService().encrypt(text, peerPublicKeyBytes);
+            } else {
+                Log.w("MailLis_Crypto", "Ключ чата еще не установлен. Отправка обычным текстом.");
+            }
+        } catch (GeneralSecurityException | IOException e) {
+            Log.e("CRYPTO_SERVICE_ERR", "Ошибка асимметричного шифрования при отправке", e);
+            e.printStackTrace();
+            return;
+        }
+
+        // 3. Отправляем одиночное сообщение по сети через SMTP
+        emailClient.sendEmailOverNetwork(chatId, recipientEmail, CHAT_MESSAGE, sendTxt,
+                generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
+
+                    @Override
+                    public void onSynchronized(MessageDto updatedMessageDto) {
+                        // Успешно отправлено! Обновляем UI через DiffUtil (появится одна галочка)
+                        updateUiFromDatabase();
+                    }
+
+                    @Override
+                    public void onError(Exception e) {
+                        // Сеть полностью отключилась или моргнула
+                        Toast.makeText(ChatActivity.this, "Сеть недоступна. Сообщение отложено.", LENGTH_SHORT).show();
+                        // Перечитываем SQLite, чтобы у сообщения гарантированно горел значок "Часики" (is_sent = 0)
+                        updateUiFromDatabase();
+                    }
+                });
     }
 
     @Override
     protected void onResume() {
         super.onResume();
 
+        var filter = new IntentFilter("ru.toboe512.maillis.UPDATE_MESSAGES");
+
+        // Используем ContextCompat (Метод сам правильно разрулит флаги на Android 14+) [source]
+        ContextCompat.registerReceiver(
+                this, // Текущий контекст (активность или сервис)
+                messageUpdateReceiver,
+                filter,
+                ContextCompat.RECEIVER_NOT_EXPORTED // Намертво закрываем канал от внешних хакерских приложений
+        );
+
         // Первичное обновление истории при заходе на экран (наш старый код)
         updateUiFromDatabase();
 
-        // ЗАПУСКАЕМ БЕСКОНЕЧНЫЙ ЦИКЛ при входе пользователя в чат
-        // Сначала на всякий случай очищаем очередь, чтобы избежать случайного размножения таймеров
-        timerHandler.removeCallbacks(timerRunnable);
-
-        // Запускаем первый мгновенный импульс
-        timerHandler.post(timerRunnable);
-        Log.d("MailLis_Timer", "🚀 Секундный цикл UI успешно запущен на главном потоке!");
     }
 
     @Override
     protected void onPause() {
         super.onPause();
 
-        // ОСТАНАВЛИВАЕМ ЦИКЛ при выходе с экрана чата
-        // Это критически важно, чтобы приложение не высаживало батарею смартфона в фоне!
-        if (timerHandler != null) {
-            timerHandler.removeCallbacks(timerRunnable);
-            Log.d("MailLis_Timer", "🛑 Секундный цикл UI остановлен.");
+        // 4. КРИТИЧЕСКИЙ ШАГ: Когда пользователь выходит из чата, отписываемся от пушей,
+        // чтобы не тратить оперативную память устройства впустую!
+        if (messageUpdateReceiver != null) {
+            unregisterReceiver(messageUpdateReceiver);
         }
     }
 
@@ -437,6 +457,88 @@ public class ChatActivity extends AppCompatActivity {
         // Надуваем созданное XML-меню чата в Toolbar
         getMenuInflater().inflate(R.menu.menu_chat, menu);
         return true;
+    }
+
+    /**
+     * Выкачивает выбранный файл из системного Uri во внутреннюю изолированную папку кэша,
+     * прописывает строку в локальную SQLite WAL базу и инициирует SMTP отправку [source].
+     */
+    private void handleSelectedFile(Uri uri) {
+        // Запускаем в фоновом потоке, чтобы не фризить UI при копировании тяжелых файлов
+        new Thread(() -> {
+            try {
+                var prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                // А. Извлекаем оригинальное имя файла через системный ContentResolver [source]
+                String fileName = "document_file";
+                Cursor cursor = getContentResolver().query(uri, null, null, null, null);
+                if (cursor != null) {
+                    int nameIndex = cursor.getColumnIndex(DISPLAY_NAME);
+                    if (nameIndex >= 0 && cursor.moveToFirst()) {
+                        fileName = cursor.getString(nameIndex);
+                    }
+                    cursor.close();
+                }
+
+                // Б. Создаем безопасную папку отправляемых файлов во внутреннем кэше приложения [source]
+                File outputDir = new File(getFilesDir(), "MailLis_Sent_Docs");
+                if (!outputDir.exists()) {
+                    outputDir.mkdirs();
+                }
+
+                // Имя файла на диске с таймстемпом для уникальности
+                File targetFile = new File(outputDir, System.currentTimeMillis() + "_" + fileName);
+
+                // В. Копируем бинарный поток данных из проводника в наш файл [source]
+                try (InputStream is = getContentResolver().openInputStream(uri);
+                     FileOutputStream fos = new FileOutputStream(targetFile)) {
+                    if (is == null) return;
+                    byte[] buffer = new byte[4096];
+                    int bytesRead;
+                    while ((bytesRead = is.read(buffer)) != -1) {
+                        fos.write(buffer, 0, bytesRead);
+                    }
+                }
+
+                // Г. ЗАПИСЫВАЕМ СТРОКУ В НАШУ ОТЛАЖЕННУЮ ТРАНЗАКЦИОННУЮ СУБД SQLite WAL
+                // Статус по умолчанию 0 (часики 🕒), тип жестко ставим "FILE" [source]
+                int localMsgId = dbService.saveMessage(
+                        chatId,
+                        myEmail,
+                        CHAT_FILE,
+                        "📎 Файл: " + fileName,
+                        System.currentTimeMillis()
+                );
+
+                // Принудительно дописываем путь к файлу и тип в базу [source]
+                dbService.updateMessageTypeAndPath(localMsgId, FILE_MSG, targetFile.getAbsolutePath());
+
+                // Обновляем списки на экране чата, чтобы бабл файла с часиками сразу отрисовался справа [source]
+                runOnUiThread(this::updateUiFromDatabase);
+
+                // Д. СЕТЕВОЙ СЛОЙ: Сетевой конвейер кодирует файл в Base64, шифрует Tink и пускает SMTP-веер! [source]
+                if (isGroup) {
+                    // Рассылка по группе
+                    List<String> groupMembers = dbService.getGroupMembersEmails(chatId, myEmail);
+                    for (String memberEmail : groupMembers) {
+                        emailClient.sendFileOverNetwork(memberEmail, GROUP_CHAT_FILE + SPACE_STRING + chatId,
+                                chatId, targetFile, true, prefs);
+                    }
+                } else {
+                    // Личная P2P отправка собеседнику
+                    String recipientEmail = dbService.getRecipientEmailByChatId(chatId);
+                    emailClient.sendFileOverNetwork(recipientEmail, CHAT_FILE, chatId, targetFile, false, prefs);
+                }
+
+                // Переводим часики в статус "Отправлено" (галочка ✓), как только SMTP сессия завершится успешно [source]
+                // (Вы можете вызвать этот маркер напрямую из метода sendFileOverNetwork после Transport.send)
+                dbService.markMessageAsSent(localMsgId, "FILE_UID_" + System.currentTimeMillis());
+                runOnUiThread(() -> updateUiFromDatabase());
+
+            } catch (Exception e) {
+                Log.e("MailLis_AttachFile", "Критическая ошибка при выборе и отправке документа", e);
+                runOnUiThread(() -> Toast.makeText(ChatActivity.this, "Ошибка обработки файла", LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     // --- ДИАЛОГ 1: БЛОКИРОВКА ПОЛЬЗОВАТЕЛЯ ---
@@ -450,6 +552,8 @@ public class ChatActivity extends AppCompatActivity {
                     new Thread(() -> {
                         // 1. Вносим email в таблицу ban_list (метод, который мы написали ранее)
                         dbService.banUser(recipientEmail);
+
+                        dbService.cleanUpPublicKeyIfNoContexts(recipientEmail);
 
                         // 2. Логично также сразу удалить переписку с ним
                         dbService.deleteChatAndMessages(chatId);
@@ -472,26 +576,29 @@ public class ChatActivity extends AppCompatActivity {
                 .setCancelable(true)
                 .setPositiveButton("Удалить", (dialog, which) -> {
                     new Thread(() -> {
-
+                        List<String> members = new ArrayList<>();
                         boolean isDeleted;
+
                         if (isGroup) {
                             SharedPreferences prefs = this.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
                             long currentTimestamp = System.currentTimeMillis();
+                            members = dbService.getGroupMembers(chatId, myEmail);
                             int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
                             emailClient.sendGroupMessageOverNetwork(chatId,
                                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs);
                             isDeleted = dbService.deleteGroupChatAndMessages(chatId);
                         } else {
+                            members.add(dbService.getRecipientEmailByChatId(chatId));
                             isDeleted = dbService.deleteChatAndMessages(chatId);
                         }
-                        //TODO Придумать как удалять публичный ключ из БД
-//                        if (isDeleted) {
-//                            // 3. Если группа стерта, убираем из кэша публичные ключи участников
-//                            for (String memberEmail : members) {
-//                                dbService.deletePublicKeyByEmail(memberEmail);
-//                            }
-//                        }
+
+                        if (isDeleted) {
+                            // 3. Если группа стерта, убираем из кэша публичные ключи участников
+                            for (String memberEmail : members) {
+                                dbService.cleanUpPublicKeyIfNoContexts(memberEmail);
+                            }
+                        }
                         runOnUiThread(() -> {
                             if (isDeleted) {
                                 Toast.makeText(this, "Чат успешно удален", LENGTH_SHORT).show();
@@ -522,7 +629,8 @@ public class ChatActivity extends AppCompatActivity {
                         .filter((m) -> m.getSubject().contains(CHAT_MESSAGE) ||
                                 m.getSubject().contains(CHAT_IMAGE_MAIL) ||
                                 m.getSubject().contains(GROUP_MESSAGE_MAIL) ||
-                                m.getSubject().contains(GROUP_IMAGE_MAIL)
+                                m.getSubject().contains(GROUP_IMAGE_MAIL) ||
+                                m.getSubject().contains(CHAT_FILE)
                         )
                         .collect(toList());
 

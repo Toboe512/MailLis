@@ -14,11 +14,7 @@ public class Config {
     public static final String PREFS_NAME = "MailLis_Prefs";
     public static final String KEY_EMAIL_LOGIN = "email_login";
 
-    // Ключ для хранения интервала синхронизации (в миллисекундах)
-    public static final String KEY_SYNC_INTERVAL = "sync_interval_ms";
-
-    // Дефолтный интервал опроса (20 секунд), если пользователь ещё ничего не менял
-    public static final long DEFAULT_SYNC_INTERVAL_MS = 20000;
-
     public static final String KEY_BIOMETRIC_ENABLED = "biometric_protection_enabled";
+
+    public static final boolean FILE_SEND_ENABLED = true;
 }

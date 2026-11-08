@@ -7,19 +7,16 @@ public class Consts {
     public static final String KEY_RESPONSE = "[MailLis-Key-Response]";
     public static final String CHAT_MESSAGE = "[MailLis-Chat-Message]";
     public static final String READ_RECEIPT = "[MailLis-Read-Receipt]";
-
     public static final String CHAT_IMAGE_MAIL = "[MailLis-Image-Message]";
-
     public static final String GROUP_MESSAGE_MAIL = "[MailLis-Group-Message]";
-
     public static final String GROUP_IMAGE_MAIL = "[MailLis-Group-Image]";
-
     public static final String GROUP_INVITE_MAIL = "[MailLis-Group-Invite]";
     public static final String GROUP_PRE_INVITE_MAIL = "[MailLis-Group-PreInvite]";
     public static final String GROUP_PRE_INVITE_RESPONSE_MAIL = "[MailLis-Group-PreInvite-Response]";
     public static final String GROUP_SYNC = "[MailLis-Group-Sync]";
-
     public static final String GROUP_LEAVE = "[MailLis-Group-Leave]";
+    public static final String  CHAT_FILE = "[Maillis-Chat-File]";
+    public static final String  GROUP_CHAT_FILE = "[Maillis-Group-chat-File]";
 
     // Ключи для сохранения полей настроек
     public static final String KEY_IMAP_SERVER = "imap_server";
@@ -32,6 +29,8 @@ public class Consts {
     // Типы сообщений
     public static final String TEXT_MSG = "TEXT";
     public static final String IMAGE_MSG = "IMAGE";
+    public static final String FILE_MSG = "FILE"; // Тип для документов, PDF и архивов
+
 
     //Метка входящих сообщений
     public static final String INBOX = "INBOX";

@@ -1,6 +1,9 @@
 package ru.toboe512.maillis.db;
 
+import static android.database.sqlite.SQLiteDatabase.CONFLICT_REPLACE;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.KEY_REQUEST;
+import static ru.toboe512.maillis.consts.Consts.KEY_RESPONSE;
 import static ru.toboe512.maillis.consts.Consts.TEXT_MSG;
 
 import android.content.ContentValues;
@@ -155,6 +158,63 @@ public class DBServiceSQLite implements DBService {
         }
 
         return contactList;
+    }
+
+    public Contact getContactById(int contactId) {
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        Contact contact = null;
+
+        // Используем CAST для железной стабильности сопоставления типов в SQLite [source]
+        String sql = "SELECT id, name, email FROM contacts WHERE id = CAST(? AS INTEGER) LIMIT 1";
+        String[] selectionArgs = new String[]{String.valueOf(contactId)};
+
+        // Конструкция try-with-resources гарантирует автоматическое закрытие курсора [source]
+        try (Cursor cursor = db.rawQuery(sql, selectionArgs)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int idIdx = cursor.getColumnIndex("id");
+                int nameIdx = cursor.getColumnIndex("name");
+                int emailIdx = cursor.getColumnIndex("email");
+
+                if (idIdx >= 0 && nameIdx >= 0 && emailIdx >= 0) {
+                    int id = cursor.getInt(idIdx);
+                    String name = cursor.getString(nameIdx);
+                    String email = cursor.getString(emailIdx);
+
+                    // Собираем объект контакта (подставьте ваш конструктор)
+                    contact = new Contact(id,
+                            name != null ? name.trim() : "",
+                            email != null ? email.trim().toLowerCase() : "");
+                }
+            }
+            Log.d("MailLis_DB_Contact", "getContactById для ID " + contactId + " -> " + (contact != null ? contact.getEmail() : "Не найден"));
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Contact", "Критическая ошибка при поиске контакта по ID: " + contactId, e);
+            e.printStackTrace();
+        }
+
+        return contact;
+    }
+
+    public String getContactNameByEmail(String email) {
+        if (email == null || email.trim().isEmpty()) {// Подстраховка от краша
+            return EMPTI_STRING;
+        }
+
+        String name = EMPTI_STRING;
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+        String sql = "SELECT name FROM contacts WHERE email LIKE ? LIMIT 1";
+
+        try (Cursor cursor = db.rawQuery(sql, new String[]{email.trim().toLowerCase()})) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int nameIdx = cursor.getColumnIndex("name");
+                if (nameIdx >= 0) {
+                    name = cursor.getString(nameIdx);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return name;
     }
 
     public boolean deleteContact(int contactId) {
@@ -614,21 +674,15 @@ public class DBServiceSQLite implements DBService {
         return isUpdated;
     }
 
-    /**
-     * Выгружает агрегированный список чатов и групп для главного экрана.
-     * Извлекает превью последних сообщений за один проход базы данных без вызовов диска в цикле Java .
-     * Защищено от переполнения ID групп и коллизий идентификаторов .
-     */
     public List<ChatPreview> loadChats() {
         List<ChatPreview> chatList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
 
-        // МОЩНЫЙ И ПРАВИЛЬНЫЙ UNION ЗАПРОС
         String sql =
                 // --- ЧАСТЬ 1: ОДИНОЧНЫЕ ЧАТЫ (is_group_message = 0) ---
                 "SELECT " +
                         "  c.id AS chat_id, " +
-                        "  c.recipient_email AS chat_name, " +
+                        "  c.title AS chat_name, " +
                         "  m.message_text AS text_preview, " +
                         "  m.subject AS subject_preview, " +
                         "  COALESCE(m.timestamp, 0) AS sorted_time, " +
@@ -671,32 +725,25 @@ public class DBServiceSQLite implements DBService {
 
                 if (idIdx >= 0 && nameIdx >= 0 && textIdx >= 0 && subjectIdx >= 0 && groupIdx >= 0) {
                     do {
-                        // Используем КАТЕГОРИЧЕСКИ long для ID во избежание переполнения (Downcasting Bug)!
                         long id = cursor.getLong(idIdx);
                         String name = cursor.getString(nameIdx);
                         String rawText = cursor.getString(textIdx);
                         String subject = cursor.getString(subjectIdx);
                         boolean isGroup = cursor.getInt(groupIdx) == 1;
 
-                        boolean isHandShake = false;
                         String finalMessageText = isGroup ? "Группа создана" : "Нет сообщений";
 
                         if (rawText != null) {
                             finalMessageText = rawText;
-
                             // Проверяем на служебные заголовки рукопожатий (для одиночных чатов)
                             if (subject != null && !isGroup) {
-                                // Если тема письма не содержит стандартный маркер текста — это хэндшейк обмена ключами Tink
-                                isHandShake = !subject.contains("MAILLIS_CHAT_MESSAGE");
-                                if (isHandShake) {
+                                if (subject.contains(KEY_REQUEST) || subject.contains(KEY_RESPONSE)) {
                                     finalMessageText = "Чат создан";
                                 }
                             }
                         }
 
-                        // ВНИМАНИЕ: Измените тип первого параметра в вашем классе ChatPreview на long!
-                        // Конструктор должен быть: public ChatPreview(long id, String name, ...)
-                        ChatPreview preview = new ChatPreview(id, name, finalMessageText, isHandShake, isGroup);
+                        var preview = new ChatPreview(id, name, finalMessageText, isGroup);
                         chatList.add(preview);
 
                     } while (cursor.moveToNext());
@@ -1831,7 +1878,7 @@ public class DBServiceSQLite implements DBService {
                     "group_chats",
                     null,
                     values,
-                    SQLiteDatabase.CONFLICT_REPLACE
+                    CONFLICT_REPLACE
             );
 
             if (rowId != -1) {
@@ -1882,7 +1929,7 @@ public class DBServiceSQLite implements DBService {
                     "public_keys",
                     null,
                     values,
-                    SQLiteDatabase.CONFLICT_REPLACE
+                    CONFLICT_REPLACE
             );
 
             if (rowId != -1) {
@@ -2308,5 +2355,56 @@ public class DBServiceSQLite implements DBService {
         }
 
         return groupName;
+    }
+
+    public boolean cleanUpPublicKeyIfNoContexts(String email) {
+        if (email == null || email.trim().isEmpty()) return false;
+
+        SQLiteDatabase db = dbHelper.getWritableDatabase();
+        String normalizedEmail = email.trim().toLowerCase();
+        boolean keyWasDeleted = false;
+
+        // ОТКРЫВАЕМ НЕЭКСКЛЮЗИВНУЮ ТРАНЗАКЦИЮ (Защита WAL пула)
+        db.beginTransactionNonExclusive();
+        try {
+            // МОЩНЫЙ СУММИРУЮЩИЙ ЗАПРОС (Reference Counting)
+            // Считаем сумму совпадений в одиночных чатах И в составах всех групп!
+            String sql =
+                    "SELECT (" +
+                            "  (SELECT COUNT(1) FROM chats WHERE recipient_email LIKE ?) + " +
+                            "  (SELECT COUNT(1) FROM group_members WHERE user_email LIKE ?)" +
+                            ") AS active_contexts_count";
+
+            int activeContexts = 0;
+            try (Cursor cursor = db.rawQuery(sql, new String[]{normalizedEmail, normalizedEmail})) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    activeContexts = cursor.getInt(0);
+                }
+            }
+
+            Log.d("MailLis_Crypto_Clean", "Пользователь " + normalizedEmail + " имеет активных контекстов: " + activeContexts);
+
+            // ИДЕАЛЬНЫЙ МОМЕНТ: Связей больше нет, ключ официально становится "сиротой"
+            if (activeContexts == 0) {
+                // Стираем ключ из кэша, так как он больше не нужен для работы мессенджера
+                int affectedRows = db.delete("public_keys", "email LIKE ?", new String[]{normalizedEmail});
+
+                db.setTransactionSuccessful(); // Фиксируем изменения
+                keyWasDeleted = (affectedRows > 0);
+                Log.i("MailLis_Crypto_Clean", "🔒 Ключ для " + normalizedEmail + " успешно удален. Стерто строк кэша: " + affectedRows);
+            } else {
+                // Чаты еще есть, коммитим пустую транзакцию (просто закрываем её без отката)
+                db.setTransactionSuccessful();
+                Log.d("MailLis_Crypto_Clean", "Удаление ключа отменено: пользователь задействован в чатах.");
+            }
+
+        } catch (Exception e) {
+            Log.e("MailLis_Crypto_Clean", "Ошибка при каскадной проверке ключа для " + normalizedEmail, e);
+            e.printStackTrace();
+        } finally {
+            db.endTransaction(); // Гарантированно освобождаем поток
+        }
+
+        return keyWasDeleted;
     }
 }

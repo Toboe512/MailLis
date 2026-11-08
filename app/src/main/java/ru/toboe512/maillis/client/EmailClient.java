@@ -3,6 +3,8 @@ package ru.toboe512.maillis.client;
 import android.content.Context;
 import android.content.SharedPreferences;
 
+import java.io.File;
+
 import ru.toboe512.maillis.crypto.CryptoService;
 
 public interface EmailClient {
@@ -44,4 +46,10 @@ public interface EmailClient {
      * Отправляет служебную команду старым участникам группы для синхронизации состава.
      */
     void sendGroupSyncNotification(String oldMemberEmail, long groupId, String newMemberEmail, SharedPreferences prefs) throws Exception;
+
+    /**
+     * Кодирует локальный файл в Base64, шифрует его крипто-ядром Tink
+     * и отправляет по P2P-сети MailLis в виде защищенного MIME-конверта [source].
+     */
+    void sendFileOverNetwork(String recipientEmail, String subject, long chatId, File fileToSend, boolean isGroup, SharedPreferences prefs);
 }

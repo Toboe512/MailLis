@@ -68,7 +68,9 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     @Override
     public void onBindViewHolder(@NonNull ChatViewHolder holder, int position) {
         ChatPreview chat = chatList.get(position);
+
         String chatTitle = chat.getTitle() != null ? chat.getTitle() : EMPTI_STRING;
+
         holder.textViewName.setText(chatTitle);
         holder.textViewLastMessage.setText(chat.getLastMessage() != null ? chat.getLastMessage() : "Нет сообщений");
         holder.textViewType.setText(chat.isGroup() ? "Группа" : "Личный");
@@ -112,20 +114,20 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     // Удаление записи из SQLite и анимация списка
     private void deleteChatFromDatabase(long chatId, int position) {
         // Удаляем сам чат. Связанные сообщения в SQLite удалятся автоматически благодаря ON DELETE CASCADE
-        List<String> members = new ArrayList<>();
         ChatPreview chatPreview = chatList.get(position);
-
         if (chatPreview == null) {
             return;
         }
 
         boolean isDeleted;
+        List<String> members = new ArrayList<>();
 
         if (chatPreview.isGroup()) {
             // Загружаем наш собственный логин из SharedPreferences
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
             String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING).trim();
 
+            members = dbService.getGroupMembers(chatId, myEmail);
             long currentTimestamp = System.currentTimeMillis();
             int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
@@ -139,14 +141,12 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             members.add(dbService.getRecipientEmailByChatId(chatId));
             isDeleted = dbService.deleteChatAndMessages(chatId);
         }
-//        if (isDeleted) { //TODO придумать как удалять публичные ключи
-//            // 3. Если группа стерта, убираем из кэша публичные ключи участников
-//            for (String memberEmail : members) {
-//                dbService.deletePublicKeyByEmail(memberEmail);
-//            }
-//        }
-
         if (isDeleted) {
+            // 3. Если группа стерта, убираем из кэша публичные ключи участников
+            for (String memberEmail : members) {
+                dbService.cleanUpPublicKeyIfNoContexts(memberEmail);
+            }
+
             // Удаляем объект из массива памяти устройства
             chatList.remove(position);
 
@@ -165,12 +165,12 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
 
     public void updateChatsList(List<ChatPreview> newChats) {
         // 1. Вычисляем разницу между текущим списком в памяти адаптера (this.chatList) и новым из БД
-        var diffCallback = new ChatDiffCallback(this.chatList, newChats);
+        var diffCallback = new ChatDiffCallback(chatList, newChats);
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
 
         // 2. Обновляем данные в памяти адаптера без вызова .clear()
-        this.chatList.clear();
-        this.chatList.addAll(newChats);
+        chatList.clear();
+        chatList.addAll(newChats);
 
         // 3. Магия: DiffUtil сам точечно вызовет notifyItemChanged, notifyItemInserted или notifyItemRemoved!
         diffResult.dispatchUpdatesTo(this);
