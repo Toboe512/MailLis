@@ -31,6 +31,7 @@ import ru.toboe512.maillis.activity.ChatActivity;
 import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.ChatPreview;
+import ru.toboe512.maillis.service.MailExecutorService;
 import ru.toboe512.maillis.utils.ChatDiffCallback;
 
 public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHolder> {
@@ -38,7 +39,8 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     private final List<ChatPreview> chatList;
     private final Context context;
     private final DBService dbService; // Помощник для удаления из SQLite
-    private final EmailClient emailClient;
+
+    private final MailExecutorService mailExecutorService;
 
     static class ChatViewHolder extends RecyclerView.ViewHolder {
         TextView textViewName, textViewLastMessage, textViewType;
@@ -51,11 +53,11 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
         }
     }
 
-    public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService, EmailClient emailClient) {
+    public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService, MailExecutorService mailExecutorService) {
         this.context = context;
         this.chatList = chatList;
         this.dbService = dbService;
-        this.emailClient = emailClient;
+        this.mailExecutorService = mailExecutorService;
     }
 
     @NonNull
@@ -131,7 +133,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             long currentTimestamp = System.currentTimeMillis();
             int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
-            emailClient.sendGroupMessageOverNetwork(chatId,
+            mailExecutorService.sendGroupMessageOverNetwork(chatId,
                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs);
 
             isDeleted = dbService.deleteGroupChatAndMessages(chatId);

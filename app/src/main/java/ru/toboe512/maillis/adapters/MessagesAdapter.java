@@ -97,25 +97,18 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     public void onBindViewHolder(@NonNull MessageViewHolder holder, int position) {
         MessageDto messageDto = messageDtoList.get(position);
 
-        // ОПТИМИЗАЦИЯ КОНТЕНТА: Читаем файл с диска ТОЛЬКО если текст/картинка изменились!
-        // Защита от ежесекундного чтения накопителя и фризов UI.
         if (IMAGE_MSG.equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
             holder.textViewText.setVisibility(GONE);
             if (holder.imageViewPhoto != null) {
                 holder.imageViewPhoto.setVisibility(VISIBLE);
 
-                // Проверяем: если картинка уже была загружена в этот ImageView, не декодируем её заново!
-                if (holder.imageViewPhoto.getDrawable() == null) {
-                    new Thread(() -> {
-                        // Декодируем тяжелый Bitmap в фоне
-                        Bitmap bitmap = BitmapFactory.decodeFile(messageDto.getFilePath());
-                        if (bitmap != null) {
-                            holder.itemView.post(() -> holder.imageViewPhoto.setImageBitmap(bitmap));
-                        } else {
-                            holder.itemView.post(() ->
-                                    holder.imageViewPhoto.setImageResource(android.R.drawable.ic_menu_report_image));
-                        }
-                    }).start();
+                // Декодируем Bitmap
+                Bitmap bitmap = BitmapFactory.decodeFile(messageDto.getFilePath());
+                if (bitmap != null) {
+                    holder.itemView.post(() -> holder.imageViewPhoto.setImageBitmap(bitmap));
+                } else {
+                    holder.itemView.post(() ->
+                            holder.imageViewPhoto.setImageResource(android.R.drawable.ic_menu_report_image));
                 }
             }
         } else if (FILE_MSG.equals(messageDto.getMessageType()) && messageDto.getFilePath() != null) {
@@ -335,10 +328,10 @@ public class MessagesAdapter extends RecyclerView.Adapter<MessagesAdapter.Messag
     // Внутри класса MessagesAdapter:
     public void setMessages(List<MessageDto> newMessageDtos) {
         // Запускаем автоматический расчет разницы между старым и новым списками сообщений
-        MessageDiffCallback diffCallback = new MessageDiffCallback(messageDtoList, newMessageDtos);
+        var diffCallback = new MessageDiffCallback(messageDtoList, newMessageDtos);
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
 
-        // Обновляем ссылку на массив данных
+        // Обновляем массив данных
         messageDtoList.clear();
         messageDtoList.addAll(newMessageDtos);
 

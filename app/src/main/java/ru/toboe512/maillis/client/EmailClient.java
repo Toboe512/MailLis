@@ -1,46 +1,38 @@
 package ru.toboe512.maillis.client;
 
-import android.content.Context;
 import android.content.SharedPreferences;
 
-import java.io.File;
+import java.io.IOException;
+import java.util.List;
 
-import ru.toboe512.maillis.crypto.CryptoService;
+import jakarta.mail.MessagingException;
+import ru.toboe512.maillis.dto.IncomingMessageDto;
 
 public interface EmailClient {
 
-    CryptoService getCryptoService();
+    List<IncomingMessageDto> fetchIncomingOverNetwork(SharedPreferences prefs) throws MessagingException, IOException;
 
-    boolean fetchIncomingOverNetwork(Context context, SharedPreferences prefs);
+    String sendEmailOverNetwork(String recipientEmail, String subject, final String messageText, SharedPreferences prefs) throws MessagingException;
 
-    boolean sendEmailOverNetwork(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);
+    void deleteMessageFromServer(final String serverUid, SharedPreferences prefs);
 
-    boolean sendHandshakeRequest(String targetEmail, Context context, long chatId, SharedPreferences prefs);
+    String sendImageOverNetwork(String recipientEmail, String base64EncryptedImage, SharedPreferences prefs) throws MessagingException;
 
-    String sendHandshakeResponse(String targetEmail, long chatId, SharedPreferences prefs);
-
-    void deleteMessageFromServer(final String serverUid, android.content.SharedPreferences prefs);
-
-    void retryUnsentMessages(SharedPreferences prefs);
-
-    String sendEmailOverNetworkSync(long chatId, String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs);
-
-    void sendImageOverNetwork(long chatId, String recipientEmail, byte[] rawImageBytes, final int localMessageId, SharedPreferences prefs, EmailClientImpl.OnMessagesSynchronizedListener listener);
-
-    void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs);
-    /**
-     * Безопасно рассылает секретный AES-ключ группы участнику.
-     * Ключ шифруется индивидуальным публичным Tink-ключом получателя.
-     */
-    void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs);
-
-    void sendGroupPreInviteResponse(String creatorEmail, long chatId, SharedPreferences prefs);
+    String sendGroupImageOverNetwork(List<String> recipients, String subject, String header, String base64EncryptedImage, SharedPreferences prefs) throws MessagingException;
 
     /**
      * Безопасно рассылает секретный AES-ключ группы участнику.
      * Ключ шифруется индивидуальным публичным Tink-ключом получателя.
      */
-    void sendGroupInviteOverNetwork(String recipientEmail, long chatId, String groupName, byte[] groupSecretKey, SharedPreferences prefs);
+    String sendGroupMessageOverNetwork(List<String> recipients, String subject, String cipherTextBase64, SharedPreferences prefs) throws MessagingException;
+
+    void sendGroupPreInviteResponse(String creatorEmail, long chatId, String myPublicKeyBas64, SharedPreferences prefs) throws MessagingException;
+
+    /**
+     * Безопасно рассылает секретный AES-ключ группы участнику.
+     * Ключ шифруется индивидуальным публичным Tink-ключом получателя.
+     */
+    void sendGroupInviteOverNetwork(String recipientEmail, String subject, String header, String text, SharedPreferences prefs) throws MessagingException;
 
     /**
      * Отправляет служебную команду старым участникам группы для синхронизации состава.
@@ -51,5 +43,5 @@ public interface EmailClient {
      * Кодирует локальный файл в Base64, шифрует его крипто-ядром Tink
      * и отправляет по P2P-сети MailLis в виде защищенного MIME-конверта [source].
      */
-    void sendFileOverNetwork(String recipientEmail, String subject, long chatId, File fileToSend, boolean isGroup, SharedPreferences prefs);
+    void sendFileOverNetwork(String recipientEmail, String subject, String encryptedPayload, SharedPreferences prefs) throws MessagingException;
 }

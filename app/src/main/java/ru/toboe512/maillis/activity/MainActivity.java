@@ -32,6 +32,8 @@ import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.ChatPreview;
+import ru.toboe512.maillis.service.MailExecutorService;
+import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 import ru.toboe512.maillis.service.MailLisPushService;
 
 
@@ -48,8 +50,9 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
         List<ChatPreview> chatList = new ArrayList<>();
 
         dbService = DBServiceSQLite.getInstance(this);
-        chatsAdapter = new ChatsAdapter(this, chatList, dbService,
-                EmailClientImpl.getInstance(dbService, this));
+        EmailClient emailClient = EmailClientImpl.getInstance();
+        MailExecutorService executorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
+        chatsAdapter = new ChatsAdapter(this, chatList, dbService, executorService);
 
         // Пропишите это в onCreate() вашей MainActivity для проверки и запроса прав
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -90,7 +93,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
                         });
                     } catch (Exception e) {
                         Log.e("MailLis_UI", "Ошибка при фоновом обновлении UI из Broadcast", e);
-                        e.printStackTrace();
+
                     } finally {
                         // КРИТИЧЕСКИ ВАЖНО: Обязательно сигнализируем системе, что фоновая задача завершена,
                         // и теперь ресивер можно безопасно удалить из памяти Android!

@@ -7,7 +7,6 @@ import android.content.SharedPreferences;
 import android.os.Handler;
 import android.util.Log;
 
-import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.dto.MessageDto;
 
@@ -23,15 +22,14 @@ public class UpdateRunnable implements Runnable {
 
     private final MailLisPushService serviceContext;
     private final Handler updateHandler;
-    private final EmailClient emailClient;
     private final DBService dbService;
+    private final MailExecutorService mailExecutorService;
 
-    public UpdateRunnable(MailLisPushService serviceContext, Handler updateHandler,
-                          EmailClient emailClient, DBService dbService) {
+    public UpdateRunnable(MailLisPushService serviceContext, Handler updateHandler, DBService dbService, MailExecutorService mailExecutorService) {
         this.serviceContext = serviceContext;
         this.updateHandler = updateHandler;
-        this.emailClient = emailClient;
         this.dbService = dbService;
+        this.mailExecutorService = mailExecutorService;
     }
 
     @Override
@@ -43,17 +41,10 @@ public class UpdateRunnable implements Runnable {
             try {
                 Log.d(TAG, "=== СТАРТ ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ ===");
 
-                // Запоминаем общее количество сообщений в SQLite ДО сессии скачивания писем чата
-                int previousMessagesCount = dbService.getTotalMessagesCount();
-
                 // Выполняем синхронизацию писем по IMAP
-                emailClient.fetchIncomingOverNetwork(serviceContext, prefs);
+                int messageCount = mailExecutorService.fetchIncomingOverNetwork(serviceContext, prefs);
 
-                // Считываем количество сообщений ПОСЛЕ завершения IMAP-запроса
-                int currentMessagesCount = dbService.getTotalMessagesCount();
-
-                // ПРОВЕРКА НА НОВЫЕ ПИСЬМА: Если количество строк в SQLite увеличилось — генерируем Push!
-                if (currentMessagesCount > previousMessagesCount) {
+                if (messageCount > 0) {
                     Log.i(TAG, "В базе данных обнаружено новое входящее сообщение! Генерируем Push-уведомление...");
 
                     // 1. Сигнал для Главного экрана (списка чатов)
@@ -75,13 +66,12 @@ public class UpdateRunnable implements Runnable {
                 }
 
                 // Запускаем очередь автоматического ретрая (переотправка локально застрявших писем в FIFO)
-                emailClient.retryUnsentMessages(prefs);
+                mailExecutorService.retryUnsentMessages(prefs);
 
                 Log.d(TAG, "=== КОНЕЦ ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ ===");
 
             } catch (Exception e) {
                 Log.e(TAG, "Критический сбой внутри конвейера фоновой синхронизации", e);
-                e.printStackTrace();
             }
         }).start();
 

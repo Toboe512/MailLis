@@ -31,6 +31,8 @@ import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.service.MailExecutorService;
+import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 
 public class CreateChatActivity extends AppCompatActivity {
 
@@ -38,6 +40,7 @@ public class CreateChatActivity extends AppCompatActivity {
     private DBService dbService;
     private EditText editTextGroupName;
     private EmailClient emailClient;
+    private MailExecutorService mailExecutorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,7 +90,9 @@ public class CreateChatActivity extends AppCompatActivity {
 
         recyclerView.setAdapter(adapter);
 
-        emailClient = EmailClientImpl.getInstance(dbService, this);
+        emailClient = EmailClientImpl.getInstance();
+
+        mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
 
 
         Button buttonCreateContact = findViewById(R.id.buttonViewContactTitle);
@@ -127,7 +132,7 @@ public class CreateChatActivity extends AppCompatActivity {
                 String senderEmail = selectedEmails.get(0);
 
                 long newChatId = dbService.saveChat(groupName, senderEmail);// Сохраняем созданный чат в базу данных SQLite
-                emailClient.sendHandshakeRequest(senderEmail, CreateChatActivity.this, newChatId, prefs);
+                mailExecutorService.sendHandshakeRequest(senderEmail, newChatId, prefs);
 
                 if (newChatId != -1) {
                     makeText(CreateChatActivity.this, "Чат успешно создан!", LENGTH_SHORT).show();
@@ -157,7 +162,7 @@ public class CreateChatActivity extends AppCompatActivity {
                             dbService.addGroupMember(newChatId, memberEmail);
 
                             // Веерный SMTP: шлем инвайт с зашифрованным ключом
-                            emailClient.sendGroupInviteOverNetwork(memberEmail, newChatId, finalGroupName, groupSecretKey, prefs);
+                            mailExecutorService.sendGroupInviteOverNetwork(memberEmail, newChatId, finalGroupName, groupSecretKey, prefs);
                         }
 
                         // Возвращаемся в UI поток для закрытия экрана

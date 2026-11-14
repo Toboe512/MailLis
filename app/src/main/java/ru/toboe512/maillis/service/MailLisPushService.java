@@ -51,7 +51,7 @@ public class MailLisPushService extends Service {
         Log.d(TAG, "Служба MailLisPushService успешно создана в памяти системы");
 
         dbService = DBServiceSQLite.getInstance(this);
-        emailClient = EmailClientImpl.getInstance(dbService, this);
+        emailClient = EmailClientImpl.getInstance();
         updateHandler = new Handler(Looper.getMainLooper());
 
         // Создаем обязательные для Android 8.0+ каналы уведомлений
@@ -91,8 +91,9 @@ public class MailLisPushService extends Service {
 
             // 2. ИНИЦИАЛИЗАЦИЯ И ЗАПУСК ЕДИНОГО ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ
 
+            MailExecutorService executorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
             // Инициализируем наш выделенный класс, передавая зависимости через конструктор
-            updateRunnable = new UpdateRunnable(this, updateHandler, emailClient, dbService);
+            updateRunnable = new UpdateRunnable(this, updateHandler, dbService, executorService);
 
             // Производим мгновенный первый запуск конвейера синхронизации
             updateHandler.post(updateRunnable);

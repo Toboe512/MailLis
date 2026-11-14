@@ -70,6 +70,8 @@ import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.MessageDto;
+import ru.toboe512.maillis.service.MailExecutorService;
+import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 
 public class ChatActivity extends AppCompatActivity {
 
@@ -90,6 +92,8 @@ public class ChatActivity extends AppCompatActivity {
     // 2. Объявляем переменные класса
     private ImageButton buttonAttachFile;
     private ActivityResultLauncher<String> filePickerLauncher;
+
+    private MailExecutorService mailExecutorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -122,9 +126,11 @@ public class ChatActivity extends AppCompatActivity {
         }
 
         dbService = DBServiceSQLite.getInstance(this);
-        emailClient = EmailClientImpl.getInstance(dbService, this);
+        emailClient = EmailClientImpl.getInstance();
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
         messagesAdapter = new MessagesAdapter();
+
+        mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
 
         editTextMessage = findViewById(R.id.editTextMessage);
 
@@ -369,7 +375,7 @@ public class ChatActivity extends AppCompatActivity {
                     String base64GroupText = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
 
                     // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
-                    emailClient.sendGroupMessageOverNetwork(chatId,
+                    mailExecutorService.sendGroupMessageOverNetwork(chatId,
                             GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs);
 
                     // Сразу обновляем экран (сообщение перейдет в статус отправки)
@@ -380,7 +386,6 @@ public class ChatActivity extends AppCompatActivity {
                 }
             } catch (Exception e) {
                 Log.e("MailLis_Group_Err", "Ошибка шифрования группового сообщения", e);
-                e.printStackTrace();
             }
             return;
         }
@@ -392,19 +397,18 @@ public class ChatActivity extends AppCompatActivity {
 
             if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
                 // Передаем именно публичный ключ друга в метод encode с вашим контекстом "MailLis_P2P_Protocol_v1"
-                sendTxt = emailClient.getCryptoService().encrypt(text, peerPublicKeyBytes);
+                sendTxt = new CryptoServiceImpl(this).encrypt(text, peerPublicKeyBytes);
             } else {
                 Log.w("MailLis_Crypto", "Ключ чата еще не установлен. Отправка обычным текстом.");
             }
         } catch (GeneralSecurityException | IOException e) {
             Log.e("CRYPTO_SERVICE_ERR", "Ошибка асимметричного шифрования при отправке", e);
-            e.printStackTrace();
             return;
         }
 
         // 3. Отправляем одиночное сообщение по сети через SMTP
-        emailClient.sendEmailOverNetwork(chatId, recipientEmail, CHAT_MESSAGE, sendTxt,
-                generatedId, prefs, new EmailClientImpl.OnMessagesSynchronizedListener() {
+        mailExecutorService.sendEmailOverNetwork(recipientEmail, CHAT_MESSAGE, sendTxt,
+                generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
 
                     @Override
                     public void onSynchronized(MessageDto updatedMessageDto) {
@@ -438,7 +442,6 @@ public class ChatActivity extends AppCompatActivity {
 
         // Первичное обновление истории при заходе на экран (наш старый код)
         updateUiFromDatabase();
-
     }
 
     @Override
@@ -513,26 +516,26 @@ public class ChatActivity extends AppCompatActivity {
                 dbService.updateMessageTypeAndPath(localMsgId, FILE_MSG, targetFile.getAbsolutePath());
 
                 // Обновляем списки на экране чата, чтобы бабл файла с часиками сразу отрисовался справа [source]
-                runOnUiThread(this::updateUiFromDatabase);
+                updateUiFromDatabase();
 
                 // Д. СЕТЕВОЙ СЛОЙ: Сетевой конвейер кодирует файл в Base64, шифрует Tink и пускает SMTP-веер! [source]
                 if (isGroup) {
                     // Рассылка по группе
                     List<String> groupMembers = dbService.getGroupMembersEmails(chatId, myEmail);
                     for (String memberEmail : groupMembers) {
-                        emailClient.sendFileOverNetwork(memberEmail, GROUP_CHAT_FILE + SPACE_STRING + chatId,
+                        mailExecutorService.sendFileOverNetwork(memberEmail, GROUP_CHAT_FILE + SPACE_STRING + chatId,
                                 chatId, targetFile, true, prefs);
                     }
                 } else {
                     // Личная P2P отправка собеседнику
                     String recipientEmail = dbService.getRecipientEmailByChatId(chatId);
-                    emailClient.sendFileOverNetwork(recipientEmail, CHAT_FILE, chatId, targetFile, false, prefs);
+                    mailExecutorService.sendFileOverNetwork(recipientEmail, CHAT_FILE, chatId, targetFile, false, prefs);
                 }
 
                 // Переводим часики в статус "Отправлено" (галочка ✓), как только SMTP сессия завершится успешно [source]
                 // (Вы можете вызвать этот маркер напрямую из метода sendFileOverNetwork после Transport.send)
                 dbService.markMessageAsSent(localMsgId, "FILE_UID_" + System.currentTimeMillis());
-                runOnUiThread(() -> updateUiFromDatabase());
+                updateUiFromDatabase();
 
             } catch (Exception e) {
                 Log.e("MailLis_AttachFile", "Критическая ошибка при выборе и отправке документа", e);
@@ -548,22 +551,19 @@ public class ChatActivity extends AppCompatActivity {
                 .setMessage("Вы уверены, что хотите заблокировать " + recipientEmail +
                         "? Письма от него будут автоматически уничтожаться.")
                 .setCancelable(true)
-                .setPositiveButton("Заблокировать", (dialog, which) -> {
-                    new Thread(() -> {
-                        // 1. Вносим email в таблицу ban_list (метод, который мы написали ранее)
-                        dbService.banUser(recipientEmail);
+                .setPositiveButton("Заблокировать", (dialog, which) ->
+                        new Thread(() -> {
+                            // 1. Вносим email в таблицу ban_list (метод, который мы написали ранее)
+                            dbService.banUser(recipientEmail);
+                            dbService.cleanUpPublicKeyIfNoContexts(recipientEmail);
+                            // 2. Логично также сразу удалить переписку с ним
+                            dbService.deleteChatAndMessages(chatId);
 
-                        dbService.cleanUpPublicKeyIfNoContexts(recipientEmail);
-
-                        // 2. Логично также сразу удалить переписку с ним
-                        dbService.deleteChatAndMessages(chatId);
-
-                        runOnUiThread(() -> {
-                            Toast.makeText(this, "Пользователь добавлен в чёрный список", LENGTH_SHORT).show();
-                            finish(); // Закрываем экран чата и возвращаемся на главный экран
-                        });
-                    }).start();
-                })
+                            runOnUiThread(() -> {
+                                Toast.makeText(this, "Пользователь добавлен в чёрный список", LENGTH_SHORT).show();
+                                finish(); // Закрываем экран чата и возвращаемся на главный экран
+                            });
+                        }).start())
                 .setNegativeButton("Отмена", null)
                 .show();
     }
@@ -585,7 +585,7 @@ public class ChatActivity extends AppCompatActivity {
                             members = dbService.getGroupMembers(chatId, myEmail);
                             int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
-                            emailClient.sendGroupMessageOverNetwork(chatId,
+                            mailExecutorService.sendGroupMessageOverNetwork(chatId,
                                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs);
                             isDeleted = dbService.deleteGroupChatAndMessages(chatId);
                         } else {
@@ -620,35 +620,26 @@ public class ChatActivity extends AppCompatActivity {
     private void updateUiFromDatabase() {
         // 1. Уходим в фоновый поток для быстрого чтения диска (чтобы не фризить UI)
         new Thread(() -> {
-            try {
-                // Вытаскиваем актуальный список сообщений из SQLite
-                final List<MessageDto> freshMessageAllDtos = dbService.getAllMessages(chatId, isGroup);
+            // Вытаскиваем актуальный список сообщений из SQLite
+            final List<MessageDto> freshMessageAllDtos = dbService.getAllMessages(chatId, isGroup);
 
-                final List<MessageDto> freshMessageDtos = freshMessageAllDtos
-                        .stream()
-                        .filter((m) -> m.getSubject().contains(CHAT_MESSAGE) ||
-                                m.getSubject().contains(CHAT_IMAGE_MAIL) ||
-                                m.getSubject().contains(GROUP_MESSAGE_MAIL) ||
-                                m.getSubject().contains(GROUP_IMAGE_MAIL) ||
-                                m.getSubject().contains(CHAT_FILE)
-                        )
-                        .collect(toList());
+            final List<MessageDto> freshMessageDtos = freshMessageAllDtos
+                    .stream()
+                    .filter((m) -> m.getSubject().contains(CHAT_MESSAGE) ||
+                            m.getSubject().contains(CHAT_IMAGE_MAIL) ||
+                            m.getSubject().contains(GROUP_MESSAGE_MAIL) ||
+                            m.getSubject().contains(GROUP_IMAGE_MAIL) ||
+                            m.getSubject().contains(CHAT_FILE)
+                    )
+                    .collect(toList());
 
-                // 2. ВОЗВРАЩАЕМСЯ НА ГЛАВНЫЙ ПОТОК ANDROID для перерисовки экрана!
-                runOnUiThread(() -> {
-                    if (messagesAdapter != null) {
-                        // Передаем список в адаптер
-                        messagesAdapter.setMessages(freshMessageDtos);
-                    }
-                    Log.d("MailLis_UI_Fix", "Интерфейс чата принудительно перерисован. Сообщений: "
-                            + freshMessageDtos.size());
-
-                });
-
-            } catch (Exception e) {
-                Log.e("MailLis_UI_Fix", "Ошибка при обновлении чата из базы данных", e);
-                e.printStackTrace();
-            }
+            // 2. ВОЗВРАЩАЕМСЯ НА ГЛАВНЫЙ ПОТОК ANDROID для перерисовки экрана!
+            runOnUiThread(() -> {
+                // Передаем список в адаптер
+                messagesAdapter.setMessages(freshMessageDtos);
+                Log.d("MailLis_UI_Fix", "Интерфейс чата принудительно перерисован. Сообщений: "
+                        + freshMessageDtos.size());
+            });
         }).start();
     }
 
@@ -659,21 +650,12 @@ public class ChatActivity extends AppCompatActivity {
             @Override
             public void onReceive(Context context, Intent intent) {
                 Log.d("MailLis_ChatUI", "Получен сигнал новой почты! Мгновенно обновляем переписку в чате...");
-
                 // Включаем асинхронный режим, чтобы удержать контекст на время чтения диска
-                final PendingResult pendingResult = goAsync();
-
-                new Thread(() -> {
-                    try {
-                        // Используем наш отлаженный метод: считываем базу и точечно обновляем экран через DiffUtil
-                        updateUiFromDatabase();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    } finally {
-                        // Сигнализируем системе о завершении фоновой задачи
-                        pendingResult.finish();
-                    }
-                }).start();
+                PendingResult pendingResult = goAsync();
+                // Используем наш отлаженный метод: считываем базу и точечно обновляем экран через DiffUtil
+                updateUiFromDatabase();
+                // Сигнализируем системе о завершении фоновой задачи
+                pendingResult.finish();
             }
         };
     }
@@ -684,7 +666,6 @@ public class ChatActivity extends AppCompatActivity {
     private void processAndSendPickedImage(Uri imageUri, SharedPreferences prefs) {
         new Thread(() -> {
             try {
-
                 byte[] rawImageBytes = getRawImageBytes(imageUri);
                 if (rawImageBytes == null) {
                     return;
@@ -701,7 +682,7 @@ public class ChatActivity extends AppCompatActivity {
                 // ЗАПИСЫВАЕМ СТРОКУ В SQLITE БАЗУ ДАННЫХ
                 // Передаем тип "IMAGE" и путь к нашему файлу. Статус изначально 0 (часики)
                 int generatedId = dbService.saveGenericMessage(chatId, myEmail, CHAT_IMAGE_MAIL,
-                        CHAT_IMAGE_MAIL, true, currentTimestamp);
+                        EMPTI_STRING, true, currentTimestamp);
                 // Принудительно обновляем тип и путь в базе данных
                 dbService.updateMessageTypeAndPath(generatedId, IMAGE_MSG, localFile.getAbsolutePath());
 
@@ -710,10 +691,10 @@ public class ChatActivity extends AppCompatActivity {
 
                 // ПЕРЕДАЕМ В СЕТЕВОЙ СЛОЙ НА ШИФРОВАНИЕ И ОТПРАВКУ ПО SMTP
                 if (isGroup) {
-                    emailClient.sendGroupImageOverNetwork(chatId, rawImageBytes, generatedId, prefs);
+                    mailExecutorService.sendGroupImageOverNetwork(chatId, rawImageBytes, generatedId, prefs);
                 } else {
-                    emailClient.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs,
-                            new EmailClientImpl.OnMessagesSynchronizedListener() {
+                    mailExecutorService.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs,
+                            new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
                                 @Override
                                 public void onSynchronized(MessageDto updatedMessageDto) {
                                     // Успех! Сетевой слой сам вызвал markMessageAsSent, нам нужно только перерисовать галочку
@@ -733,7 +714,6 @@ public class ChatActivity extends AppCompatActivity {
 
             } catch (Exception e) {
                 Log.e("MailLis_Media", "Ошибка подготовки фотографии к отправке", e);
-                e.printStackTrace();
             }
         }).start();
     }

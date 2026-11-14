@@ -95,7 +95,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_SaveContact", "Критическая ошибка транзакции при сохранении контакта: " + normalizedEmail, e);
-            e.printStackTrace();
             newRowId = -1;
         } finally {
             // 3. КРИТИЧЕСКИЙ ФИКС: Закрываем ТОЛЬКО транзакцию, высвобождая поток в пул WAL.
@@ -154,7 +153,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Contacts", "Критическая ошибка при чтении списка контактов из базы", e);
-            e.printStackTrace();
         }
 
         return contactList;
@@ -189,7 +187,6 @@ public class DBServiceSQLite implements DBService {
             Log.d("MailLis_DB_Contact", "getContactById для ID " + contactId + " -> " + (contact != null ? contact.getEmail() : "Не найден"));
         } catch (Exception e) {
             Log.e("MailLis_DB_Contact", "Критическая ошибка при поиске контакта по ID: " + contactId, e);
-            e.printStackTrace();
         }
 
         return contact;
@@ -244,7 +241,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_DelContact", "Критическая ошибка транзакции при удалении контакта по ID: " + contactId, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             // ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL
@@ -284,7 +280,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_DelContact", "Критическая ошибка транзакции при удалении контакта: " + normalizedEmail, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             // 5. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL
@@ -384,7 +379,6 @@ public class DBServiceSQLite implements DBService {
             Log.d("MailLis_DB", " getAllMessages: считано для Тет-а-Тет " + chatId + " -> " + messageDtoList.size());
         } catch (Exception e) {
             Log.e("MailLis_DB", "Критическая ошибка при чтении истории одиночного чата: " + chatId, e);
-            e.printStackTrace();
         }
 
         return messageDtoList;
@@ -447,7 +441,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Secure", "Критическая ошибка транзакции при сохранении сообщения через saveGenericMessage", e);
-            e.printStackTrace();
             newId = -1;
         } finally {
             // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -515,7 +508,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Save", "Критическая ошибка транзакции при локальном сохранении сообщения для чата " + chatId, e);
-            e.printStackTrace();
             generatedId = -1;
         } finally {
             // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -562,7 +554,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_GroupSave", "Критическая ошибка транзакции при сохранении группового сообщения для ID: " + groupId, e);
-            e.printStackTrace();
             rowId = -1;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, освобождая пишущий поток в пул WAL
@@ -664,7 +655,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Status", "Критическая ошибка транзакции при обновлении статуса для ID: " + localMessageId, e);
-            e.printStackTrace();
             isUpdated = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -752,7 +742,6 @@ public class DBServiceSQLite implements DBService {
             Log.d("MailLis_DB_Union", "Выгружено чатов для главного экрана: " + chatList.size());
         } catch (Exception e) {
             Log.e("MailLis_DB_Union", "Критическая ошибка выполнения UNION запроса в loadChats()", e);
-            e.printStackTrace();
         }
 
         return chatList;
@@ -827,7 +816,6 @@ public class DBServiceSQLite implements DBService {
             }
         } catch (Exception e) {
             Log.e("MailLis_DB", "Критическая ошибка извлечения последнего сообщения для чата: " + chatId, e);
-            e.printStackTrace();
         }
 
         return lastMessageDto;
@@ -886,7 +874,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Chat", "Критический сбой транзакции метода saveChat для email: " + normalizedEmail, e);
-            e.printStackTrace();
             chatId = -1;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL
@@ -924,7 +911,6 @@ public class DBServiceSQLite implements DBService {
             }
         } catch (Exception e) {
             Log.e("MailLis_DB", "Ошибка при поиске одиночного chatId по email: " + normalizedEmail, e);
-            e.printStackTrace();
         }
 
         return chatId;
@@ -976,7 +962,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_DelMsg", "Критическая ошибка транзакции при удалении сообщения ID: " + msgId, e);
-            e.printStackTrace();
             isDeleted = false;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая поток в пул WAL
@@ -1058,7 +1043,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Save", "Критическая ошибка транзакции при сохранении входящего сообщения с UID: " + serverUid, e);
-            e.printStackTrace();
             isSaved = false;
         } finally {
             // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -1122,7 +1106,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Group", "Критическая ошибка транзакции при сохранении входящего группового сообщения", e);
-            e.printStackTrace();
             isSaved = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL
@@ -1169,7 +1152,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Secure", "Критическая ошибка транзакции при обновлении server_uid для ID: " + localMessageId, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             db.endTransaction(); // Гарантированно закрываем транзакцию, возвращая поток в пул WAL
@@ -1204,7 +1186,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB", "Критическая ошибка при извлечении публичного ключа по chatId: " + chatId, e);
-            e.printStackTrace();
         }
 
         return publicKey;
@@ -1271,7 +1252,6 @@ public class DBServiceSQLite implements DBService {
             }
         } catch (Exception e) {
             Log.e("MailLis_DB", "Критический сбой выполнения rawQuery в getUnsentMessages()", e);
-            e.printStackTrace();
         }
 
         return unsentList;
@@ -1350,7 +1330,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Ban", "Критическая ошибка транзакции при блокировке пользователя: " + normalizedEmail, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -1393,7 +1372,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Unban", "Критическая ошибка транзакции при разблокировке пользователя: " + normalizedEmail, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL
@@ -1483,7 +1461,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_DelChat", "Критическая ошибка транзакции при удалении чата " + chatId, e);
-            e.printStackTrace();
             success = false;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -1525,7 +1502,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Members", "Критическая ошибка при удалении участников группы по Remote ID: " + remoteGroupId, e);
-            e.printStackTrace();
             isDeleted = false;
         } finally {
             db.endTransaction(); // Закрываем транзакцию
@@ -1571,7 +1547,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_ReadStatus", "Критическая ошибка транзакции при обновлении статуса прочтения для UID: " + cleanedUid, e);
-            e.printStackTrace();
             isUpdated = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая поток в пул многопоточности WAL
@@ -1612,7 +1587,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Status", "Критическая ошибка транзакции при выставлении статуса отправки для ID: " + localMessageId, e);
-            e.printStackTrace();
             isUpdated = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул многопоточности WAL
@@ -1652,7 +1626,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Status", "Критическая ошибка транзакции при сбросе статуса для ID: " + localMessageId, e);
-            e.printStackTrace();
             isUpdated = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул многопоточности WAL
@@ -1677,7 +1650,6 @@ public class DBServiceSQLite implements DBService {
             }
         } catch (Exception e) {
             Log.e("MailLis_DB", "Критический сбой подсчета сообщений в getTotalMessagesCount()", e);
-            e.printStackTrace();
         }
 
         return totalCount;
@@ -1729,7 +1701,6 @@ public class DBServiceSQLite implements DBService {
             }
         } catch (Exception e) {
             Log.e("MailLis_DB", "Ошибка при получении последнего входящего сообщения для Push", e);
-            e.printStackTrace();
         }
 
         return lastMessageDto;
@@ -1771,7 +1742,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_MediaUpdate", "Критическая ошибка транзакции при обновлении медиа-параметров для ID: " + messageId, e);
-            e.printStackTrace();
             isUpdated = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул многопоточности WAL
@@ -1818,7 +1788,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Group", "Критическая ошибка транзакции при создании группы: " + groupName, e);
-            e.printStackTrace();
             globalUniqueId = -1;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -1842,8 +1811,7 @@ public class DBServiceSQLite implements DBService {
                 isGroup = true;
             }
         } catch (Exception e) {
-            android.util.Log.e("MailLis_DB", "Ошибка при проверке типа чата для ID: " + chatId, e);
-            e.printStackTrace();
+            Log.e("MailLis_DB", "Ошибка при проверке типа чата для ID: " + chatId, e);
         }
 
         return isGroup;
@@ -1893,7 +1861,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Group", "Критическая ошибка транзакции при сохранении полученного чата. Remote ID: " + remoteChatId, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, высвобождая пишущий поток в пул WAL
@@ -1943,7 +1910,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_CryptoCache", "Критическая ошибка транзакции при сохранении публичного ключа для: " + normalizedEmail, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             // 3. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -2029,7 +1995,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Members", "Критическая ошибка транзакции при добавлении мембера: " + normalizedEmail, e);
-            e.printStackTrace();
             isSuccess = false;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -2072,7 +2037,6 @@ public class DBServiceSQLite implements DBService {
             Log.d("MailLis_DB", "Для группы (ID: " + groupId + ") успешно извлечено участников: " + members.size());
         } catch (Exception e) {
             Log.e("MailLis_DB", "Критическая ошибка при получении списка участников группы: " + groupId, e);
-            e.printStackTrace();
         }
 
         return members;
@@ -2103,7 +2067,6 @@ public class DBServiceSQLite implements DBService {
             }
         } catch (Exception e) {
             Log.e("MailLis_DB", "Ошибка при получении AES-ключа группы для ID: " + groupId, e);
-            e.printStackTrace();
         }
 
         return key;
@@ -2142,7 +2105,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_Crypto", "Критическая ошибка транзакции при удалении публичного ключа для: " + normalizedEmail, e);
-            e.printStackTrace();
             isDeleted = false;
         } finally {
             // 2. ГАРАНТИРОВАННО закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -2214,7 +2176,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_DB_Del", "Критическая ошибка транзакции при удалении группы " + groupId, e);
-            e.printStackTrace();
             success = false;
         } finally {
             // Гарантированно закрываем транзакцию, возвращая пишущий поток в пул WAL
@@ -2246,7 +2207,6 @@ public class DBServiceSQLite implements DBService {
             }
         } catch (Exception e) {
             Log.e("MailLis_DB", "Ошибка при поиске recipient_email по одиночному chatId: " + chatId, e);
-            e.printStackTrace();
         }
 
         return recipientEmail;
@@ -2287,7 +2247,6 @@ public class DBServiceSQLite implements DBService {
             Log.d("MailLis_DB_Members", "Для группы (ID: " + groupId + ") успешно извлечено участников: " + membersList.size());
         } catch (Exception e) {
             Log.e("MailLis_DB_Members", "Критическая ошибка при получении email участников группы: " + groupId, e);
-            e.printStackTrace();
         }
 
         return membersList;
@@ -2351,7 +2310,6 @@ public class DBServiceSQLite implements DBService {
             Log.d("MailLis_DB_Group", "getGroupNameByGroupId для ID " + groupId + " -> " + groupName);
         } catch (Exception e) {
             Log.e("MailLis_DB_Group", "Критическая ошибка при поиске group_name для ID: " + groupId, e);
-            e.printStackTrace();
         }
 
         return groupName;
@@ -2400,7 +2358,6 @@ public class DBServiceSQLite implements DBService {
 
         } catch (Exception e) {
             Log.e("MailLis_Crypto_Clean", "Ошибка при каскадной проверке ключа для " + normalizedEmail, e);
-            e.printStackTrace();
         } finally {
             db.endTransaction(); // Гарантированно освобождаем поток
         }

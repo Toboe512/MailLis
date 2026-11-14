@@ -1,5 +1,6 @@
 package ru.toboe512.maillis.activity;
 
+import static android.widget.Toast.LENGTH_SHORT;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 
@@ -21,12 +22,15 @@ import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.config.Config;
 import ru.toboe512.maillis.db.DBServiceSQLite;
 import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.service.MailExecutorService;
+import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 
 public class AddMembersActivity extends AppCompatActivity {
 
     private long groupId;
     private DBServiceSQLite dbService;
     private EmailClient emailClient;
+    private MailExecutorService mailExecutorService;
     private SharedPreferences prefs;
     private ListView listView;
     private final List<Contact> availableContacts = new ArrayList<>();
@@ -45,14 +49,15 @@ public class AddMembersActivity extends AppCompatActivity {
         }
 
         if (groupId == -1) {
-            Toast.makeText(this, "Ошибка: ID группы не передан", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Ошибка: ID группы не передан", LENGTH_SHORT).show();
             finish();
             return;
         }
 
         // Инициализация сервисов и UI
         dbService = DBServiceSQLite.getInstance(this);
-        emailClient = EmailClientImpl.getInstance(dbService, this);
+        emailClient = EmailClientImpl.getInstance();
+        mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         listView = findViewById(R.id.listViewContactsToGroup);
 
@@ -98,7 +103,7 @@ public class AddMembersActivity extends AppCompatActivity {
             try {
                 byte[] groupSecretKey = dbService.getGroupSecretKey(groupId);
                 // А. Шлем Пре-Инвайт новичку, чтобы его телефон создал заготовку группы
-                emailClient.sendGroupInviteOverNetwork(targetEmail, groupId, groupName, groupSecretKey, prefs);
+                mailExecutorService.sendGroupInviteOverNetwork(targetEmail, groupId, groupName, groupSecretKey, prefs);
 
                 // Б. Шлем уведомление всем ОСТАЛЬНЫМ участникам группы, чтобы они тоже добавили его Email к себе
                 List<String> currentMembers = dbService.getGroupMembersEmails(groupId, myEmail);
@@ -109,13 +114,13 @@ public class AddMembersActivity extends AppCompatActivity {
                 }
 
                 runOnUiThread(() -> {
-                    Toast.makeText(this, "Пользователь успешно приглашен в группу!", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "Пользователь успешно приглашен в группу!", LENGTH_SHORT).show();
                     finish(); // Закрываем экран и возвращаемся в чат
                 });
 
             } catch (Exception e) {
                 e.printStackTrace();
-                runOnUiThread(() -> Toast.makeText(this, "Ошибка при рассылке инвайтов", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "Ошибка при рассылке инвайтов", LENGTH_SHORT).show());
             }
         }).start();
     }

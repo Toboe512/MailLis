@@ -2,6 +2,7 @@ package ru.toboe512.maillis.consts;
 
 public class Consts {
 
+    public static final String MAILLIS_MESSAGE = "[MailLis-";
     // Заголовки сообщений
     public static final String KEY_REQUEST = "[MailLis-Key-Request]";
     public static final String KEY_RESPONSE = "[MailLis-Key-Response]";
@@ -15,8 +16,8 @@ public class Consts {
     public static final String GROUP_PRE_INVITE_RESPONSE_MAIL = "[MailLis-Group-PreInvite-Response]";
     public static final String GROUP_SYNC = "[MailLis-Group-Sync]";
     public static final String GROUP_LEAVE = "[MailLis-Group-Leave]";
-    public static final String  CHAT_FILE = "[Maillis-Chat-File]";
-    public static final String  GROUP_CHAT_FILE = "[Maillis-Group-chat-File]";
+    public static final String CHAT_FILE = "[Maillis-Chat-File]";
+    public static final String GROUP_CHAT_FILE = "[Maillis-Group-chat-File]";
 
     // Ключи для сохранения полей настроек
     public static final String KEY_IMAP_SERVER = "imap_server";

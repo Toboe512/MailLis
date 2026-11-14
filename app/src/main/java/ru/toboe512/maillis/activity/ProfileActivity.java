@@ -10,6 +10,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -96,7 +97,7 @@ public class ProfileActivity extends AppCompatActivity {
             });
         } catch (Exception e) {
             textViewPublicKey.setText("Ошибка генерации/чтения ключа");
-            e.printStackTrace();
+            Log.e("MailLis_ProfileActivity", "Ошибка", e);
         }
 
 
