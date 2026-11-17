@@ -13,10 +13,12 @@ import android.os.Bundle;
 import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.view.WindowCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -48,14 +50,14 @@ public class CreateChatActivity extends AppCompatActivity {
         setContentView(R.layout.activity_create_chat);
 
         // 1. Настраиваем Toolbar и кнопку "Назад"
-        Toolbar toolbar = findViewById(R.id.toolbarCreateChat);
-        setSupportActionBar(toolbar);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        }
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+                .setAppearanceLightStatusBars(true); // true = тёмные значки (для светлого фона), false = белые значки
 
-        //   Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
-        toolbar.setNavigationOnClickListener(v -> finish());
+        // Находим нашу кастомную стрелочку назад и вешаем на неё закрытие экрана
+        ImageButton buttonChatBack = findViewById(R.id.buttonCreateChatBack);
+        if (buttonChatBack != null) {
+            buttonChatBack.setOnClickListener(v -> finish());
+        }
 
         dbService = DBServiceSQLite.getInstance(this);
         EmailClient emailClient = EmailClientImpl.getInstance();

@@ -16,10 +16,12 @@ import android.os.Bundle;
 import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.view.WindowCompat;
 
 import java.util.Properties;
 
@@ -49,18 +51,15 @@ public class SettingsActivity extends AppCompatActivity {
         // Стрелочка назад
         // ИСПРАВЛЕНИЕ: Делаем системные часы и иконки статус-бара ТЁМНЫМИ и читаемыми
         // Получаем управление системными окнами (WindowInsetsController)
-        androidx.core.view.WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
                 .setAppearanceLightStatusBars(true); // true = тёмные значки (для светлого фона), false = белые значки
 
         // 1. Настраиваем Toolbar и кнопку "Назад"
-        Toolbar toolbar = findViewById(R.id.toolbarSettings);
-        setSupportActionBar(toolbar);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        // Находим нашу кастомную стрелочку назад и вешаем на неё закрытие экрана
+        ImageButton buttonChatBack = findViewById(R.id.buttonSettingsBack);
+        if (buttonChatBack != null) {
+            buttonChatBack.setOnClickListener(v -> finish());
         }
-
-        //   Помним наш надежный хак: вешаем прямой клик на стрелочку навигации
-        toolbar.setNavigationOnClickListener(v -> finish());
 
         // Связываем переменные с элементами интерфейса XML
         editTextImapServer = findViewById(R.id.editTextImapServer);

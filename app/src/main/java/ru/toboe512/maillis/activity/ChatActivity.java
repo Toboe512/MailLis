@@ -77,29 +77,22 @@ import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 public class ChatActivity extends AppCompatActivity {
 
     private static final String LOG_TAG = "MailLis_ChatActivity";
-
     private MessagesAdapter messagesAdapter;
-    private EditText editTextMessage;
-    // Переменные для работы с базой данных
-    private DBService dbService;
+    private DBService dbService;// Переменная для работы с базой данных
     private long chatId = 1; // ID текущего чата по умолчанию (для тестов)
-    private boolean isGroup; // НАШ НОВЫЙ СИСТЕМНЫЙ ФЛАГ ТИПА КОМНАТЫ
+    private boolean isGroup; // СИСТЕМНЫЙ ФЛАГ ТИПА КОМНАТЫ
     private String recipientEmail = EMPTI_STRING;
     private String myEmail = EMPTI_STRING; // Наш реальный Email из настроек
-    // Объявляем переменную приемника на уровне класса ChatActivity
-    private BroadcastReceiver messageUpdateReceiver;
-    // Объявляем лаунчер как поле класса ChatActivity
+    private BroadcastReceiver messageUpdateReceiver;// Объявляем переменную приемника на уровне класса ChatActivity
     private ActivityResultLauncher<Intent> photoPickerLauncher;
-
     private ActivityResultLauncher<String> filePickerLauncher;
-
     private MailExecutorService mailExecutorService;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // ИСПРАВЛЕНИЕ: Полностью выключаем системный ActionBar для этого экрана
+        // Полностью выключаем системный ActionBar для этого экрана
         if (getSupportActionBar() != null) {
             getSupportActionBar().hide();
         }
@@ -131,37 +124,31 @@ public class ChatActivity extends AppCompatActivity {
         mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
         recipientEmail = dbService.getRecipientEmailByChatId(chatId);
 
-        editTextMessage = findViewById(R.id.editTextMessage);
-
         RecyclerView recyclerView = findViewById(R.id.recyclerViewMessages);
         var layoutManager = new LinearLayoutManager(this);
         layoutManager.setStackFromEnd(true); // Чат строится снизу вверх, как в Telegram
         recyclerView.setLayoutManager(layoutManager);
         recyclerView.setAdapter(messagesAdapter);
-
         // Инициализируем приемник сигналов от фоновой службы с поддержкой goAsync()
         messageUpdateReceiver = getMailLisChatUI();
-
         // КРИТИЧЕСКИ ВАЖНО: Загружаем сохраненную историю сообщений из SQLite при открытии
         updateUiFromDatabase();
-
         // Кнопка локальной отправки сообщения
         buttonSend(prefs);
-
         // ИНИЦИАЛИЗАЦИЯ ФОТО-ПИКЕРА ГАЛЕРЕИ
         buttonAttachImageFile(prefs);
-
         // Инициализируем нашу кастомную кнопку меню
         buttonChatMenu();
-
+        // Логика пакетного удаления сообщений
         deleteSelected();
-
+        // Стрелочка назад
         buttonChatBack();
-
+        // Логика кнопки отправки файлов
         fileSend();
     }
 
     private void buttonSend(SharedPreferences prefs) {
+        EditText editTextMessage = findViewById(R.id.editTextMessage);
         ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
         buttonSend.setOnClickListener(v -> {
             String text = editTextMessage.getText().toString().trim();
@@ -296,6 +283,7 @@ public class ChatActivity extends AppCompatActivity {
                 popup.getMenu().add(0, 2, 1, "🗑️ Удалить чат");
                 if (isGroup) {
                     popup.getMenu().add(0, 3, 2, "👤 Добавить участника");
+                    popup.getMenu().add(0, 4, 3, "👥 Участники группы");
                 } else {
                     popup.getMenu().add(0, 1, 0, "🛑 ️Заблокировать");
                 }
@@ -317,6 +305,15 @@ public class ChatActivity extends AppCompatActivity {
                         var intent2 = new Intent(ChatActivity.this, AddMembersActivity.class);
                         intent2.putExtra("GROUP_ID", chatId);
                         startActivity(intent2);
+                        return true;
+                    }
+                    if (item.getItemId() == 4) {
+                        String chatName = dbService.getGroupNameByGroupId(chatId);
+                        var intentMembers = new Intent(ChatActivity.this, GroupMembersActivity.class);
+                        // Передаем ID и имя группы для выгрузки реляционного LEFT JOIN списка СУБД WAL
+                        intentMembers.putExtra("CHAT_ID", chatId);
+                        intentMembers.putExtra("CHAT_NAME", chatName);
+                        startActivity(intentMembers);
                         return true;
                     }
                     return false;

@@ -63,6 +63,15 @@ public interface DBService {
     List<ContactDto> getContacts();
 
     /**
+     * Выгружает список участников группы, выполняя поиск по глобальному remote_group_id.
+     * Полностью адаптировано под реляционную структуру СУБД MailLis.
+     *
+     * @param remoteGroupId глобальный ID группы, используемый в P2P-сети и ChatActivity [1]
+     * @return список участников в формате ContactDto
+     */
+    List<ContactDto> getGroupMembersWithNames(long remoteGroupId);
+
+    /**
      * Безвозвратно удаляет контакт из мессенджера MailLis по его числовому ID.
      * Использует безопасную неэксклюзивную транзакцию для защиты от блокировок в WAL-режиме .
      * Защищено от багов Type Mismatch на Android 14+ .

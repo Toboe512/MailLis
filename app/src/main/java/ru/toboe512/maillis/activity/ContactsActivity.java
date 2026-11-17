@@ -4,11 +4,13 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.view.WindowCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -34,18 +36,14 @@ public class ContactsActivity extends AppCompatActivity {
 
         // ИСПРАВЛЕНИЕ: Делаем системные часы и иконки статус-бара ТЁМНЫМИ и читаемыми
         // Получаем управление системными окнами (WindowInsetsController)
-        androidx.core.view.WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
                 .setAppearanceLightStatusBars(true); // true = тёмные значки (для светлого фона), false = белые значки
 
-        // 1. Настраиваем Toolbar и кнопку "Назад"
-        Toolbar toolbar = findViewById(R.id.toolbarContacts);
-        setSupportActionBar(toolbar);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        // Находим нашу кастомную стрелочку назад и вешаем на неё закрытие экрана
+        ImageButton buttonChatBack = findViewById(R.id.buttonContactBack);
+        if (buttonChatBack != null) {
+            buttonChatBack.setOnClickListener(v -> finish());
         }
-
-        // вешаем прямой клик на стрелочку навигации
-        toolbar.setNavigationOnClickListener(v -> finish());
 
         // Инициализируем сервисы работы с базой
         dbService = DBServiceSQLite.getInstance(this);

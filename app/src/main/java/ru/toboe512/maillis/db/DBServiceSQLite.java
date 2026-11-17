@@ -158,6 +158,67 @@ public class DBServiceSQLite implements DBService {
         return contactList;
     }
 
+    public List<ContactDto> getGroupMembersWithNames(long remoteGroupId) {
+        List<ContactDto> membersList = new ArrayList<>();
+        SQLiteDatabase db = dbHelper.getReadableDatabase();
+
+        // МОЩНЫЙ И ТОЧНЫЙ СВЯЗУЮЩИЙ ЗАПРОС:
+        // 1. Берем емейлы из таблицы group_members (gm) [1]
+        // 2. Через INNER JOIN связываем с group_chats (gc), чтобы сопоставить gm.group_id и gc.id [1]
+        // 3. Через LEFT JOIN забираем имена из contacts (c), если они там есть [1]
+        // 4. Фильтруем строго по gc.remote_group_id, который прилетает из ChatActivity! [1]
+        String sql = "SELECT gm.user_email, c.name, c.id " +
+                "FROM group_members gm " +
+                "INNER JOIN group_chats gc ON gm.group_id = gc.id " +
+                "LEFT JOIN contacts c ON LOWER(gm.user_email) = LOWER(c.email) " +
+                "WHERE gc.remote_group_id = ?";
+
+        String[] selectionArgs = new String[]{ String.valueOf(remoteGroupId).trim() };
+
+        try (Cursor cursor = db.rawQuery(sql, selectionArgs)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int emailIdx = cursor.getColumnIndex("user_email");
+                int nameIdx = cursor.getColumnIndex("name");
+                int idIdx = cursor.getColumnIndex("id");
+
+                if (emailIdx >= 0) {
+                    do {
+                        String email = cursor.getString(emailIdx);
+                        if (email == null || email.trim().isEmpty()) {
+                            continue;
+                        }
+
+                        email = email.trim().toLowerCase();
+                        String name = null;
+                        int contactId = -1;
+
+                        if (nameIdx >= 0) {
+                            name = cursor.getString(nameIdx);
+                        }
+                        if (idIdx >= 0 && !cursor.isNull(idIdx)) {
+                            contactId = cursor.getInt(idIdx);
+                        }
+
+                        // Фолбэк: если человека нет в записной книжке, выводим его Email [1]
+                        if (name == null || name.trim().isEmpty()) {
+                            name = email;
+                        } else {
+                            name = name.trim();
+                        }
+
+                        membersList.add(new ContactDto(contactId, name, email));
+                    } while (cursor.moveToNext());
+                }
+            }
+            Log.d("MailLis_DB_Members", "🚀 ПОЛНЫЙ УСПЕХ! Поиск по remote_group_id [" + remoteGroupId
+                    + "] нашел участников: " + membersList.size());
+        } catch (Exception e) {
+            Log.e("MailLis_DB_Members", "Ошибка реляционного SQL-запроса для remote_group_id: " + remoteGroupId, e);
+            e.printStackTrace();
+        }
+
+        return membersList;
+    }
     public ContactDto getContactById(int contactId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
         ContactDto contact = null;

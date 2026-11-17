@@ -10,38 +10,48 @@
     tools:ignore="HardcodedText,Autofill">
 
     <!-- Верхняя панель со стрелкой назад -->
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbarSettings"
+    <FrameLayout
+        android:id="@+id/toolbarContainer"
         android:layout_width="match_parent"
         android:layout_height="56dp"
-        android:background="#2196F3"
-        app:title="Настройки"
-        app:titleTextColor="#FFFFFF"  />
+        android:background="#0088CC"
+        android:elevation="4dp">
 
-<!--    <androidx.appcompat.widget.Toolbar-->
-<!--        android:id="@+id/toolbarContacts"-->
-<!--        android:layout_width="match_parent"-->
-<!--        android:layout_height="56dp"-->
-<!--        android:background="#2196F3"-->
-<!--        app:title="Контакты"-->
-<!--        app:titleTextColor="#FFFFFF" />-->
-<!--    -->
-<!--    <Toolbar-->
-<!--        android:id="@+id/toolbarSettings"-->
-<!--        android:layout_width="match_parent"-->
-<!--        android:layout_height="56dp"-->
-<!--        android:background="#2196F3"-->
-<!--        android:navigationIcon="@android:drawable/ic_menu_revert"-->
-<!--        android:title="Настройки почты"-->
-<!--        android:titleTextColor="#FFFFFF" />-->
+        <RelativeLayout
+            android:id="@+id/layoutNormalToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            android:visibility="visible">
 
-    <!--        <TextView-->
-    <!--            android:layout_width="wrap_content"-->
-    <!--            android:layout_height="wrap_content"-->
-    <!--            android:text="Настройки Почтового Сервера"-->
-    <!--            android:textSize="20sp"-->
-    <!--            android:textStyle="bold"-->
-    <!--            android:layout_marginBottom="24dp"/>-->
+            <!-- Кастомная стрелочка назад (слева) -->
+            <ImageButton
+                android:id="@+id/buttonSettingsBack"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_alignParentLeft="true"
+                android:layout_centerVertical="true"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Назад"
+                android:src="@drawable/ic_arrow_back"
+                app:tint="#FFFFFF" />
+
+            <!-- Текстовое название группы / заголовок -->
+            <TextView
+                android:id="@+id/textViewSettingsTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerVertical="true"
+                android:layout_marginLeft="12dp"
+                android:layout_toRightOf="@id/buttonSettingsBack"
+                android:ellipsize="end"
+                android:singleLine="true"
+                android:text="Настройки"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+    </FrameLayout>
 
     <TextView
         android:layout_width="wrap_content"

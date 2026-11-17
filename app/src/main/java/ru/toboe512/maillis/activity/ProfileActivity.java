@@ -12,12 +12,14 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SwitchCompat;
+import androidx.core.view.WindowCompat;
 
 import java.io.File;
 import java.io.IOException;
@@ -43,6 +45,16 @@ public class ProfileActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_profile);
+
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+                .setAppearanceLightStatusBars(true); // true = тёмные значки (для светлого фона), false = белые значки
+
+        // 1. Настраиваем Toolbar и кнопку "Назад"
+        // Находим нашу кастомную стрелочку назад и вешаем на неё закрытие экрана
+        ImageButton buttonChatBack = findViewById(R.id.buttonProfileBack);
+        if (buttonChatBack != null) {
+            buttonChatBack.setOnClickListener(v -> finish());
+        }
 
         prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         try {
