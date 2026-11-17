@@ -1,16 +1,13 @@
 package ru.toboe512.maillis.dto;
 
 
-public class ChatPreview {
-
+public class ChatPreviewDto {
     private final long id;
     private String title;
-
     private String lastMessage;
-
     private final boolean isGroup;     // ФЛАГ: true - группа, false - Тет-а-Тет
 
-    public ChatPreview(long id, String title, String lastMessage, boolean isGroup) {
+    public ChatPreviewDto(long id, String title, String lastMessage, boolean isGroup) {
         this.id = id;
         this.title = title;
         this.lastMessage = lastMessage;

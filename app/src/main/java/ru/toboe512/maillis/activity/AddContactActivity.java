@@ -38,25 +38,22 @@ public class AddContactActivity extends AppCompatActivity {
 
         Button buttonSave = findViewById(R.id.buttonSaveContact);
 
-        buttonSave.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                String name = editTextName.getText().toString().trim();
-                String email = editTextEmail.getText().toString().trim();
+        buttonSave.setOnClickListener(v -> {
+            String name = editTextName.getText().toString().trim();
+            String email = editTextEmail.getText().toString().trim();
 
-                if (name.isEmpty() || email.isEmpty()) {
-                    Toast.makeText(AddContactActivity.this, "Заполните все поля!", Toast.LENGTH_SHORT).show();
+            if (name.isEmpty() || email.isEmpty()) {
+                Toast.makeText(AddContactActivity.this, "Заполните все поля!", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(AddContactActivity.this, name + " добавлен в контакты", Toast.LENGTH_SHORT).show();
+
+                long newRowId = dbService.saveContact(name, email);
+
+                if (newRowId == -1) {
+                    Toast.makeText(AddContactActivity.this, "Ошибка: Контакт с таким Email уже есть!", Toast.LENGTH_LONG).show();
                 } else {
-                    Toast.makeText(AddContactActivity.this, name + " добавлен в контакты", Toast.LENGTH_SHORT).show();
-
-                    long newRowId = dbService.saveContact(name, email);
-
-                    if (newRowId == -1) {
-                        Toast.makeText(AddContactActivity.this, "Ошибка: Контакт с таким Email уже есть!", Toast.LENGTH_LONG).show();
-                    } else {
-                        Toast.makeText(AddContactActivity.this, name + " успешно добавлен в базу данных!", Toast.LENGTH_SHORT).show();
-                        finish(); // Закрываем экран и возвращаемся назад
-                    }
+                    Toast.makeText(AddContactActivity.this, name + " успешно добавлен в базу данных!", Toast.LENGTH_SHORT).show();
+                    finish(); // Закрываем экран и возвращаемся назад
                 }
             }
         });

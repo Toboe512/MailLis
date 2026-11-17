@@ -14,23 +14,23 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.List;
 
 import ru.toboe512.maillis.R;
-import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.dto.ContactDto;
 
 public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAdapter.ContactViewHolder> {
 
-    private final List<Contact> contacts;
+    private final List<ContactDto> contacts;
     private final OnContactDeleteListener deleteListener;
 
     private final OnContactBanListener banListener;
 
     // ИНТЕРФЕЙС ДЛЯ БАНА
     public interface OnContactBanListener {
-        void onContactBan(Contact contact, int position);
+        void onContactBan(ContactDto contact, int position);
     }
 
     // Интерфейс, чтобы передать событие удаления обратно в Активити
     public interface OnContactDeleteListener {
-        void onContactDelete(Contact contact, int position);
+        void onContactDelete(ContactDto contact, int position);
     }
 
     static class ContactViewHolder extends RecyclerView.ViewHolder {
@@ -48,7 +48,7 @@ public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAd
     }
 
     // Обновили конструктор, добавив banListener
-    public ManageContactsAdapter(List<Contact> contacts, OnContactDeleteListener deleteListener, OnContactBanListener banListener) {
+    public ManageContactsAdapter(List<ContactDto> contacts, OnContactDeleteListener deleteListener, OnContactBanListener banListener) {
         this.contacts = contacts;
         this.deleteListener = deleteListener;
         this.banListener = banListener;
@@ -63,7 +63,7 @@ public class ManageContactsAdapter extends RecyclerView.Adapter<ManageContactsAd
 
     @Override
     public void onBindViewHolder(@NonNull ContactViewHolder holder, int position) {
-        Contact contact = contacts.get(position);
+        ContactDto contact = contacts.get(position);
         if (contact != null) {
             holder.textViewEmail.setText(contact.getEmail());
 

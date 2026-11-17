@@ -18,12 +18,14 @@ public class MailLisApplication extends Application {
     @Override
     public void onCreate() {
         super.onCreate();
-
-        dbService = DBServiceSQLite.getInstance(this);
-        emailClient = EmailClientImpl.getInstance();
-        mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService,this);
-        if (mailExecutorService != null) {
-            return;
+        if (dbService == null) {
+            dbService = DBServiceSQLite.getInstance(this);
+        }
+        if (emailClient == null) {
+            emailClient = EmailClientImpl.getInstance();
+        }
+        if (mailExecutorService == null) {
+            mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
         }
     }
 }

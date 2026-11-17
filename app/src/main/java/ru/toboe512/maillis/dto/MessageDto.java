@@ -5,7 +5,6 @@ public class MessageDto {
     private final int id; // ДОБАВЛЕНО ПОЛЕ ID
     private final String senderEmail;
     private final String subject;
-
     private String text;
     private final long timestamp;
     private final boolean isMine; // Флаг: отправлено мной или нет

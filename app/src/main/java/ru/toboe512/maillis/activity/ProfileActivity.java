@@ -148,7 +148,7 @@ public class ProfileActivity extends AppCompatActivity {
 
             runOnUiThread(() -> {
                 if (textViewCacheSize != null) {
-                    textViewCacheSize.setText("Занято: " + sizeString);
+                    textViewCacheSize.setText(String.format("Занято: %s", sizeString));
                 }
             });
         }).start();

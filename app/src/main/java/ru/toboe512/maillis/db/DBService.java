@@ -2,8 +2,8 @@ package ru.toboe512.maillis.db;
 
 import java.util.List;
 
-import ru.toboe512.maillis.dto.ChatPreview;
-import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.dto.ChatPreviewDto;
+import ru.toboe512.maillis.dto.ContactDto;
 import ru.toboe512.maillis.dto.MessageDto;
 
 public interface DBService {
@@ -26,7 +26,7 @@ public interface DBService {
      * @param contactId первичный ключ строки (id) в таблице contacts
      * @return объект Contact с заполненными полями, либо null, если контакт не найден
      */
-    Contact getContactById(int contactId);
+    ContactDto getContactById(int contactId);
 
     /**
      * Выполняет реляционный поиск отображаемого имени контакта в локальной телефонной книге по его Email.
@@ -60,7 +60,7 @@ public interface DBService {
      *
      * @return отсортированный по алфавиту список контактов
      */
-    List<Contact> getContacts();
+    List<ContactDto> getContacts();
 
     /**
      * Безвозвратно удаляет контакт из мессенджера MailLis по его числовому ID.
@@ -220,7 +220,7 @@ public interface DBService {
      *
      * @return возвращает список превью
      */
-    List<ChatPreview> loadChats();
+    List<ChatPreviewDto> loadChats();
 
     /**
      * Безопасно сохраняет одиночный чат (Тет-а-Тет) в SQLite.

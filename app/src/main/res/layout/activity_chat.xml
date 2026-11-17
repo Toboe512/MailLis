@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app2="http://schemas.android.com/apk/res-auto"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://android.com"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -137,7 +136,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_menu_share"
             android:contentDescription="Прикрепить фото"
-            app2:tint="#757575" />
+            app:tint="#757575" />
 
         <ImageButton
             android:id="@+id/buttonAttachOtherFile"
@@ -146,7 +145,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_input_add"
             android:contentDescription="Прикрепить файл"
-            android:tint="#0088CC" />
+            app:tint="#0088CC" />
 
         <EditText
             android:id="@+id/editTextMessage"

@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">MailLis</string>
+    <string name="addNewContact">Добавить новый контакт</string>
+    <string name="contactName">Имя контакта</string>
+    <string name="exampleName">Например: Иван Иванов</string>
+    <string name="emailMaillis">Email пользователя (в чате MailLis)</string>
+    <string name="exampleMail">example@mail.ru</string>
+    <string name="addInContact">Добавить в контакты</string>
 </resources>

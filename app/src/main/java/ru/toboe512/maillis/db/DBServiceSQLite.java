@@ -16,8 +16,8 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
-import ru.toboe512.maillis.dto.ChatPreview;
-import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.dto.ChatPreviewDto;
+import ru.toboe512.maillis.dto.ContactDto;
 import ru.toboe512.maillis.dto.MessageDto;
 
 public class DBServiceSQLite implements DBService {
@@ -105,8 +105,8 @@ public class DBServiceSQLite implements DBService {
         return newRowId;
     }
 
-    public List<Contact> getContacts() {
-        List<Contact> contactList = new ArrayList<>();
+    public List<ContactDto> getContacts() {
+        List<ContactDto> contactList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
 
         // ИСПРАВЛЕНИЕ: Добавляем явное приведение типов в подзапросе ban_list,
@@ -141,7 +141,7 @@ public class DBServiceSQLite implements DBService {
                             // Создаем объект контакта.
                             // По умолчанию c.isSelected() будет false, но наш обновленный Single Choice
                             // адаптер сам свяжет его по ID при перерисовке списка ячеек!
-                            Contact contact = new Contact(id, safeName, safeEmail);
+                            ContactDto contact = new ContactDto(id, safeName, safeEmail);
                             contactList.add(contact);
                         }
 
@@ -158,9 +158,9 @@ public class DBServiceSQLite implements DBService {
         return contactList;
     }
 
-    public Contact getContactById(int contactId) {
+    public ContactDto getContactById(int contactId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
-        Contact contact = null;
+        ContactDto contact = null;
 
         // Используем CAST для железной стабильности сопоставления типов в SQLite [source]
         String sql = "SELECT id, name, email FROM contacts WHERE id = CAST(? AS INTEGER) LIMIT 1";
@@ -179,7 +179,7 @@ public class DBServiceSQLite implements DBService {
                     String email = cursor.getString(emailIdx);
 
                     // Собираем объект контакта (подставьте ваш конструктор)
-                    contact = new Contact(id,
+                    contact = new ContactDto(id,
                             name != null ? name.trim() : "",
                             email != null ? email.trim().toLowerCase() : "");
                 }
@@ -664,8 +664,8 @@ public class DBServiceSQLite implements DBService {
         return isUpdated;
     }
 
-    public List<ChatPreview> loadChats() {
-        List<ChatPreview> chatList = new ArrayList<>();
+    public List<ChatPreviewDto> loadChats() {
+        List<ChatPreviewDto> chatList = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
 
         String sql =
@@ -733,7 +733,7 @@ public class DBServiceSQLite implements DBService {
                             }
                         }
 
-                        var preview = new ChatPreview(id, name, finalMessageText, isGroup);
+                        var preview = new ChatPreviewDto(id, name, finalMessageText, isGroup);
                         chatList.add(preview);
 
                     } while (cursor.moveToNext());

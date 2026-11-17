@@ -6,8 +6,7 @@ import static jakarta.mail.Message.RecipientType.TO;
 import static ru.toboe512.maillis.consts.Consts.CHAT_IMAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 import static ru.toboe512.maillis.consts.Consts.GROUP_IMAGE_MAIL;
-import static ru.toboe512.maillis.consts.Consts.GROUP_PRE_INVITE_RESPONSE_MAIL;
-import static ru.toboe512.maillis.consts.Consts.GROUP_SYNC;
+import static ru.toboe512.maillis.consts.Consts.GROUP_MESSAGE_MAIL;
 import static ru.toboe512.maillis.consts.Consts.INBOX;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_LOGIN;
 import static ru.toboe512.maillis.consts.Consts.KEY_EMAIL_PASSWORD;
@@ -16,12 +15,9 @@ import static ru.toboe512.maillis.consts.Consts.KEY_IMAP_SERVER;
 import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_PORT;
 import static ru.toboe512.maillis.consts.Consts.KEY_SMTP_SERVER;
 import static ru.toboe512.maillis.consts.Consts.MAILLIS_MESSAGE;
-import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 
 import android.content.SharedPreferences;
 import android.util.Log;
-
-import androidx.annotation.NonNull;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -47,7 +43,7 @@ import jakarta.mail.internet.MimeMessage;
 import jakarta.mail.internet.MimeMultipart;
 import jakarta.mail.search.MessageIDTerm;
 import jakarta.mail.search.SearchTerm;
-import ru.toboe512.maillis.dto.IncomingMessageDto;
+import ru.toboe512.maillis.dto.NetworkMessageDto;
 
 public class EmailClientImpl implements EmailClient {
 
@@ -63,15 +59,16 @@ public class EmailClientImpl implements EmailClient {
     }
 
     @Override
-    public List<IncomingMessageDto> fetchIncomingOverNetwork(SharedPreferences prefs) throws MessagingException, IOException {
-
-        List<IncomingMessageDto> result = new ArrayList<>();
+    public List<NetworkMessageDto> fetch(SharedPreferences prefs) throws MessagingException, IOException {
+        List<NetworkMessageDto> result = new ArrayList<>();
         Store store = connectToImapServer(prefs);
         Folder inbox = store.getFolder(INBOX);
         inbox.open(READ_WRITE);
 
         int messageCount = inbox.getMessageCount();
         if (messageCount <= 0) {
+            inbox.close(true);
+            store.close();
             return result;
         }
 
@@ -110,7 +107,7 @@ public class EmailClientImpl implements EmailClient {
             } else {
                 content = msg.getContent().toString().trim();
             }
-            result.add(new IncomingMessageDto(id, content, from, subject, timestamp, headers));
+            result.add(new NetworkMessageDto(id, content, from, subject, timestamp, headers));
         }
 
         // Закрываем с флагом true для применения удаления (Expunge)
@@ -120,30 +117,39 @@ public class EmailClientImpl implements EmailClient {
         return result;
     }
 
-    // Сетевая SMTP отправка на фоновом потоке
-    public String sendEmailOverNetwork(String recipientEmail, String subject, final String messageText, SharedPreferences prefs) throws MessagingException {
-
+    public String sendMessage(NetworkMessageDto messageDto, SharedPreferences prefs) throws MessagingException {
         String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
 
         // Получаем готовую SMTP сессию
         Session session = createSmtpSession(prefs);
-
         var message = new MimeMessage(session);
+
+        String subject = messageDto.getSubject();
+
+        if (subject.contains(CHAT_IMAGE_MAIL)) {
+            var multipart = getMimeMultipart(System.currentTimeMillis(), messageDto.getContent());
+            message.setContent(multipart);
+        } else {
+            message.setText(messageDto.getContent());
+        }
+
         message.setFrom(new InternetAddress(myEmail));
-        message.setRecipients(TO, InternetAddress.parse(recipientEmail));
+        message.setRecipients(TO, InternetAddress.parse(messageDto.getTo()));
         message.setSubject(subject);
-        message.setText(messageText);
+        if ((messageDto.getHeaders() != null) && (!messageDto.getHeaders().isEmpty())) {
+            for (Map.Entry<String, String> header : messageDto.getHeaders().entrySet()) {
+                message.addHeader(header.getKey(), header.getValue()); //"X-MailLis-Group-Members"
+            }
+        }
         // 1. ПРИНУДИТЕЛЬНО ПРИМЕНЯЕМ ИЗМЕНЕНИЯ, чтобы сгенерировался Message-ID
         message.saveChanges();
         // 2. Отправляем в сеть
         Transport.send(message);
-
         // 3. БЕЗОПАСНО ИЗВЛЕКАЕМ Message-ID
         return message.getMessageID(); // Используем встроенный метод вместо getHeader();
     }
 
-    // Фоновый метод для удаления письма по протоколу IMAP
-    public void deleteMessageFromServer(final String serverUid, SharedPreferences prefs) {
+    public void deleteMessage(final String serverUid, SharedPreferences prefs) {
         if (serverUid == null || serverUid.isEmpty()) {
             return;
         }
@@ -183,32 +189,7 @@ public class EmailClientImpl implements EmailClient {
         }).start();
     }
 
-
-    public String sendImageOverNetwork(String recipientEmail, String base64EncryptedImage, SharedPreferences prefs) throws MessagingException {
-
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
-
-        // СБОРКА MIME ПИСЬМА С ВЛОЖЕНИЕМ
-        Session session = createSmtpSession(prefs);
-        var message = new MimeMessage(session);
-        message.setFrom(new InternetAddress(myEmail));
-        message.setRecipients(TO, InternetAddress.parse(recipientEmail));
-        message.setSubject(CHAT_IMAGE_MAIL); // Специальный служебный заголовок
-
-        long currentTimestamp = System.currentTimeMillis();
-        var multipart = getMimeMultipart(currentTimestamp, base64EncryptedImage);
-
-        message.setContent(multipart);
-        message.saveChanges();
-
-        // ОТПРАВКА
-        Transport.send(message);
-
-        return message.getMessageID();
-    }
-
-    public String sendGroupImageOverNetwork(List<String> recipients, String subject, String header, String base64EncryptedImage, SharedPreferences prefs) throws MessagingException {
-
+    public String sendGroupMessage(List<String> recipients, NetworkMessageDto messageDto, SharedPreferences prefs) throws MessagingException {
         String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
         Session session = createSmtpSession(prefs);
         String generatedServerUid = EMPTI_STRING;
@@ -220,12 +201,22 @@ public class EmailClientImpl implements EmailClient {
             message.setRecipients(TO, InternetAddress.parse(recipientEmail));
 
             // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
-            message.setSubject(subject);
-            long currentTimestamp = System.currentTimeMillis();
-            var multipart = getMimeMultipart(currentTimestamp, base64EncryptedImage);
+            message.setSubject(messageDto.getSubject());
 
-            message.setContent(multipart);
-            message.addHeader("X-MailLis-Group-Members", header);
+            if (messageDto.getSubject().contains(GROUP_MESSAGE_MAIL)) {
+                message.setText(messageDto.getContent());
+            }
+            if (messageDto.getSubject().contains(GROUP_IMAGE_MAIL)) {
+                var multipart = getMimeMultipart(System.currentTimeMillis(), messageDto.getContent());
+                message.setContent(multipart);
+            }
+
+            if ((messageDto.getHeaders() != null) && (!messageDto.getHeaders().isEmpty())) {
+                for (Map.Entry<String, String> header : messageDto.getHeaders().entrySet()) {
+                    message.addHeader(header.getKey(), header.getValue()); //"X-MailLis-Group-Members"
+                }
+            }
+
             message.saveChanges();
 
             Transport.send(message);
@@ -236,7 +227,6 @@ public class EmailClientImpl implements EmailClient {
         return generatedServerUid;
     }
 
-    @NonNull
     private static MimeMultipart getMimeMultipart(long currentTimestamp, String base64EncryptedImage) throws MessagingException {
         String localFileName = "encrypted_photo_" + currentTimestamp + ".lis";
         // Помещаем зашифрованную Base64 строку в тело вложения
@@ -249,112 +239,6 @@ public class EmailClientImpl implements EmailClient {
         multipart.addBodyPart(imagePart);
         return multipart;
     }
-
-    public String sendGroupMessageOverNetwork(List<String> recipients, String subject, String cipherTextBase64, SharedPreferences prefs) throws MessagingException {
-
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
-
-        // Склеиваем список участников в одну строку через запятую для заголовка
-        StringBuilder membersSb = new StringBuilder(myEmail); // Начинаем со своего email
-        for (String email : recipients) {
-            membersSb.append(",").append(email);
-        }
-        String groupComposition = membersSb.toString();
-
-        Session session = createSmtpSession(prefs);
-
-        String generatedServerUid = EMPTI_STRING;
-
-        // ВЕЕРНАЯ РАССЫЛКА: Шлем копию письма каждому участнику отдельно
-        for (String recipientEmail : recipients) {
-            var message = new MimeMessage(session);
-            message.setFrom(new InternetAddress(myEmail));
-            message.setRecipients(TO, InternetAddress.parse(recipientEmail));
-
-            // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
-            message.setSubject(subject);
-            message.setText(cipherTextBase64);
-            // Передаем весь состав группы прямо внутри метаданных заголовка письма!
-            message.addHeader("X-MailLis-Group-Members", groupComposition);
-            message.saveChanges();
-
-            Transport.send(message);
-
-            generatedServerUid = message.getMessageID();
-        }
-
-        return generatedServerUid;
-    }
-
-    /**
-     * Безопасно рассылает секретный AES-ключ группы участнику.
-     * Ключ шифруется индивидуальным публичным Tink-ключом получателя.
-     */
-    public void sendGroupInviteOverNetwork(String recipientEmail, String subject, String header, String text, SharedPreferences prefs) throws MessagingException {
-
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
-        Session session = createSmtpSession(prefs);
-
-        var message = new MimeMessage(session);
-        message.setFrom(new InternetAddress(myEmail));
-        message.setRecipients(TO, InternetAddress.parse(recipientEmail));
-
-        message.setSubject(subject);
-        message.setText(text);
-
-        message.addHeader("X-MailLis-Group-Members", header);
-        message.saveChanges();
-
-        Transport.send(message);
-    }
-
-    public void sendGroupPreInviteResponse(String creatorEmail, long chatId, String myPublicKeyBas64, SharedPreferences prefs) throws MessagingException {
-
-        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
-        Session session = createSmtpSession(prefs);
-
-        var message = new MimeMessage(session);
-        message.setFrom(new InternetAddress(myEmail));
-        message.setRecipients(TO, InternetAddress.parse(creatorEmail));
-        message.setSubject(GROUP_PRE_INVITE_RESPONSE_MAIL + SPACE_STRING + chatId);
-        message.setText(myPublicKeyBas64);
-        message.saveChanges();
-
-        Transport.send(message);
-    }
-
-
-    public void sendGroupSyncNotification(String oldMemberEmail, long groupId, String newMemberEmail, SharedPreferences prefs) throws Exception {
-        Session session = createSmtpSession(prefs);
-        MimeMessage message = new MimeMessage(session);
-        message.setFrom(new InternetAddress(prefs.getString(KEY_EMAIL_LOGIN, "")));
-        message.setRecipients(TO, InternetAddress.parse(oldMemberEmail));
-
-        message.setSubject(GROUP_SYNC + SPACE_STRING + groupId);
-        message.setText(newMemberEmail); // Передаем email новичка, которого нужно дописать в базу
-        message.saveChanges();
-
-        Transport.send(message);
-    }
-
-    public void sendFileOverNetwork(String recipientEmail, String subject, String encryptedPayload, SharedPreferences prefs) throws MessagingException {
-
-        Session session = createSmtpSession(prefs);
-
-        // 4. СБОРКА И ОТПРАВКА СТАНДАРТНОГО SMTP КОНВЕРТА
-        MimeMessage message = new MimeMessage(session);
-        message.setFrom(new InternetAddress(prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING)));
-        message.setRecipients(TO, InternetAddress.parse(recipientEmail));
-
-        // Ставим специальный маркер темы писем, чтобы приемник понял, что это файл
-        message.setSubject(subject);
-        message.setText(encryptedPayload);
-        message.saveChanges();
-
-        Transport.send(message);
-
-    }
-
     private Store connectToImapServer(SharedPreferences prefs) throws MessagingException {
         final String username = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
         final String password = prefs.getString(KEY_EMAIL_PASSWORD, EMPTI_STRING);
@@ -374,7 +258,6 @@ public class EmailClientImpl implements EmailClient {
         return store;
     }
 
-    @NonNull
     private static Properties getPropertiesImap(String imapServer, String imapPort) {
         var props = new Properties();
         props.put("mail.store.protocol", "imaps");

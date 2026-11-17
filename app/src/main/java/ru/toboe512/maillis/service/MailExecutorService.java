@@ -20,9 +20,9 @@ public interface MailExecutorService {
     void sendImageOverNetwork(long chatId, String recipientEmail, byte[] rawImageBytes,
                               final int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener);
 
-    void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs);
+    void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener);
 
-    void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs);
+    void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener);
 
     void sendGroupInviteOverNetwork(String recipientEmail, long chatId, String groupName, byte[] groupSecretKey, SharedPreferences prefs);
 

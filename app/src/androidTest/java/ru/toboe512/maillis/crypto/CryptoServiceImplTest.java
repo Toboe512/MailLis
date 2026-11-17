@@ -2,12 +2,12 @@ package ru.toboe512.maillis.crypto;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import android.content.Context;
-import android.util.Log;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -18,7 +18,6 @@ import org.junit.runner.RunWith;
 
 import java.io.IOException;
 import java.security.GeneralSecurityException;
-import java.util.Arrays;
 
 @RunWith(AndroidJUnit4.class)
 public class CryptoServiceImplTest {
@@ -77,7 +76,7 @@ public class CryptoServiceImplTest {
             assertNotNull(encryptedBase64Text);
 
             // Проверяем, что текст зашифровался и больше не равен оригиналу
-            assertFalse("Шифротекст должен отличаться от исходного сообщения", originalMessage.equals(encryptedBase64Text));
+            assertNotEquals("Шифротекст должен отличаться от исходного сообщения", originalMessage, encryptedBase64Text);
 
             // 3. Боб получает зашифрованную Base64 строку и расшифровывает её СВОИМ приватным ключом
             String decryptedMessage = bobCryptoService.decrypted(encryptedBase64Text);

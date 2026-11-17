@@ -15,40 +15,46 @@ import android.os.Looper;
 import android.util.Log;
 import android.widget.Toast;
 
-import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.biometric.BiometricManager;
 import androidx.biometric.BiometricPrompt;
 import androidx.core.content.ContextCompat;
+import androidx.core.splashscreen.SplashScreen;
 
 import java.util.concurrent.Executor;
 
-import ru.toboe512.maillis.R;
 
-public class SplashActivity extends AppCompatActivity {
+public class AuthLockActivity extends AppCompatActivity {
+
+    private boolean isKeepOnScreen = true; // Флаг удержания системного сплэш-экрана
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // 1. КРИТИЧЕСКИЙ ШАГ: Инициализируем системный SplashScreen ДО super.onCreate!
+        // Этот метод сообщает Android 12+, что мы берем управление заставкой в свои руки
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+
         super.onCreate(savedInstanceState);
 
-        // Включаем поддержку EdgeToEdge для красивого бесшовного фона
-        EdgeToEdge.enable(this);
+        // 2. Приказываем системе удерживать нативный сплэш-экран на дисплее,
+        // пока флаг isKeepOnScreen равен true (пока проверяется биометрия)
+        splashScreen.setKeepOnScreenCondition(() -> isKeepOnScreen);
 
-        // Отображаем лаконичный сплэш-экран (создайте простой layout с вашим логотипом)
-        setContentView(R.layout.activity_splash);
+        // 3. Вызов setContentView больше НЕ НУЖЕН! Удаляем R.layout.activity_splash
+        // Экран не будет моргать, нативная иконка плавно сменится окном BiometricPrompt.
 
-        // Добавляем проверку пользовательских настроек из SharedPreferences
+        // Проверяем пользовательские настройки биометрии
         SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
         boolean isBiometricRequired = prefs.getBoolean(KEY_BIOMETRIC_ENABLED, false);
 
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            // Если пользователь выключил защиту в настройках аккаунта —
-            // мы мгновенно перенаправляем его в MainActivity, минуя вызов датчиков смартфона!
             if (!isBiometricRequired) {
+                // Если защита отключена — гасим системный сплэш и мгновенно летим в чаты
+                isKeepOnScreen = false;
                 navigateToMain();
             } else {
-                // Иначе — честно требуем палец, лицо или системный PIN-код
+                // Иначе — инициируем вызов датчиков отпечатка/PIN
                 checkBiometricAvailability();
             }
         }, 300);
@@ -56,14 +62,13 @@ public class SplashActivity extends AppCompatActivity {
 
     private void checkBiometricAvailability() {
         var biometricManager = BiometricManager.from(this);
-
-        // ИСПРАВЛЕНИЕ: Разрешаем сильную биометрию ИЛИ обычный PIN-код/пароль телефона (DEVICE_CREDENTIAL)
         int authenticators = BIOMETRIC_STRONG | DEVICE_CREDENTIAL;
 
-        if (biometricManager.canAuthenticate(authenticators) == BIOMETRIC_SUCCESS) {// Датчики или пароль настроены — выводим диалог
+        if (biometricManager.canAuthenticate(authenticators) == BIOMETRIC_SUCCESS) {
             showBiometricPrompt(authenticators);
-        } else {// Если на телефоне вообще отключена какая-либо защита (даже пин-кода нет)
+        } else {
             Log.w("MailLis_Bio", "На устройстве не настроена блокировка экрана.");
+            isKeepOnScreen = false; // Отпускаем системный сплэш
             navigateToMain();
         }
     }
@@ -71,19 +76,21 @@ public class SplashActivity extends AppCompatActivity {
     private void showBiometricPrompt(int authenticators) {
         Executor executor = ContextCompat.getMainExecutor(this);
 
-        var biometricPrompt = new BiometricPrompt(SplashActivity.this, executor,
+        var biometricPrompt = new BiometricPrompt(AuthLockActivity.this, executor,
                 new BiometricPrompt.AuthenticationCallback() {
                     @Override
                     public void onAuthenticationError(int errorCode, @NonNull CharSequence errString) {
                         super.onAuthenticationError(errorCode, errString);
-                        Toast.makeText(SplashActivity.this, "Вход отменен", LENGTH_SHORT).show();
+                        Toast.makeText(AuthLockActivity.this, "Вход отменен", LENGTH_SHORT).show();
+                        isKeepOnScreen = false;
                         finish();
                     }
 
                     @Override
                     public void onAuthenticationSucceeded(@NonNull BiometricPrompt.AuthenticationResult result) {
                         super.onAuthenticationSucceeded(result);
-                        navigateToMain(); // Успех
+                        isKeepOnScreen = false; // Отпускаем заставку — верификация пройдена!
+                        navigateToMain();
                     }
 
                     @Override
@@ -95,21 +102,19 @@ public class SplashActivity extends AppCompatActivity {
         var builder = new BiometricPrompt.PromptInfo.Builder()
                 .setTitle("Вход в MailLis")
                 .setSubtitle("Подтвердите личность для доступа к P2P-чатам")
-                .setAllowedAuthenticators(authenticators); // ИСПРАВЛЕНИЕ: Передаем наш всеядный фильтр
+                .setAllowedAuthenticators(authenticators);
 
-        // ВНИМАНИЕ: Если мы разрешаем вход по PIN-коду (DEVICE_CREDENTIAL),
-        // метод setNegativeButtonText вызывать НЕЛЬЗЯ (Android сам нарисует системную кнопку отмены)
-        // Поэтому условие:
         if ((authenticators & DEVICE_CREDENTIAL) == 0) {
             builder.setNegativeButtonText("Выход");
         }
 
+        // Вызываем окно сканера. Оно красиво наложится прямо поверх системного логотипа Android!
         biometricPrompt.authenticate(builder.build());
     }
 
     private void navigateToMain() {
-        var intent = new Intent(SplashActivity.this, MainActivity.class);
+        var intent = new Intent(AuthLockActivity.this, MainActivity.class);
         startActivity(intent);
-        finish(); // Обязательно уничтожаем Splash, чтобы пользователь не вернулся на него кнопкой "Назад"
+        finish();
     }
 }

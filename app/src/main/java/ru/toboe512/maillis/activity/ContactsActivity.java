@@ -19,12 +19,12 @@ import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.adapters.ManageContactsAdapter;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
-import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.dto.ContactDto;
 
 public class ContactsActivity extends AppCompatActivity {
 
     private DBService dbService;
-    private List<Contact> contactList;
+    private List<ContactDto> contactList;
     private ManageContactsAdapter adapter;
 
     @Override
@@ -58,27 +58,24 @@ public class ContactsActivity extends AppCompatActivity {
         // Инициализируем адаптер с колбэком удаления
         adapter = new ManageContactsAdapter(
                 contactList, // АРГУМЕНТ 1: Список данных
-
                 // АРГУМЕНТ 2: Лямбда для кнопки удаления (красный крестик)
-                (contact, position) -> {
-                    new AlertDialog.Builder(ContactsActivity.this)
-                            .setTitle("Удаление контакта")
-                            .setMessage("Вы действительно хотите удалить контакт " + contact.getEmail() + "?")
-                            .setPositiveButton("Удалить", (dialog, which) -> {
-                                new Thread(() -> {
-                                    boolean isDeleted = dbService.deleteContact(contact.getEmail());
-                                    runOnUiThread(() -> {
-                                        if (isDeleted) {
-                                            contactList.remove(position);
-                                            adapter.notifyItemRemoved(position);
-                                            adapter.notifyItemRangeChanged(position, contactList.size());
-                                        }
-                                    });
-                                }).start();
-                            })
-                            .setNegativeButton("Отмена", null)
-                            .show();
-                },
+                (contact, position) ->
+                        new AlertDialog.Builder(ContactsActivity.this)
+                                .setTitle("Удаление контакта")
+                                .setMessage("Вы действительно хотите удалить контакт " + contact.getEmail() + "?")
+                                .setPositiveButton("Удалить", (dialog, which) ->
+                                        new Thread(() -> {
+                                            boolean isDeleted = dbService.deleteContact(contact.getEmail());
+                                            runOnUiThread(() -> {
+                                                if (isDeleted) {
+                                                    contactList.remove(position);
+                                                    adapter.notifyItemRemoved(position);
+                                                    adapter.notifyItemRangeChanged(position, contactList.size());
+                                                }
+                                            });
+                                        }).start())
+                                .setNegativeButton("Отмена", null)
+                                .show(),
 
                 // АРГУМЕНТ 3: Лямбда для кнопки БАНА (серый замок).
                 (contact, position) -> {
@@ -89,29 +86,28 @@ public class ContactsActivity extends AppCompatActivity {
                             .setMessage("Вы уверены, что хотите заблокировать " + contact.getEmail() +
                                     "? Его сообщения будут автоматически уничтожаться, а сам он переместится в Чёрный список.")
                             .setCancelable(true)
-                            .setPositiveButton("Заблокировать", (dialog, which) -> {
-                                new Thread(() -> {
-                                    // 1. Добавляем пользователя в таблицу ban_list в SQLite
-                                    boolean isBanned = dbService.banUser(contact.getEmail());
+                            .setPositiveButton("Заблокировать", (dialog, which) ->
+                                    new Thread(() -> {
+                                        // 1. Добавляем пользователя в таблицу ban_list в SQLite
+                                        boolean isBanned = dbService.banUser(contact.getEmail());
 
-                                    // 2. Сразу находим чат с ним по email и удаляем всю историю
-                                    long associatedChatId = dbService.getChatIdByRecipientEmail(contact.getEmail());
-                                    if (associatedChatId > 0) {
-                                        dbService.deleteChatAndMessages(associatedChatId);
-                                    }
-
-                                    runOnUiThread(() -> {
-                                        if (isBanned) {
-                                            contactList.remove(position);
-                                            adapter.notifyItemRemoved(position);
-                                            adapter.notifyItemRangeChanged(position, contactList.size());
-                                            Toast.makeText(ContactsActivity.this, "Контакт заблокирован", Toast.LENGTH_SHORT).show();
-                                        } else {
-                                            Toast.makeText(ContactsActivity.this, "Ошибка при блокировке", Toast.LENGTH_SHORT).show();
+                                        // 2. Сразу находим чат с ним по email и удаляем всю историю
+                                        long associatedChatId = dbService.getChatIdByRecipientEmail(contact.getEmail());
+                                        if (associatedChatId > 0) {
+                                            dbService.deleteChatAndMessages(associatedChatId);
                                         }
-                                    });
-                                }).start();
-                            })
+
+                                        runOnUiThread(() -> {
+                                            if (isBanned) {
+                                                contactList.remove(position);
+                                                adapter.notifyItemRemoved(position);
+                                                adapter.notifyItemRangeChanged(position, contactList.size());
+                                                Toast.makeText(ContactsActivity.this, "Контакт заблокирован", Toast.LENGTH_SHORT).show();
+                                            } else {
+                                                Toast.makeText(ContactsActivity.this, "Ошибка при блокировке", Toast.LENGTH_SHORT).show();
+                                            }
+                                        });
+                                    }).start())
                             .setNegativeButton("Отмена", null)
                             .show();
                 } // Конец третьего аргумента
@@ -132,19 +128,14 @@ public class ContactsActivity extends AppCompatActivity {
     protected void onResume() {
         super.onResume();
         new Thread(() -> {
-            List<Contact> freshContacts = dbService.getContacts();
+            List<ContactDto> contacts = dbService.getContacts();
             runOnUiThread(() -> {
-                if (freshContacts != null) {
-                    contactList.clear();
-                    contactList.addAll(freshFreshContacts(freshContacts));
-                    adapter.notifyDataSetChanged();
-                }
+                contactList.clear();
+                contactList.addAll(contacts);
+                // КРИТИЧЕСКИЙ ФИКС: Сообщаем, что с самой первой позиции вставилась пачка элементов
+                // Это мгновенно уберёт жёлтый ворнинг и заставит список обновиться плавно! [source]
+                adapter.notifyItemRangeChanged(0, contacts.size());
             });
         }).start();
-    }
-
-    // Вспомогательный метод фильтрации null на случай пустой базы
-    private List<Contact> freshFreshContacts(List<Contact> list) {
-        return list != null ? list : new ArrayList<>();
     }
 }

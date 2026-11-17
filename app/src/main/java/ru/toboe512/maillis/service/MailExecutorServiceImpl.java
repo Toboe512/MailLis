@@ -30,14 +30,13 @@ import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 
-import androidx.annotation.NonNull;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,7 +48,7 @@ import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.crypto.CryptoService;
 import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
-import ru.toboe512.maillis.dto.IncomingMessageDto;
+import ru.toboe512.maillis.dto.NetworkMessageDto;
 import ru.toboe512.maillis.dto.MessageDto;
 
 public class MailExecutorServiceImpl implements MailExecutorService {
@@ -98,56 +97,48 @@ public class MailExecutorServiceImpl implements MailExecutorService {
     public int fetchIncomingOverNetwork(Context context, SharedPreferences prefs) {
         int result = 0;
         try {
-            List<IncomingMessageDto> messages = emailClient.fetchIncomingOverNetwork(prefs);
-            for (IncomingMessageDto msg : messages) {
+            List<NetworkMessageDto> messages = emailClient.fetch(prefs);
+            for (NetworkMessageDto msg : messages) {
                 String subject = msg.getSubject();
                 String senderEmail = msg.getFrom();
 
                 // ПРОВЕРКА НА БАН: Если отправитель в черном списке — стираем письмо и игнорируем!
                 if (dbService.isUserBanned(senderEmail)) {
                     Log.w("MailLis_Security", "🛑 Заблокированный спам от " + senderEmail + " проигнорирован.");
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    emailClient.deleteMessage(msg.getId(), prefs);
                     continue; // Мгновенно переходим к следующему письму, этот объект дальше не обрабатываем!
                 }
                 // СЛУЧАЙ В: Прилетело обычное текстовое сообщение чата
                 if (subject.contains(CHAT_MESSAGE)) {
                     result = result + chatMessageCase(msg, prefs);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
                     continue;
                 }
                 if (subject.contains(CHAT_IMAGE_MAIL)) {
                     result = result + chatImageCase(msg, context.getCacheDir(), prefs);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
                     continue;
                 }
                 if (subject.contains(GROUP_MESSAGE_MAIL)) {
-                    result = result + groupMessageCase(msg);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + groupMessageCase(msg, prefs);
                     continue;
                 }
                 if (subject.contains(GROUP_IMAGE_MAIL)) {
-                    result = result + groupImageCase(msg, context.getCacheDir());
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + groupImageCase(msg, context.getCacheDir(), prefs);
                     continue;
                 }
                 if (subject.contains(READ_RECEIPT)) {
-                    result = result + readReceipt(msg);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + readReceipt(msg, prefs);
                     continue;
                 }
                 if (subject.contains(GROUP_LEAVE)) {
-                    result = result + groupLeave(msg);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + groupLeave(msg, prefs);
                     continue;
                 }
                 if (subject.contains(CHAT_FILE)) {
-                    result = result + chatFile(msg, context.getCacheDir());
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + chatFile(msg, context.getCacheDir(), prefs);
                     continue;
                 }
                 if (subject.contains(GROUP_CHAT_FILE)) {
-                    result = result + groupChatFile(msg, context.getCacheDir());
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + groupChatFile(msg, context.getCacheDir(), prefs);
                     continue;
                 }
                 String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
@@ -157,38 +148,32 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 }
                 //  В СУЩЕСТВУЮЩУЮ ГРУППУ ДОБАВИЛСЯ КТО-ТО ЕЩЕ (Синхронизация состава)
                 if (subject.contains(GROUP_SYNC)) {
-                    result = result + groupSync(msg);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + groupSync(msg, prefs);
                     continue;
                 }
                 // СЦЕНАРИЙ 1: Нам прилетел Pre-Invite (Мы получатель, у нас просят ключ для вступления)
                 if (subject.contains(GROUP_PRE_INVITE_MAIL)) {
                     result = result + groupPreInviteCase(msg, prefs);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
                     continue;
                 }
                 // СЦЕНАРИЙ 2: Создателю группы прилетел ответный Tink-ключ от друга
                 if (subject.contains(GROUP_PRE_INVITE_RESPONSE_MAIL)) {
                     result = result + groupPreInviteResponseCase(msg, prefs);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
                     continue;
                 }
                 // СЦЕНАРИЙ 3: Получателю прилетел долгожданный ЗАШИФРОВАННЫЙ AES-ключ группы
                 if (subject.contains(GROUP_INVITE_MAIL)) {
-                    result = result + groupInviteCase(msg);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + groupInviteCase(msg, prefs);
                     continue;
                 }
                 // СЛУЧАЙ А: Прилетел запрос на создание чата и обмен ключами
                 if (subject.contains(KEY_REQUEST)) {
                     result = result + keyRequestCase(msg, prefs);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
                     continue;
                 }
                 // СЛУЧАЙ Б: Прилетел ответный ключ (собеседник подтвердил создание нашего чата)
                 if (subject.contains(KEY_RESPONSE)) {
-                    result = result + keyResponseCase(msg);
-                    emailClient.deleteMessageFromServer(msg.getId(), prefs);
+                    result = result + keyResponseCase(msg, prefs);
                 }
             }
         } catch (Exception e) {
@@ -197,9 +182,8 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         return result;
     }
 
-    private int chatMessageCase(IncomingMessageDto msg, SharedPreferences prefs) throws IOException, GeneralSecurityException {
-
-        int result;
+    private int chatMessageCase(NetworkMessageDto msg, SharedPreferences prefs) throws IOException, GeneralSecurityException {
+        int result = 0;
         String senderEmail = msg.getFrom();
         String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
 
@@ -222,12 +206,13 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         messageText = sharedSecret != null ? cryptoService.decrypted(messageText) : messageText;
 
         String messageId = msg.getId();
-        result = dbService.saveIncomingMessage(chatId, senderEmail, CHAT_MESSAGE,
-                messageText, msg.getTimestamp(), messageId, TEXT_MSG, EMPTI_STRING) ? 1 : 0;
+        if (dbService.saveIncomingMessage(chatId, senderEmail, CHAT_MESSAGE,
+                messageText, msg.getTimestamp(), messageId, TEXT_MSG, EMPTI_STRING)) {
+            result = 1;
+            emailClient.deleteMessage(msg.getId(), prefs);
+        }
 
         // СРАЗУ ШЛЕМ СИГНАЛ ПРОЧТЕНИЯ: Отправляем скрытое SMTP письмо обратно другу
-
-        //  int generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, EMPTI_STRING, currentTimestamp);
         // Отправляем пустой текст, главное — тема [MailLis-Read-Receipt] и Message-ID в теле или теме
         sendEmailOverNetwork(senderEmail, READ_RECEIPT, messageId, 0, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
             @Override
@@ -245,7 +230,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         return result;
     }
 
-    private int chatImageCase(IncomingMessageDto msg, File cacheDir, SharedPreferences prefs) throws IOException, GeneralSecurityException {
+    private int chatImageCase(NetworkMessageDto msg, File cacheDir, SharedPreferences prefs) throws IOException, GeneralSecurityException {
 
         String senderEmail = msg.getFrom();
         String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
@@ -275,11 +260,15 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
         // ЗАПИСЫВАЕМ В SQLite
         // Сохраняем запись в базу данных, указав тип 'IMAGE' и путь к файлу на диске
-        return dbService.saveIncomingMessage(chatId, senderEmail, CHAT_IMAGE_MAIL, EMPTI_STRING,
-                msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath()) ? 1 : 0;
+         if (dbService.saveIncomingMessage(chatId, senderEmail, CHAT_IMAGE_MAIL, EMPTI_STRING,
+                        msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath())) {
+             emailClient.deleteMessage(msg.getId(), prefs);
+             return 1;
+         }
+        return 0;
     }
 
-    private int groupMessageCase(IncomingMessageDto msg) throws Exception {
+    private int groupMessageCase(NetworkMessageDto msg, SharedPreferences prefs) throws Exception {
         String senderEmail = msg.getFrom();
         // Парсим ID родительского чата из темы письма
         String[] parts = msg.getSubject().split(SPACE_STRING);
@@ -298,7 +287,6 @@ public class MailExecutorServiceImpl implements MailExecutorService {
             dbService.addGroupMember(groupChatId, email.trim().toLowerCase());
         }
 
-
         byte[] groupKey = dbService.getGroupSecretKey(groupChatId);
         String base64Text = msg.getContent();
         byte[] encryptedBytes = Base64.decode(base64Text, NO_WRAP);
@@ -307,11 +295,15 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         String decryptedText = CryptoServiceImpl.decryptGroupText(encryptedBytes, groupKey);
 
         // Сохраняем в messages, привязывая к ID группы
-        return dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_MESSAGE_MAIL,
-                decryptedText, msg.getTimestamp(), msg.getId(), TEXT_MSG, EMPTI_STRING) ? 1 : 0;
+         if (dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_MESSAGE_MAIL,
+                        decryptedText, msg.getTimestamp(), msg.getId(), TEXT_MSG, EMPTI_STRING)) {
+             emailClient.deleteMessage(msg.getId(), prefs);
+             return 1;
+         }
+        return  0;
     }
 
-    private int groupImageCase(IncomingMessageDto msg, File cacheDir) throws Exception {
+    private int groupImageCase(NetworkMessageDto msg, File cacheDir, SharedPreferences prefs) throws Exception {
         String senderEmail = msg.getFrom();
         // Парсим ID родительского чата из темы письма
         String[] parts = msg.getSubject().split(SPACE_STRING);
@@ -338,24 +330,29 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
         // ЗАПИСЫВАЕМ В SQLite
         // Сохраняем в messages, привязывая к ID группы
-        return dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_IMAGE_MAIL,
-                EMPTI_STRING, msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath()) ? 1 : 0;
+         if (dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_IMAGE_MAIL,
+                        EMPTI_STRING, msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath())) {
+             emailClient.deleteMessage(msg.getId(), prefs);
+             return 1;
+         }
+        return 0;
     }
 
-    private int readReceipt(IncomingMessageDto msg) {
+    private int readReceipt(NetworkMessageDto msg, SharedPreferences prefs) {
         // 💥 ПОЙМАЛИ ОТЧЕТ О ПРОЧТЕНИИ ЧАТА!
         // В теле этого письма друг прислал нам Message-ID нашего же отправленного ранее сообщения
         String readMessageServerUid = msg.getContent();
         // Обновляем статус сообщения в SQLite на "2" (Две галочки)
         dbService.markMessageAsRead(readMessageServerUid);
         Log.d("MailLis_Status", "Собеседник прочитал наше сообщение! Статус обновлен на ✓✓");
+
+        emailClient.deleteMessage(msg.getId(), prefs);
         return 1;
     }
 
-    private int groupLeave(IncomingMessageDto msg) {
-        boolean result = false;
+    private int groupLeave(NetworkMessageDto msg, SharedPreferences prefs) {
         try {
-            String[] parts = msg.getSubject().split(" ");
+            String[] parts = msg.getSubject().split(SPACE_STRING);
             long remoteGroupId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
 
             // Читаем из тела письма, какой именно Email покинул чат
@@ -366,18 +363,21 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 dbService.removeGroupMemberByEmail(remoteGroupId, leaverEmail);
 
                 // Локально пишем системное сообщение в чат для уведомления пользователя
-                result = dbService.saveIncomingGroupMessage(remoteGroupId, "Система",
+                if (dbService.saveIncomingGroupMessage(remoteGroupId, "Система",
                         GROUP_LEAVE, "🏃 Пользователь " + leaverEmail + " покинул чат.",
-                        msg.getTimestamp(), msg.getId(), "TEXT", null);
+                        msg.getTimestamp(), msg.getId(), "TEXT", null)) {
 
+                    emailClient.deleteMessage(msg.getId(), prefs);
+                    return 1;
+                }
             }
         } catch (Exception e) {
             Log.e("MailLis_GroupLeave", "Ошибка приема входящего игнала выхода из чата ", e);
         }
-        return result ? 1 : 0;
+        return 0;
     }
 
-    private int chatFile(IncomingMessageDto msg, File cacheDir) {
+    private int chatFile(NetworkMessageDto msg, File cacheDir, SharedPreferences prefs) {
         try {
             String decryptedPayload = cryptoService.decrypted(msg.getContent()); // Ваш метод дешифровки
 
@@ -407,17 +407,11 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
                 // 5. ЗАПИСЫВАЕМ СТРОКУ В НАШУ ТРАНЗАКЦИОННУЮ СУБД WAL
                 // Пишем в message_text имя файла для отображения в бабле, а в file_path — путь к нему на диске!
-
-                return dbService.saveIncomingMessage(
-                        chatId,
-                        senderEmail,
-                        CHAT_FILE,
-                        "📎 Файл: " + fileName,
-                        msg.getTimestamp(),
-                        msg.getId(),
-                        FILE_MSG, // Наш новый тип контента!
-                        receivedFile.getAbsolutePath() // Локальный путь для открытия
-                ) ? 1 : 0;
+                if (dbService.saveIncomingMessage(chatId, senderEmail, CHAT_FILE, "📎 Файл: " + fileName, msg.getTimestamp(),
+                        msg.getId(), FILE_MSG, receivedFile.getAbsolutePath())) {
+                    emailClient.deleteMessage(msg.getId(), prefs);
+                    return 1;
+                }
             }
         } catch (Exception e) {
             Log.e("MailLis_IMAP_File", "Ошибка приема входящего файла", e);
@@ -425,7 +419,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         return 0;
     }
 
-    private int groupChatFile(IncomingMessageDto msg, File cacheDir) {
+    private int groupChatFile(NetworkMessageDto msg, File cacheDir, SharedPreferences prefs) {
         try {
             String[] parts = msg.getSubject().split(SPACE_STRING);
             long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
@@ -464,16 +458,14 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
                 // ЗАПИСЫВАЕМ СТРОКУ В НАШУ ТРАНЗАКЦИОННУЮ СУБД WAL
                 // Пишем в message_text имя файла для отображения в бабле, а в file_path — путь к нему на диске!
-                return dbService.saveIncomingGroupMessage(
-                        groupChatId,
-                        msg.getFrom(),
-                        GROUP_MESSAGE_MAIL,
-                        "📎 Файл: " + fileName,
-                        msg.getTimestamp(),
-                        msg.getId(),
-                        FILE_MSG, // Наш новый тип контента!
-                        receivedFile.getAbsolutePath() // Локальный путь для открытия
-                ) ? 1 : 0;
+
+
+                if (dbService.saveIncomingGroupMessage(groupChatId, msg.getFrom(),
+                        GROUP_MESSAGE_MAIL, "📎 Файл: " + fileName, msg.getTimestamp(),
+                        msg.getId(), FILE_MSG, receivedFile.getAbsolutePath())) {
+                    emailClient.deleteMessage(msg.getId(), prefs);
+                    return 1;
+                }
             }
         } catch (Exception e) {
             Log.e("MailLis_IMAP_File", "Ошибка приема входящего файла", e);
@@ -481,7 +473,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         return 0;
     }
 
-    private int groupSync(IncomingMessageDto msg) {
+    private int groupSync(NetworkMessageDto msg, SharedPreferences prefs) {
         try {
             String[] parts = msg.getSubject().split(SPACE_STRING);
             long remoteChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
@@ -492,9 +484,12 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 dbService.addGroupMember(remoteChatId, newMemberEmail);
 
                 // Пишем тихое системное уведомление в чат
-                return dbService.saveIncomingGroupMessage(remoteChatId, "Система", "[MailLis-System]",
+                if (dbService.saveIncomingGroupMessage(remoteChatId, "Система", "[MailLis-System]",
                         "➕ К группе присоединился участник: " + newMemberEmail,
-                        msg.getTimestamp(), msg.getId(), "TEXT", null) ? 1 : 0;
+                        msg.getTimestamp(), msg.getId(), "TEXT", null)) {
+                    emailClient.deleteMessage(msg.getId(), prefs);
+                    return 1;
+                }
             }
         } catch (Exception e) {
             Log.e("MailLis_GroupSync", "Ошибка приема входящего синхро-сообщения ", e);
@@ -502,9 +497,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         return 0;
     }
 
-    private int groupPreInviteCase(IncomingMessageDto msg, SharedPreferences prefs) {
-
-        boolean result = false;
+    private int groupPreInviteCase(NetworkMessageDto msg, SharedPreferences prefs) {
         try {
             String senderEmail = msg.getFrom();
             // Парсим ID чата, назначенный создателем группы
@@ -532,13 +525,15 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 dbService.addGroupMember(remoteChatId, email.trim().toLowerCase());
             }
 
-
             // 1. Сохраняем публичный Tink-ключ создателя группы в таблицу контактов,
             // чтобы мы могли шифровать сообщения лично для него
             dbService.savePublicKey(senderEmail, creatorPublicKeyBytes);
 
             // 2. Создаем у себя заготовку группового чата (пока без секретного AES-ключа группы)
-            result = dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, null, senderEmail);
+             if (dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, null, senderEmail)) {
+                 emailClient.deleteMessage(msg.getId(), prefs);
+                 return 1;
+             }
 
             Log.i("MailLis_P2P_Group", "Поймали Pre-Invite в группу \"" + incomingGroupName + "\". Высылаем свой Tink-ключ в ответ...");
 
@@ -548,13 +543,12 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         } catch (Exception e) {
             Log.e("MailLis_P2P_Group", "Ошибка обработки Pre-Invite", e);
         }
-        return result ? 1 : 0;
+        return 0;
     }
 
-    private int groupPreInviteResponseCase(IncomingMessageDto msg, SharedPreferences prefs) {
-        boolean result = false;
+    private int groupPreInviteResponseCase(NetworkMessageDto msg, SharedPreferences prefs) {
         try {
-            String[] parts = msg.getSubject().split(" ");
+            String[] parts = msg.getSubject().split(SPACE_STRING);
             long groupChatId = parts.length > 1 ? Long.parseLong(parts[1].trim()) : -1;
 
             if (groupChatId <= 0) {
@@ -565,7 +559,10 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
             String senderEmail = msg.getFrom();
             // 1. Сохраняем полученный публичный Tink-ключ друга в контакты
-            result = dbService.savePublicKey(senderEmail, peerPublicKeyBytes);
+            if (!dbService.savePublicKey(senderEmail, peerPublicKeyBytes)) {
+                return 0;
+            }
+            emailClient.deleteMessage(msg.getId(), prefs);
             dbService.addGroupMember(groupChatId, senderEmail); // Фиксируем, что он в группе
 
             Log.i("MailLis_P2P_Group", "Участник " + senderEmail + " прислал свой Tink-ключ. Досылаем ему секретный AES-ключ группы...");
@@ -580,15 +577,14 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
         } catch (Exception e) {
             Log.e("MailLis_P2P_Group", "Ошибка обработки Pre-Invite-Response", e);
+            return 0;
         }
-        return result ? 1 : 0;
+        return 1;
     }
 
-    private int groupInviteCase(IncomingMessageDto msg) throws GeneralSecurityException {
-
-        boolean result;
+    private int groupInviteCase(NetworkMessageDto msg, SharedPreferences prefs) throws GeneralSecurityException {
         // Извлекаем ID чата, который назначил создатель группы
-        String[] subjectParts = msg.getSubject().split(" ");
+        String[] subjectParts = msg.getSubject().split(SPACE_STRING);
         long remoteChatId = subjectParts.length > 1 ? Long.parseLong(subjectParts[1].trim()) : -1;
 
         if (remoteChatId <= 0) {
@@ -607,15 +603,20 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
 
         // Перезаписываем заготовку чата, добавляя туда рабочий расшифрованный BLOB секретного ключа!
-        result = dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, decryptedGroupKey, msg.getFrom());
+        if (!dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, decryptedGroupKey, msg.getFrom())) {
+            return 0;
+        }
+
+        emailClient.deleteMessage(msg.getId(), prefs);
+
         dbService.addGroupMember(remoteChatId, msg.getFrom()); // Фиксируем, что он в группе
 
         Log.i("MailLis_P2P_Group", "🎉 Успешно получили и расшифровали AES-ключ группы \"" + incomingGroupName + "\". Теперь мы полноценный участник!");
 
-        return result ? 1 : 0;
+        return 1;
     }
 
-    private int keyRequestCase(IncomingMessageDto msg, SharedPreferences prefs) {
+    private int keyRequestCase(NetworkMessageDto msg, SharedPreferences prefs) {
         String senderEmail = msg.getFrom();
         // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
         long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
@@ -633,17 +634,21 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         //TODO Надо передавать название чата по сети
 
         // Сохраняем его в нашу базу SQLite (в таблицу chats для этого отправителя)
-        boolean result = dbService.savePublicKey(senderEmail, peerPublicKeyBytes);
+        if (!dbService.savePublicKey(senderEmail, peerPublicKeyBytes)) {
+            return 0;
+        }
+
+        emailClient.deleteMessage(msg.getId(), prefs);
 
         // 3. ОТВЕЧАЕМ СВОИМ КЛЮЧОМ
         String serverUid = sendHandshakeResponse(senderEmail, chatId, prefs);
-        emailClient.deleteMessageFromServer(serverUid, prefs);
 
-        return result ? 1 : 0;
+        emailClient.deleteMessage(serverUid, prefs);
+
+        return 1;
     }
 
-    private int keyResponseCase(IncomingMessageDto msg) {
-        boolean result = false;
+    private int keyResponseCase(NetworkMessageDto msg, SharedPreferences prefs) {
         String senderEmail = msg.getFrom();
         // 1. Проверяем, существует ли уже чат с этим отправителем в нашей локальной SQLite
         long chatId = dbService.getChatIdByRecipientEmail(senderEmail);
@@ -651,16 +656,19 @@ public class MailExecutorServiceImpl implements MailExecutorService {
             // СЛУЧАЙ 2: Собеседник ответил на наш запрос и прислал свой ключ
             byte[] peerPublicKeyBytes = Base64.decode(msg.getContent(), NO_WRAP);
             // Сохраняем его в базу. Рукопожатие завершено!
-            result = dbService.savePublicKey(senderEmail, peerPublicKeyBytes);
+            if (dbService.savePublicKey(senderEmail, peerPublicKeyBytes)) {
+                emailClient.deleteMessage(msg.getId(), prefs);
+                return 1;
+            }
 
         }
-        return result ? 1 : 0;
+        return 0;
     }
 
     public boolean sendEmailOverNetwork(String recipientEmail, String subject, final String messageText, final int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener) {
 
         if (listener == null) {
-            Log.e("EmailClient.sendEmailOverNetwork listener", "Критическая ошибка listener == null");
+            Log.e("MailExecutorServiceImpl.sendEmailOverNetwork listener", "Критическая ошибка listener == null");
             return false;
         }
         // Handler нужен, чтобы вернуть результат в Главный (UI) поток Android
@@ -672,7 +680,8 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 // 💥 ЗАЩИТА: Мгновенно бронируем статус сообщения перед выходом в сеть по SMTP!
                 dbService.markMessageAsSending(localMessageId);
 
-                String generatedServerUid = emailClient.sendEmailOverNetwork(recipientEmail, subject, messageText, prefs);
+                var messageDto = new NetworkMessageDto(messageText, recipientEmail, subject, null);
+                String generatedServerUid = emailClient.sendMessage(messageDto, prefs);
 
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
                 dbService.updateServerUid(generatedServerUid, localMessageId);
@@ -788,7 +797,9 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
         String serverUid;
         try {
-            serverUid = emailClient.sendEmailOverNetwork(targetEmail, KEY_RESPONSE, myPublicKeyBase64, prefs);
+            var messageDto = new NetworkMessageDto(myPublicKeyBase64, targetEmail, KEY_RESPONSE, null);
+            serverUid = emailClient.sendMessage(messageDto, prefs);
+
         } catch (AuthenticationFailedException e) {
             // Неверный пароль. Прерываем отправку всей пачки, так как данные авторизации сломаны.
             Log.e("MailLis_Retry", "Критическая ошибка: неверный пароль для " + myEmail);
@@ -845,7 +856,6 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                     dbService.markMessageAsSending(msg.getId());
 
                     if (msg.isGroup()) {
-
                         if (IMAGE_MSG.equals(msg.getMessageType())) {
                             String filePath = msg.getFilePath();
 
@@ -858,7 +868,17 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
                             byte[] rawImageBytes = getRawImageBytes(filePath);
 
-                            sendGroupImageOverNetwork(chatId, rawImageBytes, msg.getId(), prefs);
+                            sendGroupImageOverNetwork(chatId, rawImageBytes, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
+                                @Override
+                                public void onSynchronized(MessageDto updatedMessages) {
+
+                                }
+
+                                @Override
+                                public void onError(Exception e) {
+
+                                }
+                            });
                         } else {
 
                             // КАНАЛ РЕТРАЯ А: ГРУППОВОЕ СООБЩЕНИЕ (Веерный SMTP + AES-GCM)
@@ -870,7 +890,17 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                                 String base64GroupText = Base64.encodeToString(encryptedBytes, NO_WRAP);
 
                                 // Вызываем наш веерный SMTP метод
-                                sendGroupMessageOverNetwork(chatId, msg.getSubject(), base64GroupText, msg.getId(), prefs);
+                                sendGroupMessageOverNetwork(chatId, msg.getSubject(), base64GroupText, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
+                                    @Override
+                                    public void onSynchronized(MessageDto updatedMessages) {
+
+                                    }
+
+                                    @Override
+                                    public void onError(Exception e) {
+
+                                    }
+                                });
                                 Log.d("MailLis_Retry", "Групповое сообщение " + msg.getId() +
                                         " успешно отправлено в очередь ретрая.");
                             } else {
@@ -960,22 +990,6 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         });
     }
 
-    @NonNull
-    private static byte[] getRawImageBytes(String filePath) throws IOException {
-        //  Используем FileInputStream вместо Files.readAllBytes
-        File file = new File(filePath);
-        byte[] rawImageBytes = new byte[(int) file.length()];
-        try (FileInputStream fis = new FileInputStream(file)) {
-            int offset = 0;
-            int numRead;
-            while (offset < rawImageBytes.length &&
-                    (numRead = fis.read(rawImageBytes, offset, rawImageBytes.length - offset)) >= 0) {
-                offset += numRead;
-            }
-        }
-        return rawImageBytes;
-    }
-
     public void sendImageOverNetwork(long chatId, String recipientEmail, byte[] rawImageBytes,
                                      final int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener) {
         networkExecutor.execute(() -> {
@@ -990,12 +1004,16 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 // Превращаем зашифрованный бинарник в безопасную для почты Base64-строку
                 String base64EncryptedImage = Base64.encodeToString(encryptedImageBytes, NO_WRAP);
 
-                String generatedServerUid = emailClient.sendImageOverNetwork(recipientEmail, base64EncryptedImage, prefs);
+                var messageDto = new NetworkMessageDto(base64EncryptedImage, recipientEmail, CHAT_IMAGE_MAIL, null);
+                String generatedServerUid = emailClient.sendMessage(messageDto, prefs);
 
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
                 dbService.updateServerUid(generatedServerUid, localMessageId);
 
                 MessageDto freshMessages = dbService.getMessage(chatId);
+
+                emailClient.deleteMessage(generatedServerUid, prefs);
+
                 new Handler(Looper.getMainLooper()).post(() -> listener.onSynchronized(freshMessages));
 
             } catch (Exception e) {
@@ -1005,7 +1023,14 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         });
     }
 
-    public void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs) {
+    public void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener) {
+        if (listener == null) {
+            Log.e("MailExecutorServiceImpl.sendEmailOverNetwork listener", "Критическая ошибка listener == null");
+            return;
+        }
+        // Handler нужен, чтобы вернуть результат в Главный (UI) поток Android
+        var mainHandler = new Handler(Looper.getMainLooper());
+
         networkExecutor.execute(() -> {
             try {
                 dbService.markMessageAsSending(localMessageId);
@@ -1033,20 +1058,35 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                         .filter(e -> !e.equals(myEmail))
                         .collect(Collectors.toList());
 
-                String generatedServerUid = emailClient.sendGroupImageOverNetwork(recipients,
-                        GROUP_IMAGE_MAIL + SPACE_STRING + chatId, groupComposition, base64EncryptedImage, prefs);
+                Map<String, String> headers = Map.of("X-MailLis-Group-Members", groupComposition);
+                var messageDto = new NetworkMessageDto(base64EncryptedImage, EMPTI_STRING,
+                        GROUP_IMAGE_MAIL + SPACE_STRING + chatId, headers);
+                String generatedServerUid = emailClient.sendGroupMessage(recipients, messageDto, prefs);
 
                 // Помечаем в локальной базе как отправлено (хотя бы сервером)
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
 
+                emailClient.deleteMessage(generatedServerUid, prefs);
+
+                MessageDto freshlyLoadedMessages = dbService.getMessage(localMessageId);
+
+                mainHandler.post(() -> listener.onSynchronized(freshlyLoadedMessages));
             } catch (Exception e) {
-                dbService.resetMessageStatusToUnsent(localMessageId);
                 Log.e("MailLis_SendGroupImage", "Ошибка ", e);
+                dbService.resetMessageStatusToUnsent(localMessageId);
+                mainHandler.post(() -> listener.onError(e));
             }
         });
     }
 
-    public void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs) {
+    public void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener) {
+        if (listener == null) {
+            Log.e("MailExecutorServiceImpl.sendEmailOverNetwork listener", "Критическая ошибка listener == null");
+            return;
+        }
+        // Handler нужен, чтобы вернуть результат в Главный (UI) поток Android
+        var mainHandler = new Handler(Looper.getMainLooper());
+
         networkExecutor.execute(() -> {
             try {
                 dbService.markMessageAsSending(localMessageId);
@@ -1060,14 +1100,28 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                         .filter(e -> !e.equals(myEmail))
                         .collect(Collectors.toList());
 
-                String generatedServerUid = emailClient.sendGroupMessageOverNetwork(recipients, subject, cipherTextBase64, prefs);
+                // Склеиваем список участников в одну строку через запятую для заголовка
+                StringBuilder membersSb = new StringBuilder(myEmail); // Начинаем со своего email
+                for (String email : recipients) {
+                    membersSb.append(",").append(email);
+                }
+                String groupComposition = membersSb.toString();
+                Map<String, String> headers = Map.of("X-MailLis-Group-Members", groupComposition);
+                var messageDto = new NetworkMessageDto(cipherTextBase64, EMPTI_STRING, subject, headers);
+                String generatedServerUid = emailClient.sendGroupMessage(recipients, messageDto, prefs);
 
                 // Помечаем в локальной базе как отправлено (хотя бы сервером)
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
 
+                emailClient.deleteMessage(generatedServerUid, prefs);
+
+                MessageDto freshlyLoadedMessages = dbService.getMessage(localMessageId);
+
+                mainHandler.post(() -> listener.onSynchronized(freshlyLoadedMessages));
             } catch (Exception e) {
                 Log.e("MailLis_GroupNet", "Не удалось доставить пакет", e);
                 dbService.resetMessageStatusToUnsent(localMessageId);
+                mainHandler.post(() -> listener.onError(e));
             }
         });
     }
@@ -1116,9 +1170,11 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
                     Log.w("MailLis_Group", "Ключа друга нет. Отправлен безопасный Pre-Invite для: " + recipientEmail);
                 }
+                Map<String, String> headers = Map.of("X-MailLis-Group-Members", groupComposition);
+                var messageDto = new NetworkMessageDto(text, recipientEmail, subject, headers);
+                String generatedServerUid = emailClient.sendMessage(messageDto, prefs);
 
-                emailClient.sendGroupInviteOverNetwork(recipientEmail, subject, groupComposition, text, prefs);
-
+                emailClient.deleteMessage(generatedServerUid, prefs);
 
             } catch (Exception e) {
                 Log.e("MailLis_GroupInvite", "Ошибка ", e);
@@ -1157,8 +1213,11 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                     encryptedPayload = cryptoService.encrypt(plainPayload, publicKey); // Ваше приватное шифрование
                 }
 
-                emailClient.sendFileOverNetwork(recipientEmail, subject, encryptedPayload, prefs);
+                var messageDto = new NetworkMessageDto(encryptedPayload, recipientEmail, subject, null);
+                String generatedServerUid = emailClient.sendMessage(messageDto, prefs);
                 Log.d("MailLis_Network_File", "Файл " + fileToSend.getName() + " успешно отправлен на " + recipientEmail);
+
+                emailClient.deleteMessage(generatedServerUid, prefs);
 
             } catch (Exception e) {
                 Log.e("MailLis_Network_File", "Критическая ошибка SMTP отправки файла", e);
@@ -1170,13 +1229,30 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         networkExecutor.execute(() -> {
             try {
                 String myPublicKeyBas64 = cryptoService.getMyPublicKeyBas64();
+                var messageDto = new NetworkMessageDto(myPublicKeyBas64, creatorEmail, GROUP_PRE_INVITE_RESPONSE_MAIL + SPACE_STRING + chatId, null);
+                String generatedServerUid = emailClient.sendMessage(messageDto, prefs);
 
-                emailClient.sendGroupPreInviteResponse(creatorEmail, chatId, myPublicKeyBas64, prefs);
+                emailClient.deleteMessage(generatedServerUid, prefs);
 
                 Log.d("MailLis_Group", "Ответ на Pre-Invite успешно отправлен создателю: " + creatorEmail);
             } catch (Exception e) {
                 Log.e("MailLis_GroupPreInvite", "Ошибка ", e);
             }
         });
+    }
+
+    private static byte[] getRawImageBytes(String filePath) throws IOException {
+        //  Используем FileInputStream вместо Files.readAllBytes
+        File file = new File(filePath);
+        byte[] rawImageBytes = new byte[(int) file.length()];
+        try (FileInputStream fis = new FileInputStream(file)) {
+            int offset = 0;
+            int numRead;
+            while (offset < rawImageBytes.length &&
+                    (numRead = fis.read(rawImageBytes, offset, rawImageBytes.length - offset)) >= 0) {
+                offset += numRead;
+            }
+        }
+        return rawImageBytes;
     }
 }

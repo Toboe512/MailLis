@@ -1,13 +1,13 @@
 package ru.toboe512.maillis.dto;
 
 
-public class Contact {
+public class ContactDto {
     private final int id;
     private final String name;
     private final String email;
     private boolean isSelected; // Флаг для галочки (выбора в группу)
 
-    public Contact(int id, String name, String email) {
+    public ContactDto(int id, String name, String email) {
         this.id = id;
         this.name = name;
         this.email = email;

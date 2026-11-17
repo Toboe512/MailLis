@@ -4,8 +4,10 @@ import static android.app.Notification.DEFAULT_ALL;
 import static android.app.NotificationManager.IMPORTANCE_LOW;
 import static android.app.PendingIntent.FLAG_IMMUTABLE;
 import static android.app.PendingIntent.FLAG_MUTABLE;
+import static android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
 import static androidx.core.app.NotificationCompat.PRIORITY_HIGH;
 import static androidx.core.app.NotificationCompat.PRIORITY_LOW;
+import static androidx.core.app.NotificationCompat.PRIORITY_MIN;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -82,15 +84,25 @@ public class MailLisPushService extends Service {
                     .setContentText("Ожидание новых зашифрованных сообщений...")
                     .setSmallIcon(android.R.drawable.ic_menu_send)
                     .setContentIntent(pendingIntent)
-                    .setPriority(PRIORITY_LOW) // Низкий приоритет, чтобы плашка висела тихо
+                    .setPriority(PRIORITY_MIN) // Низкий приоритет, чтобы плашка висела тихо
                     .setOngoing(true) // Пользователь не сможет случайно смахнуть её
                     .build();
 
             // Запускаем службу в привилегированном Foreground-режиме
-            startForeground(SYSTEM_SERVICE_ID, serviceNotification);
+            //(Добавляем третий параметр — тип службы):
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Для Android 14+ передаем системную константу FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                startForeground(
+                        SYSTEM_SERVICE_ID,
+                        serviceNotification,
+                        FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                );
+            } else {
+                // Для старых версий Android (13 и ниже) оставляем классический вызов
+                startForeground(SYSTEM_SERVICE_ID, serviceNotification);
+            }
 
             // 2. ИНИЦИАЛИЗАЦИЯ И ЗАПУСК ЕДИНОГО ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ
-
             MailExecutorService executorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
             // Инициализируем наш выделенный класс, передавая зависимости через конструктор
             updateRunnable = new UpdateRunnable(this, updateHandler, dbService, executorService);

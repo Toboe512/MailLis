@@ -6,7 +6,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Также рекомендуется добавить разрешение на проверку состояния сети: -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
+        tools:ignore="ForegroundServicesPolicy" />
+    <!-- КРИТИЧЕСКИЙ ФИКС ДЛЯ ANDROID 14+: Запрашиваем конкретное разрешение на синхронизацию данных -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
@@ -27,9 +29,8 @@
 
         <!-- НАША НОВАЯ СТАРТОВАЯ ТОЧКА ВХОДА -->
         <activity
-            android:name=".activity.SplashActivity"
-            android:screenOrientation="portrait"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+            android:name=".activity.AuthLockActivity"
+            android:theme="@style/Theme.App.Starting"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -40,7 +41,6 @@
         <activity
             android:name=".activity.MainActivity"
             android:exported="true"
-            android:label="@string/app_name"
             android:theme="@style/Theme.MailLis"
             android:windowSoftInputMode="adjustResize">
         </activity>
@@ -70,11 +70,11 @@
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
         <activity
             android:name=".activity.ProfileActivity"
-            android:screenOrientation="portrait"
+            android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
         <activity
             android:name=".activity.AddMembersActivity"
-            android:screenOrientation="portrait"
+            android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <service
@@ -83,7 +83,7 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" /> <!-- Тип должен строго совпадать с разрешением выше! -->
 
-        <!-- Безопасный провайдер обмена файлами для Android 11-17+ [source] -->
+        <!-- Безопасный провайдер обмена файлами для Android 11-17+ -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

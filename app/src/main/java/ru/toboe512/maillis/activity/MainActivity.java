@@ -3,8 +3,6 @@ package ru.toboe512.maillis.activity;
 import static android.Manifest.permission.POST_NOTIFICATIONS;
 import static android.content.pm.PackageManager.PERMISSION_GRANTED;
 
-import static androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED;
-
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -31,7 +29,7 @@ import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
-import ru.toboe512.maillis.dto.ChatPreview;
+import ru.toboe512.maillis.dto.ChatPreviewDto;
 import ru.toboe512.maillis.service.MailExecutorService;
 import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 import ru.toboe512.maillis.service.MailLisPushService;
@@ -47,7 +45,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        List<ChatPreview> chatList = new ArrayList<>();
+        List<ChatPreviewDto> chatList = new ArrayList<>();
 
         dbService = DBServiceSQLite.getInstance(this);
         EmailClient emailClient = EmailClientImpl.getInstance();
@@ -81,7 +79,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
                 new Thread(() -> {
                     try {
                         // Считываем свежие данные чатов из SQLite
-                        final List<ChatPreview> freshChats = dbService.loadChats();
+                        final List<ChatPreviewDto> freshChats = dbService.loadChats();
 
                         // Возвращаемся в главный поток для плавной отрисовки UI
                         runOnUiThread(() -> {
@@ -206,7 +204,7 @@ public class MainActivity extends AppCompatActivity { // Важно: насле�
     // Фоновое обновление списков чатов из SQLite через DiffUtil
     private void refreshChatsList() {
         new Thread(() -> {
-            List<ChatPreview> freshChats = dbService.loadChats();
+            List<ChatPreviewDto> freshChats = dbService.loadChats();
             runOnUiThread(() -> {
                 if (freshChats != null && chatsAdapter != null) {
                     chatsAdapter.updateChatsList(freshChats);

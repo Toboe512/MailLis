@@ -1,7 +1,6 @@
 package ru.toboe512.maillis.crypto;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
-
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
 
 import android.content.Context;
@@ -20,7 +19,6 @@ import com.google.crypto.tink.integration.android.AndroidKeysetManager;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 
@@ -36,7 +34,7 @@ public class CryptoServiceImpl implements CryptoService {
 
     private static final String PREF_FILE_NAME = "maillis_crypto_prefs";
     private static final String KEYSET_NAME = "maillis_private_keyset";
-    private static final String MASTER_KEY_URI = "android-keystore://maillis_master_key";// "android-keystore://maillis_master_key6ryfhh58gfhhwrrtyugfiytt74y5gjhl";
+    private static final String MASTER_KEY_URI = "android-keystore://maillis_master_key";// или "android-keystore://maillis_master_key6ryfhh58gfhhwrrtyugfiytt74y5gjhl";
     private final KeysetHandle devicePrivateKeyHandle;
     private final KeysetHandle devicePublicKeyHandle;
 

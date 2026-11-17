@@ -16,5 +16,7 @@ public class Config {
 
     public static final String KEY_BIOMETRIC_ENABLED = "biometric_protection_enabled";
 
+    public static final long UPDATE_INTERVAL_MS = 20000;      // Интервал опроса 20 секунд
+
     public static final boolean FILE_SEND_ENABLED = true;
 }

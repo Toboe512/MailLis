@@ -28,15 +28,16 @@ import java.util.List;
 
 import ru.toboe512.maillis.R;
 import ru.toboe512.maillis.activity.ChatActivity;
-import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.db.DBService;
-import ru.toboe512.maillis.dto.ChatPreview;
+import ru.toboe512.maillis.dto.ChatPreviewDto;
+import ru.toboe512.maillis.dto.MessageDto;
 import ru.toboe512.maillis.service.MailExecutorService;
+import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 import ru.toboe512.maillis.utils.ChatDiffCallback;
 
 public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHolder> {
 
-    private final List<ChatPreview> chatList;
+    private final List<ChatPreviewDto> chatList;
     private final Context context;
     private final DBService dbService; // Помощник для удаления из SQLite
 
@@ -53,7 +54,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
         }
     }
 
-    public ChatsAdapter(Context context, List<ChatPreview> chatList, DBService dbService, MailExecutorService mailExecutorService) {
+    public ChatsAdapter(Context context, List<ChatPreviewDto> chatList, DBService dbService, MailExecutorService mailExecutorService) {
         this.context = context;
         this.chatList = chatList;
         this.dbService = dbService;
@@ -69,7 +70,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
 
     @Override
     public void onBindViewHolder(@NonNull ChatViewHolder holder, int position) {
-        ChatPreview chat = chatList.get(position);
+        ChatPreviewDto chat = chatList.get(position);
 
         String chatTitle = chat.getTitle() != null ? chat.getTitle() : EMPTI_STRING;
 
@@ -100,7 +101,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     }
 
     // Отображение диалогового окна с подтверждением
-    private void showDeleteChatDialog(ChatPreview chat, int position) {
+    private void showDeleteChatDialog(ChatPreviewDto chat, int position) {
         var builder = new AlertDialog.Builder(context);
         builder.setTitle("Удалить чат");
         builder.setMessage("Вы уверены, что хотите удалить чат '" + chat.getTitle() + "' и всю историю переписки?");
@@ -116,7 +117,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
     // Удаление записи из SQLite и анимация списка
     private void deleteChatFromDatabase(long chatId, int position) {
         // Удаляем сам чат. Связанные сообщения в SQLite удалятся автоматически благодаря ON DELETE CASCADE
-        ChatPreview chatPreview = chatList.get(position);
+        ChatPreviewDto chatPreview = chatList.get(position);
         if (chatPreview == null) {
             return;
         }
@@ -134,7 +135,17 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
             mailExecutorService.sendGroupMessageOverNetwork(chatId,
-                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs);
+                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
+                        @Override
+                        public void onSynchronized(MessageDto updatedMessages) {
+
+                        }
+
+                        @Override
+                        public void onError(Exception e) {
+
+                        }
+                    });
 
             isDeleted = dbService.deleteGroupChatAndMessages(chatId);
 
@@ -144,7 +155,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             isDeleted = dbService.deleteChatAndMessages(chatId);
         }
         if (isDeleted) {
-            // 3. Если группа стерта, убираем из кэша публичные ключи участников
+            // Если группа стерта, убираем из кэша публичные ключи участников
             for (String memberEmail : members) {
                 dbService.cleanUpPublicKeyIfNoContexts(memberEmail);
             }
@@ -165,16 +176,16 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
         }
     }
 
-    public void updateChatsList(List<ChatPreview> newChats) {
-        // 1. Вычисляем разницу между текущим списком в памяти адаптера (this.chatList) и новым из БД
+    public void updateChatsList(List<ChatPreviewDto> newChats) {
+        // Вычисляем разницу между текущим списком в памяти адаптера (this.chatList) и новым из БД
         var diffCallback = new ChatDiffCallback(chatList, newChats);
         DiffUtil.DiffResult diffResult = DiffUtil.calculateDiff(diffCallback);
 
-        // 2. Обновляем данные в памяти адаптера без вызова .clear()
+        // Обновляем данные в памяти адаптера
         chatList.clear();
         chatList.addAll(newChats);
 
-        // 3. Магия: DiffUtil сам точечно вызовет notifyItemChanged, notifyItemInserted или notifyItemRemoved!
+        // Магия: DiffUtil сам точечно вызовет notifyItemChanged, notifyItemInserted или notifyItemRemoved!
         diffResult.dispatchUpdatesTo(this);
     }
 

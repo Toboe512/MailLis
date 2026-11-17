@@ -3,13 +3,15 @@ package ru.toboe512.maillis.dto;
 import java.util.Map;
 import java.util.Objects;
 
-public class IncomingMessageDto {
+public class NetworkMessageDto {
 
     private String id;
 
     private String content;
 
     private String from;
+
+    private String to;
 
     private String subject;
 
@@ -18,12 +20,19 @@ public class IncomingMessageDto {
     private Map<String, String> headers;
 
 
-    public IncomingMessageDto(String id, String content, String from, String subject, long timestamp, Map<String, String> headers) {
+    public NetworkMessageDto(String id, String content, String from, String subject, long timestamp, Map<String, String> headers) {
         this.id = id;
         this.content = content;
         this.from = from;
         this.subject = subject;
         this.timestamp = timestamp;
+        this.headers = headers;
+    }
+
+    public NetworkMessageDto(String content, String to, String subject, Map<String, String> headers) {
+        this.content = content;
+        this.to = to;
+        this.subject = subject;
         this.headers = headers;
     }
 
@@ -80,7 +89,7 @@ public class IncomingMessageDto {
         if (o == null || getClass() != o.getClass()) {
             return false;
         }
-        IncomingMessageDto that = (IncomingMessageDto) o;
+        NetworkMessageDto that = (NetworkMessageDto) o;
         return timestamp == that.timestamp &&
                 Objects.equals(id, that.id) &&
                 Objects.equals(content, that.content) &&
@@ -92,5 +101,13 @@ public class IncomingMessageDto {
     @Override
     public int hashCode() {
         return Objects.hash(id, content, from, subject, timestamp, headers);
+    }
+
+    public String getTo() {
+        return to;
+    }
+
+    public void setTo(String to) {
+        this.to = to;
     }
 }

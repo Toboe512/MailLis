@@ -6,14 +6,14 @@ import androidx.recyclerview.widget.DiffUtil;
 
 import java.util.List;
 
-import ru.toboe512.maillis.dto.ChatPreview;
+import ru.toboe512.maillis.dto.ChatPreviewDto;
 
 public class ChatDiffCallback extends DiffUtil.Callback {
 
-    private final List<ChatPreview> oldList;
-    private final List<ChatPreview> newList;
+    private final List<ChatPreviewDto> oldList;
+    private final List<ChatPreviewDto> newList;
 
-    public ChatDiffCallback(List<ChatPreview> oldList, List<ChatPreview> newList) {
+    public ChatDiffCallback(List<ChatPreviewDto> oldList, List<ChatPreviewDto> newList) {
         this.oldList = oldList;
         this.newList = newList;
     }
@@ -37,8 +37,8 @@ public class ChatDiffCallback extends DiffUtil.Callback {
     // Проверяем, изменилось ли содержимое внутри чата (текст последнего сообщения или время)
     @Override
     public boolean areContentsTheSame(int oldItemPosition, int newItemPosition) {
-        ChatPreview oldChat = oldList.get(oldItemPosition);
-        ChatPreview newChat = newList.get(newItemPosition);
+        ChatPreviewDto oldChat = oldList.get(oldItemPosition);
+        ChatPreviewDto newChat = newList.get(newItemPosition);
 
         boolean oldChaNoNull = oldChat != null;
         boolean newChaNoNull = newChat != null;

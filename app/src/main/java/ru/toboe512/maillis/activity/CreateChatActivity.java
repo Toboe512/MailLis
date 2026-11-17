@@ -1,5 +1,6 @@
 package ru.toboe512.maillis.activity;
 
+import static android.widget.Toast.LENGTH_LONG;
 import static android.widget.Toast.LENGTH_SHORT;
 import static android.widget.Toast.makeText;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
@@ -12,7 +13,6 @@ import android.os.Bundle;
 import android.view.MenuItem;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.Toast;
 
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
@@ -30,16 +30,15 @@ import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
 import ru.toboe512.maillis.db.DBServiceSQLite;
-import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.dto.ContactDto;
 import ru.toboe512.maillis.service.MailExecutorService;
 import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 
 public class CreateChatActivity extends AppCompatActivity {
 
-    private List<Contact> contactList;
+    private List<ContactDto> contactList = new ArrayList<>();
     private DBService dbService;
     private EditText editTextGroupName;
-    private EmailClient emailClient;
     private MailExecutorService mailExecutorService;
 
     @Override
@@ -59,7 +58,8 @@ public class CreateChatActivity extends AppCompatActivity {
         toolbar.setNavigationOnClickListener(v -> finish());
 
         dbService = DBServiceSQLite.getInstance(this);
-        contactList = new ArrayList<>();
+        EmailClient emailClient = EmailClientImpl.getInstance();
+        mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
 
         // Стрелочка назад
         ActionBar actionBar = getSupportActionBar();
@@ -74,26 +74,17 @@ public class CreateChatActivity extends AppCompatActivity {
         RecyclerView recyclerView = findViewById(R.id.recyclerViewSelectContacts);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
-
         // Загружаем данные из SQLite
         contactList = dbService.getContacts();
 
         var adapter = new ContactsAdapter(this, dbService, contactList);
 
-        // КРИТИЧЕСКИ ВАЖНО: Принудительно заставляем список на экране перерисовать полученные строки
-        adapter.notifyDataSetChanged();
-
         // Диагностика: если база пуста, вежливо сообщаем об этом
         if (contactList.isEmpty()) {
-            makeText(this, "Список контактов пока пуст. Добавьте кого-нибудь через '+'.", Toast.LENGTH_LONG).show();
+            makeText(this, "Список контактов пока пуст. Добавьте кого-нибудь через '+'.", LENGTH_LONG).show();
         }
 
         recyclerView.setAdapter(adapter);
-
-        emailClient = EmailClientImpl.getInstance();
-
-        mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
-
 
         Button buttonCreateContact = findViewById(R.id.buttonViewContactTitle);
         buttonCreateContact.setOnClickListener(v -> {
@@ -114,7 +105,7 @@ public class CreateChatActivity extends AppCompatActivity {
 
             // Считаем, сколько человек выбрано галочками
             List<String> selectedEmails = new ArrayList<>();
-            for (Contact c : contactList) {
+            for (ContactDto c : contactList) {
                 if (c.isSelected()) {
                     selectedEmails.add(c.getEmail());
                 }

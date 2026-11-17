@@ -18,7 +18,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Добавить новый контакт"
+            android:text="@string/addNewContact"
             android:textSize="22sp"
             android:textStyle="bold"
             android:layout_marginBottom="24dp" />
@@ -27,14 +27,15 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Имя контакта"
+            android:text="@string/contactName"
             android:textStyle="bold" />
 
         <EditText
             android:id="@+id/editTextContactName"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Например: Иван Иванов"
+            android:autofillHints=""
+            android:hint="@string/exampleName"
             android:inputType="textPersonName"
             android:layout_marginBottom="16dp" />
 
@@ -42,14 +43,15 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Email пользователя (в чате MailLis)"
+            android:text="@string/emailMaillis"
             android:textStyle="bold" />
 
         <EditText
             android:id="@+id/editTextContactEmail"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="example@mail.ru"
+            android:autofillHints=""
+            android:hint="@string/exampleMail"
             android:inputType="textEmailAddress"
             android:layout_marginBottom="32dp" />
 
@@ -58,7 +60,7 @@
             android:id="@+id/buttonSaveContact"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Добавить в контакты" />
+            android:text="@string/addInContact" />
 
     </LinearLayout>
 </LinearLayout>

@@ -3,7 +3,6 @@ package ru.toboe512.maillis.adapters;
 
 import android.app.AlertDialog;
 import android.content.Context;
-import android.database.sqlite.SQLiteDatabase;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,13 +16,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.util.List;
 
 import ru.toboe512.maillis.R;
-import ru.toboe512.maillis.db.ChatDbHelper;
 import ru.toboe512.maillis.db.DBService;
-import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.dto.ContactDto;
 
 public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.ContactViewHolder> {
 
-    private final List<Contact> contactList;
+    private final List<ContactDto> contactList;
     private final Context context;
     private final DBService dbService;
 
@@ -40,7 +38,7 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
     }
 
     // ОБНОВЛЕННЫЙ КОНСТРУКТОР: теперь принимает контекст для работы с БД и диалогами
-    public ContactsAdapter(Context context, DBService dbService, List<Contact> contactList) {
+    public ContactsAdapter(Context context, DBService dbService, List<ContactDto> contactList) {
         this.context = context;
         this.contactList = contactList;
         this.dbService = dbService;
@@ -55,7 +53,7 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
 
     @Override
     public void onBindViewHolder(@NonNull ContactViewHolder holder, int position) {
-        Contact contact = contactList.get(position);
+        ContactDto contact = contactList.get(position);
         holder.textViewName.setText(contact.getName());
         holder.textViewEmail.setText(contact.getEmail());
         holder.checkBox.setChecked(contact.isSelected());
@@ -79,15 +77,14 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
     }
 
     // Метод показа всплывающего окна подтверждения удаления
-    private void showDeleteDialog(Contact contact, int position) {
+    private void showDeleteDialog(ContactDto contact, int position) {
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Удалить контакт");
         builder.setMessage("Вы уверены, что хотите удалить контакт " + contact.getName() + "?");
 
         // Кнопка "Да"
-        builder.setPositiveButton("Удалить", (dialog, which) -> {
-            deleteContactFromDb(contact.getId(), position);
-        });
+        builder.setPositiveButton("Удалить", (dialog, which) ->
+                deleteContactFromDb(contact.getId(), position));
 
         // Кнопка "Отмена"
         builder.setNegativeButton("Отмена", (dialog, which) -> dialog.dismiss());
@@ -99,7 +96,7 @@ public class ContactsAdapter extends RecyclerView.Adapter<ContactsAdapter.Contac
     // Нативное удаление строки из SQLite по ее ID
     private void deleteContactFromDb(int contactId, int position) {
 
-        Contact contact = dbService.getContactById(contactId);
+        ContactDto contact = dbService.getContactById(contactId);
         boolean isDeleted = dbService.deleteContact(contactId);
 
         if (isDeleted) {

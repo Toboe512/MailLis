@@ -1,6 +1,8 @@
 package ru.toboe512.maillis.service;
 
 import static android.content.Context.MODE_PRIVATE;
+import static ru.toboe512.maillis.config.Config.PREFS_NAME;
+import static ru.toboe512.maillis.config.Config.UPDATE_INTERVAL_MS;
 
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,11 +17,7 @@ import ru.toboe512.maillis.dto.MessageDto;
  * Полностью освобождает класс службы от сетевой и бизнес-логики.
  */
 public class UpdateRunnable implements Runnable {
-
-    private static final String TAG = "MailLis_SyncRunnable";
-    private static final String PREFS_NAME = "MailLis_Prefs"; // Проверьте имя вашей константы
-    private static final long UPDATE_INTERVAL_MS = 20000;      // Интервал опроса 20 секунд
-
+    private static final String LOG_TAG = "MailLis_UpdateRunnable";
     private final MailLisPushService serviceContext;
     private final Handler updateHandler;
     private final DBService dbService;
@@ -39,13 +37,12 @@ public class UpdateRunnable implements Runnable {
         // Уходим в выделенный рабочий поток, чтобы сетевые блокировки IMAP/SMTP не фризили устройство
         new Thread(() -> {
             try {
-                Log.d(TAG, "=== СТАРТ ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ ===");
-
+                Log.d(LOG_TAG, "=== СТАРТ ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ ===");
                 // Выполняем синхронизацию писем по IMAP
                 int messageCount = mailExecutorService.fetchIncomingOverNetwork(serviceContext, prefs);
 
                 if (messageCount > 0) {
-                    Log.i(TAG, "В базе данных обнаружено новое входящее сообщение! Генерируем Push-уведомление...");
+                    Log.i(LOG_TAG, "В базе данных обнаружено новое входящее сообщение! Генерируем Push-уведомление...");
 
                     // 1. Сигнал для Главного экрана (списка чатов)
                     Intent updateChatsIntent = new Intent("ru.toboe512.maillis.UPDATE_CHATS");
@@ -68,10 +65,9 @@ public class UpdateRunnable implements Runnable {
                 // Запускаем очередь автоматического ретрая (переотправка локально застрявших писем в FIFO)
                 mailExecutorService.retryUnsentMessages(prefs);
 
-                Log.d(TAG, "=== КОНЕЦ ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ ===");
-
+                Log.d(LOG_TAG, "=== КОНЕЦ ЦИКЛА СИНХРОНИЗАЦИИ СЕТИ ===");
             } catch (Exception e) {
-                Log.e(TAG, "Критический сбой внутри конвейера фоновой синхронизации", e);
+                Log.e(LOG_TAG, "Критический сбой внутри конвейера фоновой синхронизации", e);
             }
         }).start();
 

@@ -3,6 +3,8 @@ package ru.toboe512.maillis.activity;
 import static android.widget.Toast.LENGTH_SHORT;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
 import static ru.toboe512.maillis.consts.Consts.EMPTI_STRING;
+import static ru.toboe512.maillis.consts.Consts.GROUP_SYNC;
+import static ru.toboe512.maillis.consts.Consts.SPACE_STRING;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -21,7 +23,8 @@ import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.client.EmailClientImpl;
 import ru.toboe512.maillis.config.Config;
 import ru.toboe512.maillis.db.DBServiceSQLite;
-import ru.toboe512.maillis.dto.Contact;
+import ru.toboe512.maillis.dto.ContactDto;
+import ru.toboe512.maillis.dto.NetworkMessageDto;
 import ru.toboe512.maillis.service.MailExecutorService;
 import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 
@@ -33,7 +36,7 @@ public class AddMembersActivity extends AppCompatActivity {
     private MailExecutorService mailExecutorService;
     private SharedPreferences prefs;
     private ListView listView;
-    private final List<Contact> availableContacts = new ArrayList<>();
+    private final List<ContactDto> availableContacts = new ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -67,14 +70,14 @@ public class AddMembersActivity extends AppCompatActivity {
     private void loadAvailableContacts() {
         String myEmail = prefs.getString(Config.KEY_EMAIL_LOGIN, EMPTI_STRING);
         // Получаем все контакты устройства
-        List<Contact> allContacts = dbService.getContacts();
+        List<ContactDto> allContacts = dbService.getContacts();
         // Получаем тех, кто уже в группе, чтобы исключить их из списка
         List<String> existingMembers = dbService.getGroupMembersEmails(groupId, myEmail);
 
         availableContacts.clear();
         List<String> displayNames = new ArrayList<>();
 
-        for (Contact contact : allContacts) {
+        for (ContactDto contact : allContacts) {
             if (!existingMembers.contains(contact.getEmail()) && !contact.getEmail().equals(myEmail)) {
                 availableContacts.add(contact);
                 displayNames.add(contact.getName() + " (" + contact.getEmail() + ")");
@@ -86,7 +89,7 @@ public class AddMembersActivity extends AppCompatActivity {
 
         // Обработка клика по контакту — приглашаем в группу!
         listView.setOnItemClickListener((parent, view, position, id) -> {
-            Contact selectedContact = availableContacts.get(position);
+            ContactDto selectedContact = availableContacts.get(position);
             inviteContactToExistingGroup(selectedContact.getEmail());
         });
     }
@@ -109,7 +112,8 @@ public class AddMembersActivity extends AppCompatActivity {
                 List<String> currentMembers = dbService.getGroupMembersEmails(groupId, myEmail);
                 for (String oldMember : currentMembers) {
                     if (!oldMember.equals(targetEmail)) {
-                        emailClient.sendGroupSyncNotification(oldMember, groupId, targetEmail, prefs);
+                        var messageDto = new NetworkMessageDto(targetEmail, oldMember, GROUP_SYNC + SPACE_STRING + groupId, null);
+                        String generatedServerUid = emailClient.sendMessage(messageDto, prefs);
                     }
                 }
 

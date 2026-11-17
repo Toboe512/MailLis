@@ -7,6 +7,7 @@ import static android.util.Base64.NO_WRAP;
 import static android.view.View.GONE;
 import static android.view.View.VISIBLE;
 import static android.widget.Toast.LENGTH_SHORT;
+import static java.util.Locale.ENGLISH;
 import static java.util.stream.Collectors.toList;
 import static ru.toboe512.maillis.config.Config.FILE_SEND_ENABLED;
 import static ru.toboe512.maillis.config.Config.PREFS_NAME;
@@ -75,13 +76,14 @@ import ru.toboe512.maillis.service.MailExecutorServiceImpl;
 
 public class ChatActivity extends AppCompatActivity {
 
+    private static final String LOG_TAG = "MailLis_ChatActivity";
+
     private MessagesAdapter messagesAdapter;
     private EditText editTextMessage;
     // Переменные для работы с базой данных
     private DBService dbService;
     private long chatId = 1; // ID текущего чата по умолчанию (для тестов)
     private boolean isGroup; // НАШ НОВЫЙ СИСТЕМНЫЙ ФЛАГ ТИПА КОМНАТЫ
-    private EmailClient emailClient;
     private String recipientEmail = EMPTI_STRING;
     private String myEmail = EMPTI_STRING; // Наш реальный Email из настроек
     // Объявляем переменную приемника на уровне класса ChatActivity
@@ -89,8 +91,6 @@ public class ChatActivity extends AppCompatActivity {
     // Объявляем лаунчер как поле класса ChatActivity
     private ActivityResultLauncher<Intent> photoPickerLauncher;
 
-    // 2. Объявляем переменные класса
-    private ImageButton buttonAttachFile;
     private ActivityResultLauncher<String> filePickerLauncher;
 
     private MailExecutorService mailExecutorService;
@@ -125,17 +125,15 @@ public class ChatActivity extends AppCompatActivity {
             }
         }
 
-        dbService = DBServiceSQLite.getInstance(this);
-        emailClient = EmailClientImpl.getInstance();
-        recipientEmail = dbService.getRecipientEmailByChatId(chatId);
         messagesAdapter = new MessagesAdapter();
-
+        dbService = DBServiceSQLite.getInstance(this);
+        EmailClient emailClient = EmailClientImpl.getInstance();
         mailExecutorService = MailExecutorServiceImpl.getInstance(emailClient, dbService, this);
+        recipientEmail = dbService.getRecipientEmailByChatId(chatId);
 
         editTextMessage = findViewById(R.id.editTextMessage);
 
         RecyclerView recyclerView = findViewById(R.id.recyclerViewMessages);
-
         var layoutManager = new LinearLayoutManager(this);
         layoutManager.setStackFromEnd(true); // Чат строится снизу вверх, как в Telegram
         recyclerView.setLayoutManager(layoutManager);
@@ -148,10 +146,121 @@ public class ChatActivity extends AppCompatActivity {
         updateUiFromDatabase();
 
         // Кнопка локальной отправки сообщения
-        ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
-        buttonSend.setOnClickListener(v -> buttonSend(prefs));
+        buttonSend(prefs);
 
         // ИНИЦИАЛИЗАЦИЯ ФОТО-ПИКЕРА ГАЛЕРЕИ
+        buttonAttachImageFile(prefs);
+
+        // Инициализируем нашу кастомную кнопку меню
+        buttonChatMenu();
+
+        deleteSelected();
+
+        buttonChatBack();
+
+        fileSend();
+    }
+
+    private void buttonSend(SharedPreferences prefs) {
+        ImageButton buttonSend = findViewById(R.id.buttonSendMessage);
+        buttonSend.setOnClickListener(v -> {
+            String text = editTextMessage.getText().toString().trim();
+            if (text.isEmpty()) {
+                return;
+            }
+
+            long currentTimestamp = System.currentTimeMillis();
+
+            // Сохраняем сообщение локально в SQLite базу данных
+            // Метод saveMessage сам выставит статус "is_sent = 0" (часики) и "is_mine = 1"
+            int generatedId;
+            if (isGroup) {
+                generatedId = dbService.saveGroupMessage(chatId, myEmail, GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, text, currentTimestamp);
+            } else {
+                generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
+            }
+
+            // Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
+            // Сообщение мгновенно появится на экране со значком "Часики"
+            updateUiFromDatabase();
+
+            // Чистим поле ввода сообщения
+            editTextMessage.getText().clear();
+
+            if (isGroup) {
+                // РЕЖИМ А: ОТПРАВКА В ГРУППОВОЙ ЧАТ (Симметричный AES-GCM)
+                try {
+                    // Достаем общий 32-байтный секретный ключ этой группы из SQLite
+                    byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
+
+                    if (groupSecretKey != null && groupSecretKey.length > 0) {
+                        // Шифруем текст сообщения общим AES-ключом группы
+                        byte[] encryptedGroupBytes = CryptoServiceImpl.encryptGroupText(text, groupSecretKey);
+                        String base64GroupText = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
+
+                        // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
+                        mailExecutorService.sendGroupMessageOverNetwork(chatId,
+                                GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
+                                    @Override
+                                    public void onSynchronized(MessageDto updatedMessages) {
+                                        // Сразу обновляем экран (сообщение перейдет в статус отправки)
+                                        updateUiFromDatabase();
+                                    }
+
+                                    @Override
+                                    public void onError(Exception e) {
+                                        // Сразу обновляем экран (сообщение перейдет в статус отправки)
+                                        updateUiFromDatabase();
+                                    }
+                                });
+                    } else {
+                        Log.e(LOG_TAG, "Ошибка: Ключ группы еще не получен или поврежден!");
+                        Toast.makeText(ChatActivity.this, "Ошибка: Ключ шифрования группы отсутствует.", LENGTH_SHORT).show();
+                    }
+                } catch (Exception e) {
+                    Log.e(LOG_TAG, "Ошибка шифрования группового сообщения", e);
+                }
+                return;
+            }
+            // РЕЖИМ Б: ОТПРАВКА В ОДИНОЧНЫЙ ЧАТ (Асимметричный Google Tink ECIES)
+            String sendTxt = text;
+            try {
+                // Извлекаем публичный Tink Protobuf-ключ собеседника
+                byte[] peerPublicKeyBytes = dbService.getPublicKey(chatId);
+
+                if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
+                    // Передаем именно публичный ключ друга в метод encode с вашим контекстом "MailLis_P2P_Protocol_v1"
+                    sendTxt = new CryptoServiceImpl(this).encrypt(text, peerPublicKeyBytes);
+                } else {
+                    Log.w(LOG_TAG, "Ключ чата еще не установлен. Отправка обычным текстом.");
+                }
+            } catch (GeneralSecurityException | IOException e) {
+                Log.e(LOG_TAG, "Ошибка асимметричного шифрования при отправке", e);
+                return;
+            }
+
+            // 3. Отправляем одиночное сообщение по сети через SMTP
+            mailExecutorService.sendEmailOverNetwork(recipientEmail, CHAT_MESSAGE, sendTxt,
+                    generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
+
+                        @Override
+                        public void onSynchronized(MessageDto updatedMessageDto) {
+                            // Успешно отправлено! Обновляем UI через DiffUtil (появится одна галочка)
+                            updateUiFromDatabase();
+                        }
+
+                        @Override
+                        public void onError(Exception e) {
+                            // Сеть полностью отключилась или моргнула
+                            Toast.makeText(ChatActivity.this, "Сеть недоступна. Сообщение отложено.", LENGTH_SHORT).show();
+                            // Перечитываем SQLite, чтобы у сообщения гарантированно горел значок "Часики" (is_sent = 0)
+                            updateUiFromDatabase();
+                        }
+                    });
+        });
+    }
+
+    private void buttonAttachImageFile(SharedPreferences prefs) {
         photoPickerLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
@@ -173,8 +282,10 @@ public class ChatActivity extends AppCompatActivity {
             intentImage.setType("image/*");
             photoPickerLauncher.launch(intentImage);
         });
+    }
 
-        // Инициализируем нашу кастомную кнопку меню
+
+    private void buttonChatMenu() {
         ImageButton buttonChatMenu = findViewById(R.id.buttonChatMenu);
         if (buttonChatMenu != null) {
             buttonChatMenu.setOnClickListener(v -> {
@@ -215,35 +326,34 @@ public class ChatActivity extends AppCompatActivity {
                 popup.show();
             });
         }
+    }
 
+    private void deleteSelected() {
         View layoutNormalToolbar = findViewById(R.id.layoutNormalToolbar); // Обычный заголовок чата
         View layoutEditToolbar = findViewById(R.id.layoutEditToolbar);     // Контекстный тулбар удаления
         TextView textViewSelectedCount = findViewById(R.id.textViewSelectedCount);
 
         // Вешаем слушатель множественного выбора на адаптер
-        messagesAdapter.setMultiChoiceListener(new MessagesAdapter.MultiChoiceListener() {
-            @Override
-            public void onMultiChoiceStateChanged(boolean isActive, int selectedCount) {
-                if (isActive) {
-                    // Переключаем тулбары: прячем обычный, показываем контекстный
-                    if (layoutNormalToolbar != null) {
-                        layoutNormalToolbar.setVisibility(GONE);
-                    }
-                    if (layoutEditToolbar != null) {
-                        layoutEditToolbar.setVisibility(VISIBLE);
-                    }
-                    if (textViewSelectedCount != null) {
-                        textViewSelectedCount.setText("Выбрано: " + selectedCount);
-                    }
-                    return;
-                }
-                // Возвращаем всё назад, если выбор пуст
+        messagesAdapter.setMultiChoiceListener((isActive, selectedCount) -> {
+            if (isActive) {
+                // Переключаем тулбары: прячем обычный, показываем контекстный
                 if (layoutNormalToolbar != null) {
-                    layoutNormalToolbar.setVisibility(VISIBLE);
+                    layoutNormalToolbar.setVisibility(GONE);
                 }
                 if (layoutEditToolbar != null) {
-                    layoutEditToolbar.setVisibility(GONE);
+                    layoutEditToolbar.setVisibility(VISIBLE);
                 }
+                if (textViewSelectedCount != null) {
+                    textViewSelectedCount.setText(String.format(ENGLISH, "Выбрано: %d", selectedCount));
+                }
+                return;
+            }
+            // Возвращаем всё назад, если выбор пуст
+            if (layoutNormalToolbar != null) {
+                layoutNormalToolbar.setVisibility(VISIBLE);
+            }
+            if (layoutEditToolbar != null) {
+                layoutEditToolbar.setVisibility(GONE);
             }
         });
 
@@ -301,7 +411,9 @@ public class ChatActivity extends AppCompatActivity {
                 finish();
             }
         });
+    }
 
+    private void buttonChatBack() {
         // Инициализируем нашу кастомную стрелочку назад
         ImageButton buttonChatBack = findViewById(R.id.buttonChatBack);
         if (buttonChatBack != null) {
@@ -311,13 +423,17 @@ public class ChatActivity extends AppCompatActivity {
                 getOnBackPressedDispatcher().onBackPressed();
             });
         }
-
-        if (FILE_SEND_ENABLED) {
-            fileSend();
-        }
     }
 
     private void fileSend() {
+        ImageButton buttonAttachFile = findViewById(R.id.buttonAttachOtherFile);
+        if (buttonAttachFile == null) {
+            return;
+        }
+        if (!FILE_SEND_ENABLED) {
+            buttonAttachFile.setVisibility(GONE);
+            return;
+        }
         // ИНИЦИАЛИЗИРУЕМ СЛУШАТЕЛЬ ВЫБОРА ФАЙЛА (РЕГИСТРИРУЕМ КОНТРАКТ)
         filePickerLauncher = registerForActivityResult(
                 new ActivityResultContracts.GetContent(),
@@ -330,100 +446,10 @@ public class ChatActivity extends AppCompatActivity {
         );
 
         // НАЖАТИЕ НА КНОПКУ ПЛЮС — Открываем системный проводник
-        buttonAttachFile = findViewById(R.id.buttonAttachOtherFile);
-        if (buttonAttachFile != null) {
-            buttonAttachFile.setOnClickListener(v -> {
-                // "*/*" означает, что пользователь может выбрать абсолютно любой файл (PDF, ZIP, DOCX и т.д.)
-                filePickerLauncher.launch("*/*");
-            });
-        }
-    }
-
-    private void buttonSend(SharedPreferences prefs) {
-        String text = editTextMessage.getText().toString().trim();
-        if (text.isEmpty()) {
-            return;
-        }
-
-        long currentTimestamp = System.currentTimeMillis();
-
-        // Сохраняем сообщение локально в SQLite базу данных
-        // Метод saveMessage сам выставит статус "is_sent = 0" (часики) и "is_mine = 1"
-        int generatedId;
-        if (isGroup) {
-            generatedId = dbService.saveGroupMessage(chatId, myEmail, GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, text, currentTimestamp);
-        } else {
-            generatedId = dbService.saveMessage(chatId, myEmail, CHAT_MESSAGE, text, currentTimestamp);
-        }
-
-        // Единый источник правды! Сразу перечитываем базу данных через наш DiffUtil.
-        // Сообщение мгновенно появится на экране со значком "Часики"
-        updateUiFromDatabase();
-
-        // Чистим поле ввода сообщения
-        editTextMessage.getText().clear();
-
-        if (isGroup) {
-            // РЕЖИМ А: ОТПРАВКА В ГРУППОВОЙ ЧАТ (Симметричный AES-GCM)
-            try {
-                // Достаем общий 32-байтный секретный ключ этой группы из SQLite
-                byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
-
-                if (groupSecretKey != null && groupSecretKey.length > 0) {
-                    // Шифруем текст сообщения общим AES-ключом группы
-                    byte[] encryptedGroupBytes = CryptoServiceImpl.encryptGroupText(text, groupSecretKey);
-                    String base64GroupText = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
-
-                    // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
-                    mailExecutorService.sendGroupMessageOverNetwork(chatId,
-                            GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs);
-
-                    // Сразу обновляем экран (сообщение перейдет в статус отправки)
-                    updateUiFromDatabase();
-                } else {
-                    Log.e("MailLis_Group", "Ошибка: Ключ группы еще не получен или поврежден!");
-                    Toast.makeText(ChatActivity.this, "Ошибка: Ключ шифрования группы отсутствует.", LENGTH_SHORT).show();
-                }
-            } catch (Exception e) {
-                Log.e("MailLis_Group_Err", "Ошибка шифрования группового сообщения", e);
-            }
-            return;
-        }
-        // РЕЖИМ Б: ОТПРАВКА В ОДИНОЧНЫЙ ЧАТ (Асимметричный Google Tink ECIES)
-        String sendTxt = text;
-        try {
-            // Извлекаем публичный Tink Protobuf-ключ собеседника
-            byte[] peerPublicKeyBytes = dbService.getPublicKey(chatId);
-
-            if (peerPublicKeyBytes != null && peerPublicKeyBytes.length > 5) {
-                // Передаем именно публичный ключ друга в метод encode с вашим контекстом "MailLis_P2P_Protocol_v1"
-                sendTxt = new CryptoServiceImpl(this).encrypt(text, peerPublicKeyBytes);
-            } else {
-                Log.w("MailLis_Crypto", "Ключ чата еще не установлен. Отправка обычным текстом.");
-            }
-        } catch (GeneralSecurityException | IOException e) {
-            Log.e("CRYPTO_SERVICE_ERR", "Ошибка асимметричного шифрования при отправке", e);
-            return;
-        }
-
-        // 3. Отправляем одиночное сообщение по сети через SMTP
-        mailExecutorService.sendEmailOverNetwork(recipientEmail, CHAT_MESSAGE, sendTxt,
-                generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
-
-                    @Override
-                    public void onSynchronized(MessageDto updatedMessageDto) {
-                        // Успешно отправлено! Обновляем UI через DiffUtil (появится одна галочка)
-                        updateUiFromDatabase();
-                    }
-
-                    @Override
-                    public void onError(Exception e) {
-                        // Сеть полностью отключилась или моргнула
-                        Toast.makeText(ChatActivity.this, "Сеть недоступна. Сообщение отложено.", LENGTH_SHORT).show();
-                        // Перечитываем SQLite, чтобы у сообщения гарантированно горел значок "Часики" (is_sent = 0)
-                        updateUiFromDatabase();
-                    }
-                });
+        buttonAttachFile.setOnClickListener(v -> {
+            // "*/*" означает, что пользователь может выбрать абсолютно любой файл (PDF, ZIP, DOCX и т.д.)
+            filePickerLauncher.launch("*/*");
+        });
     }
 
     @Override
@@ -485,7 +511,9 @@ public class ChatActivity extends AppCompatActivity {
                 // Б. Создаем безопасную папку отправляемых файлов во внутреннем кэше приложения [source]
                 File outputDir = new File(getFilesDir(), "MailLis_Sent_Docs");
                 if (!outputDir.exists()) {
-                    outputDir.mkdirs();
+                    if (!outputDir.mkdirs()) {
+                        return;
+                    }
                 }
 
                 // Имя файла на диске с таймстемпом для уникальности
@@ -538,7 +566,7 @@ public class ChatActivity extends AppCompatActivity {
                 updateUiFromDatabase();
 
             } catch (Exception e) {
-                Log.e("MailLis_AttachFile", "Критическая ошибка при выборе и отправке документа", e);
+                Log.e(LOG_TAG, "Критическая ошибка при выборе и отправке документа", e);
                 runOnUiThread(() -> Toast.makeText(ChatActivity.this, "Ошибка обработки файла", LENGTH_SHORT).show());
             }
         }).start();
@@ -574,41 +602,50 @@ public class ChatActivity extends AppCompatActivity {
                 .setTitle("Удаление чата")
                 .setMessage("Вы действительно хотите удалить этот чат и всю историю сообщений? Отменить это действие будет нельзя.")
                 .setCancelable(true)
-                .setPositiveButton("Удалить", (dialog, which) -> {
-                    new Thread(() -> {
-                        List<String> members = new ArrayList<>();
-                        boolean isDeleted;
+                .setPositiveButton("Удалить", (dialog, which) ->
+                        new Thread(() -> {
+                            List<String> members = new ArrayList<>();
+                            boolean isDeleted;
 
-                        if (isGroup) {
-                            SharedPreferences prefs = this.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-                            long currentTimestamp = System.currentTimeMillis();
-                            members = dbService.getGroupMembers(chatId, myEmail);
-                            int generatedId = dbService.saveGroupMessage(chatId, myEmail,
-                                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
-                            mailExecutorService.sendGroupMessageOverNetwork(chatId,
-                                    GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs);
-                            isDeleted = dbService.deleteGroupChatAndMessages(chatId);
-                        } else {
-                            members.add(dbService.getRecipientEmailByChatId(chatId));
-                            isDeleted = dbService.deleteChatAndMessages(chatId);
-                        }
+                            if (isGroup) {
+                                SharedPreferences prefs = this.getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                                long currentTimestamp = System.currentTimeMillis();
+                                members = dbService.getGroupMembers(chatId, myEmail);
+                                int generatedId = dbService.saveGroupMessage(chatId, myEmail,
+                                        GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
+                                mailExecutorService.sendGroupMessageOverNetwork(chatId,
+                                        GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
+                                            @Override
+                                            public void onSynchronized(MessageDto updatedMessages) {
+                                                updateUiFromDatabase();
+                                            }
 
-                        if (isDeleted) {
-                            // 3. Если группа стерта, убираем из кэша публичные ключи участников
-                            for (String memberEmail : members) {
-                                dbService.cleanUpPublicKeyIfNoContexts(memberEmail);
-                            }
-                        }
-                        runOnUiThread(() -> {
-                            if (isDeleted) {
-                                Toast.makeText(this, "Чат успешно удален", LENGTH_SHORT).show();
-                                finish(); // Закрываем экран и возвращаемся в список чатов
+                                            @Override
+                                            public void onError(Exception e) {
+                                                updateUiFromDatabase();
+                                            }
+                                        });
+                                isDeleted = dbService.deleteGroupChatAndMessages(chatId);
                             } else {
-                                Toast.makeText(this, "Не удалось удалить чат", LENGTH_SHORT).show();
+                                members.add(dbService.getRecipientEmailByChatId(chatId));
+                                isDeleted = dbService.deleteChatAndMessages(chatId);
                             }
-                        });
-                    }).start();
-                })
+
+                            if (isDeleted) {
+                                // 3. Если группа стерта, убираем из кэша публичные ключи участников
+                                for (String memberEmail : members) {
+                                    dbService.cleanUpPublicKeyIfNoContexts(memberEmail);
+                                }
+                            }
+                            runOnUiThread(() -> {
+                                if (isDeleted) {
+                                    Toast.makeText(this, "Чат успешно удален", LENGTH_SHORT).show();
+                                    finish(); // Закрываем экран и возвращаемся в список чатов
+                                } else {
+                                    Toast.makeText(this, "Не удалось удалить чат", LENGTH_SHORT).show();
+                                }
+                            });
+                        }).start())
                 .setNegativeButton("Отмена", null)
                 .show();
     }
@@ -637,7 +674,7 @@ public class ChatActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 // Передаем список в адаптер
                 messagesAdapter.setMessages(freshMessageDtos);
-                Log.d("MailLis_UI_Fix", "Интерфейс чата принудительно перерисован. Сообщений: "
+                Log.d(LOG_TAG, "Интерфейс чата принудительно перерисован. Сообщений: "
                         + freshMessageDtos.size());
             });
         }).start();
@@ -649,7 +686,7 @@ public class ChatActivity extends AppCompatActivity {
         return new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                Log.d("MailLis_ChatUI", "Получен сигнал новой почты! Мгновенно обновляем переписку в чате...");
+                Log.d(LOG_TAG, "Получен сигнал новой почты! Мгновенно обновляем переписку в чате...");
                 // Включаем асинхронный режим, чтобы удержать контекст на время чтения диска
                 PendingResult pendingResult = goAsync();
                 // Используем наш отлаженный метод: считываем базу и точечно обновляем экран через DiffUtil
@@ -691,7 +728,17 @@ public class ChatActivity extends AppCompatActivity {
 
                 // ПЕРЕДАЕМ В СЕТЕВОЙ СЛОЙ НА ШИФРОВАНИЕ И ОТПРАВКУ ПО SMTP
                 if (isGroup) {
-                    mailExecutorService.sendGroupImageOverNetwork(chatId, rawImageBytes, generatedId, prefs);
+                    mailExecutorService.sendGroupImageOverNetwork(chatId, rawImageBytes, generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
+                        @Override
+                        public void onSynchronized(MessageDto updatedMessages) {
+                            updateUiFromDatabase();
+                        }
+
+                        @Override
+                        public void onError(Exception e) {
+                            updateUiFromDatabase();
+                        }
+                    });
                 } else {
                     mailExecutorService.sendImageOverNetwork(chatId, recipientEmail, rawImageBytes, generatedId, prefs,
                             new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
@@ -713,7 +760,7 @@ public class ChatActivity extends AppCompatActivity {
                 }
 
             } catch (Exception e) {
-                Log.e("MailLis_Media", "Ошибка подготовки фотографии к отправке", e);
+                Log.e(LOG_TAG, "Ошибка подготовки фотографии к отправке", e);
             }
         }).start();
     }

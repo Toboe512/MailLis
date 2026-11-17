@@ -95,4 +95,7 @@ dependencies {
     implementation("com.google.crypto.tink:tink-android:1.15.0")
 
     implementation("androidx.biometric:biometric:1.2.0-alpha05")
+
+    // Официальное решение Google для управления заставками на Android 12-16+
+    implementation("androidx.core:core-splashscreen:1.0.1")
 }

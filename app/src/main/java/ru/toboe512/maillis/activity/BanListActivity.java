@@ -59,23 +59,22 @@ public class BanListActivity extends AppCompatActivity {
                     .setTitle("Разблокировка")
                     .setMessage("Вы действительно хотите разблокировать пользователя " + email + "? Он снова сможет писать вам.")
                     .setCancelable(true)
-                    .setPositiveButton("Разблокировать", (dialog, which) -> {
-                        new Thread(() -> {
-                            // Удаляем e-mail из таблицы ban_list
-                            boolean isUnbanned = dbService.unbanUser(email);
+                    .setPositiveButton("Разблокировать", (dialog, which) ->
+                            new Thread(() -> {
+                                // Удаляем e-mail из таблицы ban_list
+                                boolean isUnbanned = dbService.unbanUser(email);
 
-                            runOnUiThread(() -> {
-                                if (isUnbanned) {
-                                    bannedEmailsList.remove(position);
-                                    adapter.notifyItemRemoved(position);
-                                    adapter.notifyItemRangeChanged(position, bannedEmailsList.size());
-                                    Toast.makeText(BanListActivity.this, "Пользователь разблокирован", LENGTH_SHORT).show();
-                                } else {
-                                    Toast.makeText(BanListActivity.this, "Ошибка разблокировки", LENGTH_SHORT).show();
-                                }
-                            });
-                        }).start();
-                    })
+                                runOnUiThread(() -> {
+                                    if (isUnbanned) {
+                                        bannedEmailsList.remove(position);
+                                        adapter.notifyItemRemoved(position);
+                                        adapter.notifyItemRangeChanged(position, bannedEmailsList.size());
+                                        Toast.makeText(BanListActivity.this, "Пользователь разблокирован", LENGTH_SHORT).show();
+                                    } else {
+                                        Toast.makeText(BanListActivity.this, "Ошибка разблокировки", LENGTH_SHORT).show();
+                                    }
+                                });
+                            }).start())
                     .setNegativeButton("Отмена", null)
                     .show();
         });
@@ -143,7 +142,9 @@ public class BanListActivity extends AppCompatActivity {
                 if (freshBanned != null) {
                     bannedEmailsList.clear();
                     bannedEmailsList.addAll(freshBanned);
-                    adapter.notifyDataSetChanged();
+                    // КРИТИЧЕСКИЙ ФИКС: Сообщаем, что с самой первой позиции вставилась пачка элементов
+                    // Это мгновенно уберёт жёлтый ворнинг и заставит список обновиться плавно! [source]
+                    adapter.notifyItemRangeChanged(0, bannedEmailsList.size());
                 }
             });
         }).start();

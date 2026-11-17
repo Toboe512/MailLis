@@ -10,4 +10,15 @@
         <!-- ВОТ ЭТА СТРОКА: включает темные иконки статус-бара для светлого фона -->
         <item name="android:windowLightStatusBar">true</item>
     </style>
+    <!-- КРИТИЧЕСКИЙ ФИКС: Специальная тема для SplashActivity -->
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <!-- Задаем цвет фона системного сплэш-экрана (например, наш фирменный синий) -->
+        <item name="windowSplashScreenBackground">#0088CC</item>
+
+        <!-- Указываем иконку, которая отобразится по центру (можно поставить @mipmap/ic_launcher) -->
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+
+        <!-- Важнейший атрибут: куда переключить тему ПОСЛЕ завершения заставки и биометрии -->
+        <item name="postSplashScreenTheme">@style/Theme.AppCompat.Light.NoActionBar</item>
+    </style>
 </resources>

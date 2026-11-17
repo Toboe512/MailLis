@@ -3,6 +3,7 @@ package ru.toboe512.maillis.utils;
 import androidx.recyclerview.widget.DiffUtil;
 
 import java.util.List;
+import java.util.Objects;
 
 import ru.toboe512.maillis.dto.MessageDto;
 
@@ -42,15 +43,17 @@ public class MessageDiffCallback extends DiffUtil.Callback {
             return false;
         }
 
-        // Если текст, время или UID сервера изменились — элемент будет точечно перерисован
-        boolean changText = oldMsg.getText() == null ||
-                oldMsg.getText().equals(newMsg.getText());
-        boolean changeServerUid = oldMsg.getServerUid() == null ||
-                oldMsg.getServerUid().equals(newMsg.getServerUid());
+        // УЛЬТИМАТИВНЫЙ И БЕЗОПАСНЫЙ ФИКС СРАВНЕНИЯ СТРОК ЧЕРЕЗ Objects.equals [source]
+        // Он вернет true ТОЛЬКО если обе строки null ИЛИ обе строки абсолютно идентичны текст в текст!
+        boolean textMatches = Objects.equals(oldMsg.getText(), newMsg.getText());
+        boolean serverUidMatches = Objects.equals(oldMsg.getServerUid(), newMsg.getServerUid());
+        boolean filePathMatches = Objects.equals(oldMsg.getFilePath(), newMsg.getFilePath()); // Критично для картинок!
 
+        // Элемент считается неизменным ТОЛЬКО если совпали ВСЕ его параметры [source]
         return oldMsg.getStatus() == newMsg.getStatus() &&
-                changText &&
                 oldMsg.getTimestamp() == newMsg.getTimestamp() &&
-                changeServerUid;
+                textMatches &&
+                serverUidMatches &&
+                filePathMatches;
     }
 }
