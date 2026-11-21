@@ -134,7 +134,7 @@ public class ChatsAdapter extends RecyclerView.Adapter<ChatsAdapter.ChatViewHold
             long currentTimestamp = System.currentTimeMillis();
             int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
-            mailExecutorService.sendGroupMessageOverNetwork(chatId,
+            mailExecutorService.sendGroupMessageOverNetwork(chatId, members,
                     GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
                         @Override
                         public void onSynchronized(MessageDto updatedMessages) {

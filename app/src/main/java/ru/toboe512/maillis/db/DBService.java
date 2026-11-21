@@ -307,7 +307,14 @@ public interface DBService {
      */
     List<MessageDto> getUnsentMessages();
 
-    int getChatIdByMessageId(int messageId);
+    /**
+     * Возвращает корректный 64-битный идентификатор чата (long) по ID сообщения.
+     * Для личных чатов возвращает chat_id, для групповых — автоматически подтягивает remote_group_id.
+     *
+     * @param messageId локальный ID сообщения из таблицы messages
+     * @return 64-битный ID чата или -1, если запись не найдена
+     */
+    long getChatIdByMessageId(int messageId);
 
     /**
      * Добавляет пользователя в чёрный список (ban_list) и зачищает его крипто-ключи.

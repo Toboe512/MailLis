@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 
 import java.io.File;
+import java.util.List;
 
 public interface MailExecutorService {
 
@@ -22,7 +23,7 @@ public interface MailExecutorService {
 
     void sendGroupImageOverNetwork(long chatId, byte[] rawImageBytes, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener);
 
-    void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener);
+    void sendGroupMessageOverNetwork(long chatId, List<String> recipients, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener);
 
     void sendGroupInviteOverNetwork(String recipientEmail, long chatId, String groupName, byte[] groupSecretKey, SharedPreferences prefs);
 

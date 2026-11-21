@@ -1318,28 +1318,38 @@ public class DBServiceSQLite implements DBService {
         return unsentList;
     }
 
-    public int getChatIdByMessageId(int messageId) {
+    /**
+     * Возвращает корректный 64-битный идентификатор чата (long) по ID сообщения.
+     * Для личных чатов возвращает chat_id, для групповых — автоматически подтягивает remote_group_id.
+     *
+     * @param messageId локальный ID сообщения из таблицы messages
+     * @return 64-битный ID чата или -1, если запись не найдена
+     */
+    public long getChatIdByMessageId(int messageId) {
         SQLiteDatabase db = dbHelper.getReadableDatabase();
-        int chatId = -1;
+        long resultChatId = -1;
 
-        // Запрашиваем только колонку chat_id для строки с указанным id
-        try (Cursor cursor = db.query(
-                "messages",
-                new String[]{"chat_id"},
-                "id = ?",
-                new String[]{String.valueOf(messageId)},
-                null, null, null
-        )) {
+        // Если сообщение групповое (is_group_message = 1), берем remote_group_id из таблицы group_chats.
+        // COALESCE страхует на случай, если в messages.chat_id уже записан сам remote_group_id.
+        String sql = "SELECT " +
+                "  CASE WHEN m.is_group_message = 1 " +
+                "    THEN COALESCE(gc.remote_group_id, m.chat_id) " +
+                "    ELSE m.chat_id " +
+                "  END AS target_id " +
+                "FROM messages m " +
+                "LEFT JOIN group_chats gc ON m.chat_id = gc.id " +
+                "WHERE m.id = ?";
 
-            // Так как id уникален, проверяем строго одну первую запись
-            if (cursor.moveToFirst()) {
-                int chatIdIndex = cursor.getColumnIndex("chat_id");
-                if (chatIdIndex >= 0) {
-                    chatId = cursor.getInt(chatIdIndex);
-                }
+        try (Cursor cursor = db.rawQuery(sql, new String[]{String.valueOf(messageId)})) {
+            if (cursor != null && cursor.moveToFirst()) {
+                // КРИТИЧНО: Используем getLong вместо getInt, чтобы избежать переполнения больших ID
+                resultChatId = cursor.getLong(0);
             }
+        } catch (Exception e) {
+            Log.e("MailLis_DB", "Ошибка получения chatId для сообщения: " + messageId, e);
         }
-        return chatId;
+
+        return resultChatId;
     }
 
     public boolean banUser(String email) {

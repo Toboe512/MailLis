@@ -185,8 +185,10 @@ public class ChatActivity extends AppCompatActivity {
                         byte[] encryptedGroupBytes = CryptoServiceImpl.encryptGroupText(text, groupSecretKey);
                         String base64GroupText = Base64.encodeToString(encryptedGroupBytes, NO_WRAP);
 
+                        List<String> members = dbService.getGroupMembers(chatId, myEmail);
+
                         // Вызываем спроектированный ранее веерный метод отправки SMTP всем участникам
-                        mailExecutorService.sendGroupMessageOverNetwork(chatId,
+                        mailExecutorService.sendGroupMessageOverNetwork(chatId, members,
                                 GROUP_MESSAGE_MAIL + SPACE_STRING + chatId, base64GroupText, generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
                                     @Override
                                     public void onSynchronized(MessageDto updatedMessages) {
@@ -610,7 +612,7 @@ public class ChatActivity extends AppCompatActivity {
                                 members = dbService.getGroupMembers(chatId, myEmail);
                                 int generatedId = dbService.saveGroupMessage(chatId, myEmail,
                                         GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, currentTimestamp);
-                                mailExecutorService.sendGroupMessageOverNetwork(chatId,
+                                mailExecutorService.sendGroupMessageOverNetwork(chatId, members,
                                         GROUP_LEAVE + SPACE_STRING + chatId, EMPTI_STRING, generatedId, prefs, new MailExecutorServiceImpl.OnMessagesSynchronizedListener() {
                                             @Override
                                             public void onSynchronized(MessageDto updatedMessages) {

@@ -107,6 +107,11 @@ public class MailExecutorServiceImpl implements MailExecutorService {
             try {
                 String subject = msg.getSubject();
                 String senderEmail = msg.getFrom();
+                String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
+                // Обрабатываем только чужие сообщения
+                if (senderEmail.contains(myEmail)) {
+                    continue;
+                }
 
                 // ПРОВЕРКА НА БАН: Если отправитель в черном списке — стираем письмо и игнорируем!
                 if (dbService.isUserBanned(senderEmail)) {
@@ -145,11 +150,6 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 }
                 if (subject.contains(GROUP_CHAT_FILE)) {
                     result = result + groupChatFile(msg, context.getCacheDir(), prefs);
-                    continue;
-                }
-                String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
-                //Далее блок ловли хендшейка свои майлы нам не интересны
-                if (senderEmail.contains(myEmail)) {
                     continue;
                 }
                 //  В СУЩЕСТВУЮЩУЮ ГРУППУ ДОБАВИЛСЯ КТО-ТО ЕЩЕ (Синхронизация состава)
@@ -860,7 +860,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
             for (MessageDto msg : unsentMessageDtos) {
                 try {
                     // Вытаскиваем chatId для этого сообщения (нужно будет получить recipientEmail)
-                    int chatId = dbService.getChatIdByMessageId(msg.getId());
+                    long chatId = dbService.getChatIdByMessageId(msg.getId());
 
                     // 💥 ЗАЩИТА: Мгновенно бронируем сообщение в SQLite, переводя статус в 3!
                     // Теперь никакой другой поток (например, кнопка) не отправит дубликат.
@@ -882,15 +882,34 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                             sendGroupImageOverNetwork(chatId, rawImageBytes, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
                                 @Override
                                 public void onSynchronized(MessageDto updatedMessages) {
-
+                                    dbService.markMessageAsSent(msg.getId(), updatedMessages.getServerUid());
                                 }
 
                                 @Override
                                 public void onError(Exception e) {
-
+                                    dbService.resetMessageStatusToUnsent(msg.getId());
                                 }
                             });
                         } else {
+                            if (msg.getSubject().contains(GROUP_INVITE_MAIL) || msg.getSubject().contains(GROUP_PRE_INVITE_MAIL)) {
+
+                                List<String> members = dbService.getGroupMembers(chatId, myEmail);
+                                // Вызываем наш веерный SMTP метод
+                                sendGroupMessageOverNetwork(chatId, members, msg.getSubject(), msg.getText(), msg.getId(), prefs, new OnMessagesSynchronizedListener() {
+                                    @Override
+                                    public void onSynchronized(MessageDto updatedMessages) {
+                                        dbService.markMessageAsSent(msg.getId(), updatedMessages.getServerUid());
+                                    }
+
+                                    @Override
+                                    public void onError(Exception e) {
+                                        dbService.resetMessageStatusToUnsent(msg.getId());
+                                    }
+                                });
+                                Log.d("MailLis_Retry", "Групповое сообщение " + msg.getId() +
+                                        " успешно отправлено в очередь ретрая.");
+                                continue;
+                            }
 
                             // КАНАЛ РЕТРАЯ А: ГРУППОВОЕ СООБЩЕНИЕ (Веерный SMTP + AES-GCM)
                             byte[] groupSecretKey = dbService.getGroupSecretKey(chatId);
@@ -900,16 +919,18 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                                 byte[] encryptedBytes = CryptoServiceImpl.encryptGroupText(msg.getText(), groupSecretKey);
                                 String base64GroupText = Base64.encodeToString(encryptedBytes, NO_WRAP);
 
+                                List<String> members = dbService.getGroupMembers(chatId, myEmail);
+
                                 // Вызываем наш веерный SMTP метод
-                                sendGroupMessageOverNetwork(chatId, msg.getSubject(), base64GroupText, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
+                                sendGroupMessageOverNetwork(chatId, members, msg.getSubject(), base64GroupText, msg.getId(), prefs, new OnMessagesSynchronizedListener() {
                                     @Override
                                     public void onSynchronized(MessageDto updatedMessages) {
-
+                                        dbService.markMessageAsSent(msg.getId(), updatedMessages.getServerUid());
                                     }
 
                                     @Override
                                     public void onError(Exception e) {
-
+                                        dbService.resetMessageStatusToUnsent(msg.getId());
                                     }
                                 });
                                 Log.d("MailLis_Retry", "Групповое сообщение " + msg.getId() +
@@ -941,6 +962,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                                 Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() +
                                         " успешно переотправлено после восстановления сети. UID: " +
                                         msg.getServerUid());
+                                dbService.markMessageAsSent(msg.getId(), updatedMessages.getServerUid());
                             }
 
                             @Override
@@ -963,7 +985,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                             sendTxt = sharedSecret != null ? cryptoService.encrypt(sendTxt, sharedSecret) : sendTxt;
                         } catch (GeneralSecurityException | IOException e) {
                             Log.e("MailLis_Retry", "Ошибка шифрования при повторно отправке");
-                            throw new RuntimeException(e); //TODO добавить свой эквепшн
+                            throw e;
                         }
                         // Переотправляем письмо по SMTP
                         sendEmailOverNetwork(recipientEmail, msg.getSubject(), sendTxt, msg.getId(), prefs,
@@ -974,6 +996,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                                         Log.d("MailLis_Retry", "Сообщение с ID " + msg.getId() +
                                                 " успешно переотправлено после восстановления сети. UID: " +
                                                 updatedMessageDto.getServerUid());
+                                        dbService.markMessageAsSent(msg.getId(), updatedMessageDto.getServerUid());
                                     }
 
                                     @Override
@@ -1090,36 +1113,35 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         });
     }
 
-    public void sendGroupMessageOverNetwork(long chatId, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener) {
+    public void sendGroupMessageOverNetwork(long chatId, List<String> recipients, String subject, String cipherTextBase64, int localMessageId, SharedPreferences prefs, MailExecutorServiceImpl.OnMessagesSynchronizedListener listener) {
         if (listener == null) {
             Log.e("MailExecutorServiceImpl.sendEmailOverNetwork listener", "Критическая ошибка listener == null");
             return;
         }
+
+        String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
+        List<String> users = recipients
+                .stream()
+                .filter(e -> !e.equals(myEmail))
+                .collect(Collectors.toList());
+
+        // Склеиваем список участников в одну строку через запятую для заголовка
+        StringBuilder membersSb = new StringBuilder(myEmail); // Начинаем со своего email
+        for (String email : recipients) {
+            membersSb.append(",").append(email);
+        }
+        String groupComposition = membersSb.toString();
+
         // Handler нужен, чтобы вернуть результат в Главный (UI) поток Android
         var mainHandler = new Handler(Looper.getMainLooper());
 
         networkExecutor.execute(() -> {
             try {
                 dbService.markMessageAsSending(localMessageId);
-                String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
 
-                // Получаем всех участников этой группы из SQLite
-                List<String> recipients = dbService.getGroupMembers(chatId, myEmail);
-
-                recipients = recipients
-                        .stream()
-                        .filter(e -> !e.equals(myEmail))
-                        .collect(Collectors.toList());
-
-                // Склеиваем список участников в одну строку через запятую для заголовка
-                StringBuilder membersSb = new StringBuilder(myEmail); // Начинаем со своего email
-                for (String email : recipients) {
-                    membersSb.append(",").append(email);
-                }
-                String groupComposition = membersSb.toString();
                 Map<String, String> headers = Map.of("X-MailLis-Group-Members", groupComposition);
                 var messageDto = new NetworkMessageDto(cipherTextBase64, EMPTI_STRING, subject, headers);
-                String generatedServerUid = emailClient.sendGroupMessage(recipients, messageDto, prefs);
+                String generatedServerUid = emailClient.sendGroupMessage(users, messageDto, prefs);
 
                 // Помечаем в локальной базе как отправлено (хотя бы сервером)
                 dbService.markMessageAsSent(localMessageId, generatedServerUid);
@@ -1143,6 +1165,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
      */
     public void sendGroupInviteOverNetwork(String recipientEmail, long chatId, String groupName, byte[] groupSecretKey, SharedPreferences prefs) {
         networkExecutor.execute(() -> {
+            int localMsgId = -1;
             try {
                 String myEmail = prefs.getString(KEY_EMAIL_LOGIN, EMPTI_STRING);
 
@@ -1181,14 +1204,22 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
                     Log.w("MailLis_Group", "Ключа друга нет. Отправлен безопасный Pre-Invite для: " + recipientEmail);
                 }
+
+                long currentTimeMillis = System.currentTimeMillis();
+                localMsgId = dbService.saveGroupMessage(chatId, recipientEmail, subject, text, currentTimeMillis);
+                dbService.markMessageAsSending(localMsgId);
+
                 Map<String, String> headers = Map.of("X-MailLis-Group-Members", groupComposition);
                 var messageDto = new NetworkMessageDto(text, recipientEmail, subject, headers);
                 String generatedServerUid = emailClient.sendMessage(messageDto, prefs);
 
                 emailClient.deleteMessage(generatedServerUid, prefs);
 
+                dbService.markMessageAsSent(localMsgId, generatedServerUid);
+
             } catch (Exception e) {
                 Log.e("MailLis_GroupInvite", "Ошибка ", e);
+                dbService.resetMessageStatusToUnsent(localMsgId);
             }
         });
     }
