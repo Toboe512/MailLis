@@ -446,14 +446,14 @@ public interface DBService {
     boolean addGroupMember(long remoteGroupId, String userEmail);
 
     /**
-     * Возвращает список Email-адресов всех участников конкретной группы (исключая свой собственный).
-     * Гарантированно работает как на устройстве Создателя, так и у приглашенных Участников.
+     * Возвращает список Email-адресов всех участников группы для веерной P2P-рассылки SMTP писем.
+     * Принудительно исключает из списка собственный Email текущего пользователя.
      *
-     * @param groupId числовой идентификатор чата (локальный id или глобальный remote_group_id)
-     * @param myEmail email текущего пользователя приложения (чтобы исключить себя из рассылки)
-     * @return список email-адресов участников группы
+     * @param remoteGroupId глобальный ID группы (remote_group_id), используемый в сети и ChatActivity
+     * @param myEmail       Email текущего пользователя (будет исключен из списка)
+     * @return список чистых нормализованных Email-адресов участников группы
      */
-    List<String> getGroupMembers(long groupId, String myEmail);
+    List<String> getGroupMembers(long remoteGroupId, String myEmail);
 
     /**
      * Проверяет, является ли указанный идентификатор чата групповой комнатой.

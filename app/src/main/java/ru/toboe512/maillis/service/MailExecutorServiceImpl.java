@@ -35,6 +35,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,8 +49,8 @@ import ru.toboe512.maillis.client.EmailClient;
 import ru.toboe512.maillis.crypto.CryptoService;
 import ru.toboe512.maillis.crypto.CryptoServiceImpl;
 import ru.toboe512.maillis.db.DBService;
-import ru.toboe512.maillis.dto.NetworkMessageDto;
 import ru.toboe512.maillis.dto.MessageDto;
+import ru.toboe512.maillis.dto.NetworkMessageDto;
 
 public class MailExecutorServiceImpl implements MailExecutorService {
 
@@ -96,9 +97,14 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
     public int fetchIncomingOverNetwork(Context context, SharedPreferences prefs) {
         int result = 0;
+        List<NetworkMessageDto> messages = new ArrayList<>();
         try {
-            List<NetworkMessageDto> messages = emailClient.fetch(prefs);
-            for (NetworkMessageDto msg : messages) {
+            messages = emailClient.fetch(prefs);
+        } catch (Exception e) {
+            Log.e("MailLis_P2P_fetchIncoming", "Ошибка обновления (загрузка из сети) ", e);
+        }
+        for (NetworkMessageDto msg : messages) {
+            try {
                 String subject = msg.getSubject();
                 String senderEmail = msg.getFrom();
 
@@ -175,9 +181,9 @@ public class MailExecutorServiceImpl implements MailExecutorService {
                 if (subject.contains(KEY_RESPONSE)) {
                     result = result + keyResponseCase(msg, prefs);
                 }
+            } catch (Exception e) {
+                Log.e("MailLis_P2P_fetchIncoming", "Ошибка обновления (парсинг) ", e);
             }
-        } catch (Exception e) {
-            Log.e("MailLis_P2P_fetchIncoming", "Ошибка обновления ", e);
         }
         return result;
     }
@@ -260,11 +266,11 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
         // ЗАПИСЫВАЕМ В SQLite
         // Сохраняем запись в базу данных, указав тип 'IMAGE' и путь к файлу на диске
-         if (dbService.saveIncomingMessage(chatId, senderEmail, CHAT_IMAGE_MAIL, EMPTI_STRING,
-                        msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath())) {
-             emailClient.deleteMessage(msg.getId(), prefs);
-             return 1;
-         }
+        if (dbService.saveIncomingMessage(chatId, senderEmail, CHAT_IMAGE_MAIL, EMPTI_STRING,
+                msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath())) {
+            emailClient.deleteMessage(msg.getId(), prefs);
+            return 1;
+        }
         return 0;
     }
 
@@ -295,12 +301,12 @@ public class MailExecutorServiceImpl implements MailExecutorService {
         String decryptedText = CryptoServiceImpl.decryptGroupText(encryptedBytes, groupKey);
 
         // Сохраняем в messages, привязывая к ID группы
-         if (dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_MESSAGE_MAIL,
-                        decryptedText, msg.getTimestamp(), msg.getId(), TEXT_MSG, EMPTI_STRING)) {
-             emailClient.deleteMessage(msg.getId(), prefs);
-             return 1;
-         }
-        return  0;
+        if (dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_MESSAGE_MAIL,
+                decryptedText, msg.getTimestamp(), msg.getId(), TEXT_MSG, EMPTI_STRING)) {
+            emailClient.deleteMessage(msg.getId(), prefs);
+            return 1;
+        }
+        return 0;
     }
 
     private int groupImageCase(NetworkMessageDto msg, File cacheDir, SharedPreferences prefs) throws Exception {
@@ -330,11 +336,11 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
         // ЗАПИСЫВАЕМ В SQLite
         // Сохраняем в messages, привязывая к ID группы
-         if (dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_IMAGE_MAIL,
-                        EMPTI_STRING, msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath())) {
-             emailClient.deleteMessage(msg.getId(), prefs);
-             return 1;
-         }
+        if (dbService.saveIncomingGroupMessage(groupChatId, senderEmail, GROUP_IMAGE_MAIL,
+                EMPTI_STRING, msg.getTimestamp(), msg.getId(), IMAGE_MSG, file.getAbsolutePath())) {
+            emailClient.deleteMessage(msg.getId(), prefs);
+            return 1;
+        }
         return 0;
     }
 
@@ -510,35 +516,34 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
             String body = msg.getContent().trim();
             String[] bodyLines = body.split("\\r\\n");
-
             String incomingGroupName = bodyLines[0].trim();
             String creatorPublicKeyBase64 = bodyLines[1].trim();
 
             byte[] creatorPublicKeyBytes = Base64.decode(creatorPublicKeyBase64, NO_WRAP);
-
-            // АВТО-СИНХРОНИЗАЦИЯ: Достаем служебный заголовок состава участников
-            String membersHeader = Optional.ofNullable(msg.getHeaders().get("X-MailLis-Group-Members")).orElse(EMPTI_STRING);
-
-            String[] incomingEmails = membersHeader.split(",");
-            for (String email : incomingEmails) {
-                // Метод addGroupMember внутри себя сам проверит дубликаты и привяжет к нужному localId!
-                dbService.addGroupMember(remoteChatId, email.trim().toLowerCase());
-            }
 
             // 1. Сохраняем публичный Tink-ключ создателя группы в таблицу контактов,
             // чтобы мы могли шифровать сообщения лично для него
             dbService.savePublicKey(senderEmail, creatorPublicKeyBytes);
 
             // 2. Создаем у себя заготовку группового чата (пока без секретного AES-ключа группы)
-             if (dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, null, senderEmail)) {
-                 emailClient.deleteMessage(msg.getId(), prefs);
-                 return 1;
-             }
+            if (!dbService.saveReceivedGroupChat(remoteChatId, incomingGroupName, null, senderEmail)) {
+                return 0;
+            }
+            // АВТО-СИНХРОНИЗАЦИЯ: Достаем служебный заголовок состава участников
+            String membersHeader = Optional.ofNullable(msg.getHeaders().get("X-MailLis-Group-Members")).orElse(EMPTI_STRING);
+            String[] incomingEmails = membersHeader.split(",");
+            for (String email : incomingEmails) {
+                // Метод addGroupMember внутри себя сам проверит дубликаты и привяжет к нужному localId!
+                dbService.addGroupMember(remoteChatId, email.trim().toLowerCase());
+            }
 
             Log.i("MailLis_P2P_Group", "Поймали Pre-Invite в группу \"" + incomingGroupName + "\". Высылаем свой Tink-ключ в ответ...");
 
             // 3. АВТО-ОТВЕТ: Мгновенно отправляем создателю наш публичный Tink-ключ, чтобы он запечатал инвайт
             sendGroupPreInviteResponse(senderEmail, remoteChatId, prefs);
+
+            emailClient.deleteMessage(msg.getId(), prefs);
+            return 1;
 
         } catch (Exception e) {
             Log.e("MailLis_P2P_Group", "Ошибка обработки Pre-Invite", e);
@@ -569,7 +574,7 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
             // 2. КЛЮЧ ПОЛУЧЕН! Теперь мы можем взять секретный AES-ключ группы из SQLite
             byte[] groupSecretKey = dbService.getGroupSecretKey(groupChatId);
-            String groupName = dbService.getRecipientEmailByChatId(groupChatId); // Имя группы лежит тут
+            String groupName = dbService.getGroupNameByGroupId(groupChatId); // Имя группы лежит тут
 
             // 3. Перевызываем метод отправки инвайта! Теперь у нас ЕСТЬ его ключ,
             // и метод сработает по Варианту А (отправит зашифрованный AES-пакет)
@@ -609,7 +614,13 @@ public class MailExecutorServiceImpl implements MailExecutorService {
 
         emailClient.deleteMessage(msg.getId(), prefs);
 
-        dbService.addGroupMember(remoteChatId, msg.getFrom()); // Фиксируем, что он в группе
+        // АВТО-СИНХРОНИЗАЦИЯ: Достаем служебный заголовок состава участников
+        String membersHeader = Optional.ofNullable(msg.getHeaders().get("X-MailLis-Group-Members")).orElse(EMPTI_STRING);
+        String[] incomingEmails = membersHeader.split(",");
+        for (String email : incomingEmails) {
+            // Метод addGroupMember внутри себя сам проверит дубликаты и привяжет к нужному localId!
+            dbService.addGroupMember(remoteChatId, email.trim().toLowerCase());
+        }
 
         Log.i("MailLis_P2P_Group", "🎉 Успешно получили и расшифровали AES-ключ группы \"" + incomingGroupName + "\". Теперь мы полноценный участник!");
 

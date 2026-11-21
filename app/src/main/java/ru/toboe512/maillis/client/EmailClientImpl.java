@@ -203,12 +203,11 @@ public class EmailClientImpl implements EmailClient {
             // Передаем ID чата в теме письма, чтобы получатели знали, в какую именно группу положить сообщение!
             message.setSubject(messageDto.getSubject());
 
-            if (messageDto.getSubject().contains(GROUP_MESSAGE_MAIL)) {
-                message.setText(messageDto.getContent());
-            }
             if (messageDto.getSubject().contains(GROUP_IMAGE_MAIL)) {
                 var multipart = getMimeMultipart(System.currentTimeMillis(), messageDto.getContent());
                 message.setContent(multipart);
+            } else {
+                message.setText(messageDto.getContent());
             }
 
             if ((messageDto.getHeaders() != null) && (!messageDto.getHeaders().isEmpty())) {

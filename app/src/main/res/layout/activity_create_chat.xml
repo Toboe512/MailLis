@@ -52,6 +52,7 @@
                 android:singleLine="true" />
         </RelativeLayout>
     </FrameLayout>
+
     <!-- Блок добавления нового контакта -->
     <LinearLayout
         android:layout_width="match_parent"

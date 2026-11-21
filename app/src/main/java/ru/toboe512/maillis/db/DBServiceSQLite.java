@@ -2065,39 +2065,41 @@ public class DBServiceSQLite implements DBService {
         return isSuccess;
     }
 
-    public List<String> getGroupMembers(long groupId, String myEmail) {
+    public List<String> getGroupMembers(long remoteGroupId, String myEmail) {
         List<String> members = new ArrayList<>();
         SQLiteDatabase db = dbHelper.getReadableDatabase();
 
-        // ИСПРАВЛЕНИЕ: Мы связываем group_id в таблице участников с РЕАЛЬНЫМ локальным id
-        // из таблицы group_chats. Мы находим этот локальный id по переданному groupId,
-        // проверяя обе колонки (id и remote_group_id). Это самый чистый и быстрый SQL-путь!
-        String sql = "SELECT user_email FROM group_members WHERE user_email != ? AND (" +
-                "  group_id = CAST(? AS INTEGER) OR " +
-                "  group_id = (SELECT id FROM group_chats WHERE remote_group_id = CAST(? AS INTEGER) LIMIT 1)" +
-                ")";
+        // ЧИСТЫЙ И БЫСТРЫЙ JOIN:
+        // Находим участников в group_members (gm), соединяем с group_chats (gc) по локальному ID,
+        // и фильтруем строго по глобальному remote_group_id и исключаем себя (LOWER для надежности)
+        String sql = "SELECT gm.user_email " +
+                "FROM group_members gm " +
+                "INNER JOIN group_chats gc ON gm.group_id = gc.id " +
+                "WHERE gc.remote_group_id = ? " +
+                "AND LOWER(gm.user_email) != LOWER(?)";
 
         String normalizedMyEmail = myEmail != null ? myEmail.trim().toLowerCase() : "";
 
-        // Передаем аргументы: 1 раз для фильтрации email и 2 раза для условий сопоставления ID
+        // Передаем аргументы: сначала ID группы, затем ваш Email
         String[] selectionArgs = new String[]{
-                normalizedMyEmail,
-                String.valueOf(groupId),
-                String.valueOf(groupId)
+                String.valueOf(remoteGroupId).trim(),
+                normalizedMyEmail
         };
 
         try (Cursor cursor = db.rawQuery(sql, selectionArgs)) {
             if (cursor != null && cursor.moveToFirst()) {
                 do {
                     String memberEmail = cursor.getString(0);
-                    if (memberEmail != null) {
+                    if (memberEmail != null && !memberEmail.trim().isEmpty()) {
                         members.add(memberEmail.trim().toLowerCase());
                     }
                 } while (cursor.moveToNext());
             }
-            Log.d("MailLis_DB", "Для группы (ID: " + groupId + ") успешно извлечено участников: " + members.size());
+            Log.d("MailLis_DB_Members", "Для веерной SMTP отправки (RemoteID: " + remoteGroupId
+                    + ") успешно извлечено участников: " + members.size());
         } catch (Exception e) {
-            Log.e("MailLis_DB", "Критическая ошибка при получении списка участников группы: " + groupId, e);
+            Log.e("MailLis_DB_Members", "Критическая ошибка при получении списка участников для рассылки: " + remoteGroupId, e);
+            e.printStackTrace();
         }
 
         return members;
